@@ -1,5 +1,9 @@
-docs/
-claude-code/
-project_description.md
-.cursor/
-
+node_modules/
+dist/
+coverage/
+*.log
+.env
+.env.*
+!.env.example
+.docker-agent/
+.DS_Store

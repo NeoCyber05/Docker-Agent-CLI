@@ -1,14 +1,14 @@
-import { describe, expect, test, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
-  projectStateDir,
-  userConfigPath,
-  loadUserConfig,
-  resolveProvider,
   isValidProvider,
+  loadUserConfig,
+  projectStateDir,
+  resolveProvider,
+  userConfigPath,
 } from "src/config";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 describe("config resolution", () => {
   let originalCwd: string;
@@ -32,7 +32,7 @@ describe("config resolution", () => {
   });
 
   test("userConfigPath defaults to ~/.docker-agent/config.json", () => {
-    delete process.env.DOCKER_AGENT_CONFIG;
+    Reflect.deleteProperty(process.env, "DOCKER_AGENT_CONFIG");
     expect(userConfigPath()).toBe(path.join(os.homedir(), ".docker-agent", "config.json"));
   });
 
@@ -57,10 +57,7 @@ describe("config resolution", () => {
 
   test("loadUserConfig loads valid config and merges with defaults", () => {
     const configPath = path.join(tmpDir, "config.json");
-    fs.writeFileSync(
-      configPath,
-      JSON.stringify({ provider: "openai", theme: "light" }),
-    );
+    fs.writeFileSync(configPath, JSON.stringify({ provider: "openai", theme: "light" }));
     process.env.DOCKER_AGENT_CONFIG = configPath;
     expect(loadUserConfig()).toEqual({
       provider: "openai",
@@ -86,7 +83,7 @@ describe("config resolution", () => {
     process.env.DOCKER_AGENT_PROVIDER = "openai";
     expect(resolveProvider({ flag: "ollama" })).toBe("ollama");
     expect(resolveProvider({})).toBe("openai");
-    delete process.env.DOCKER_AGENT_PROVIDER;
+    Reflect.deleteProperty(process.env, "DOCKER_AGENT_PROVIDER");
     expect(resolveProvider({})).toBe("gemini");
   });
 

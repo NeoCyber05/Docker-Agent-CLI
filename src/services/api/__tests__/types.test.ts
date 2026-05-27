@@ -1,5 +1,5 @@
+import type { Provider, ProviderEvent, ToolSchema, UsageInfo } from "src/services/api/types";
 import { describe, expect, test } from "vitest";
-import type { ProviderEvent, UsageInfo, ToolSchema, Provider } from "src/services/api/types";
 
 describe("ProviderEvent", () => {
   test("text_delta variant", () => {

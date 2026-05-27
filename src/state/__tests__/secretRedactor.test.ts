@@ -1,5 +1,5 @@
+import { hashSecret, redactEnv, scrubLine, shouldRedact } from "src/state/secretRedactor";
 import { describe, expect, test } from "vitest";
-import { shouldRedact, redactEnv, hashSecret, scrubLine } from "src/state/secretRedactor";
 
 describe("secretRedactor", () => {
   test("shouldRedact catches common secret key patterns", () => {
@@ -19,10 +19,7 @@ describe("secretRedactor", () => {
   });
 
   test("redactEnv splits into visible + secretKeys + hashes", () => {
-    const result = redactEnv(
-      { NODE_ENV: "prod", POSTGRES_PASSWORD: "hunter2" },
-      "webapp",
-    );
+    const result = redactEnv({ NODE_ENV: "prod", POSTGRES_PASSWORD: "hunter2" }, "webapp");
     expect(result.visible).toEqual({ NODE_ENV: "prod" });
     expect(result.secretKeys).toEqual(["POSTGRES_PASSWORD"]);
     expect(result.secretHashesByKey.POSTGRES_PASSWORD).toMatch(/^[a-f0-9]{64}$/);

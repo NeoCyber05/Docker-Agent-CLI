@@ -28,16 +28,14 @@ export function redactEnv(env: Record<string, string>, stackName: string): EnvSn
 }
 
 export function scrubLine(line: string, knownSecretKeys: Set<string>): string {
+  let scrubbed = line;
   for (const key of knownSecretKeys) {
-    const re = new RegExp(
-      `${escape(key)}=("[^"]*"|'[^']*'|[^\\s]+)`,
-      "g",
-    );
-    line = line.replace(re, `${key}=***`);
+    const re = new RegExp(`${escapeRegExp(key)}=("[^"]*"|'[^']*'|[^\\s]+)`, "g");
+    scrubbed = scrubbed.replace(re, `${key}=***`);
   }
-  return line;
+  return scrubbed;
 }
 
-function escape(s: string): string {
+function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

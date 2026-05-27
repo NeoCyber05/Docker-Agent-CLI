@@ -1,12 +1,7 @@
-import { describe, expect, test } from "vitest";
-import type {
-  AssistantMessage,
-  Message,
-  ToolResultMessage,
-  UserMessage,
-} from "src/types/message";
 import type { LoopEvent, PermissionResponse } from "src/types/events";
+import type { AssistantMessage, Message, ToolResultMessage, UserMessage } from "src/types/message";
 import type { StackDefinition } from "src/types/stack";
+import { describe, expect, test } from "vitest";
 
 describe("type shape sanity", () => {
   test("Message union accepts all three roles", () => {

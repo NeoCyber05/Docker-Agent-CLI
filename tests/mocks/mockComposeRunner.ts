@@ -15,40 +15,46 @@ export class MockBoundRunner {
   logsCalls: Array<{ service?: string; tailLines?: number }> = [];
   lastExitCode = 0;
 
-  up = vi.fn(async function* (
-    this: MockBoundRunner,
-    opts: { detach?: boolean; scale?: Record<string, number> } = {},
-  ): AsyncGenerator<string, number> {
-    this.upCalls.push(opts);
-    yield `up: ${this.stackName}\n`;
-    this.lastExitCode = 0;
-    return 0;
-  }.bind(this));
+  up = vi.fn(
+    async function* (
+      this: MockBoundRunner,
+      opts: { detach?: boolean; scale?: Record<string, number> } = {},
+    ): AsyncGenerator<string, number> {
+      this.upCalls.push(opts);
+      yield `up: ${this.stackName}\n`;
+      this.lastExitCode = 0;
+      return 0;
+    }.bind(this),
+  );
 
-  down = vi.fn(async function* (
-    this: MockBoundRunner,
-    opts: { volumes?: boolean } = {},
-  ): AsyncGenerator<string, number> {
-    this.downCalls.push(opts);
-    yield `down: ${this.stackName}\n`;
-    this.lastExitCode = 0;
-    return 0;
-  }.bind(this));
+  down = vi.fn(
+    async function* (
+      this: MockBoundRunner,
+      opts: { volumes?: boolean } = {},
+    ): AsyncGenerator<string, number> {
+      this.downCalls.push(opts);
+      yield `down: ${this.stackName}\n`;
+      this.lastExitCode = 0;
+      return 0;
+    }.bind(this),
+  );
 
   ps = vi.fn(async (opts: { json?: boolean } = {}): Promise<ComposePsRow[]> => {
     this.psCalls.push(opts);
     return [];
   });
 
-  logs = vi.fn(async function* (
-    this: MockBoundRunner,
-    opts: { service?: string; tailLines?: number } = {},
-  ): AsyncGenerator<string, number> {
-    this.logsCalls.push(opts);
-    yield "";
-    this.lastExitCode = 0;
-    return 0;
-  }.bind(this));
+  logs = vi.fn(
+    async function* (
+      this: MockBoundRunner,
+      opts: { service?: string; tailLines?: number } = {},
+    ): AsyncGenerator<string, number> {
+      this.logsCalls.push(opts);
+      yield "";
+      this.lastExitCode = 0;
+      return 0;
+    }.bind(this),
+  );
 
   constructor(
     public stackName: string,

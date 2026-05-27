@@ -1,5 +1,5 @@
-import { describe, expect, test } from "vitest";
 import { main } from "src/main";
+import { describe, expect, test } from "vitest";
 
 describe("main entrypoint", () => {
   test("--version exits with code 0 and prints the package version", async () => {

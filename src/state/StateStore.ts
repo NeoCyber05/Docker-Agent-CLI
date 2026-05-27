@@ -80,7 +80,7 @@ function formatZodIssues(error: z.ZodError): string {
     .join("; ");
 }
 
-function parseStackDefinition(raw: unknown, source: string): StackDefinition {
+export function parseStackDefinition(raw: unknown, source: string): StackDefinition {
   const result = stackDefinitionSchema.safeParse(raw);
   if (!result.success) {
     throw new Error(`Invalid stack state at ${source}: ${formatZodIssues(result.error)}`);

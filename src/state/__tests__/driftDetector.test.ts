@@ -1,17 +1,19 @@
-import { describe, expect, test } from "vitest";
-import { detectDrift } from "src/state/driftDetector";
-import { StateStore } from "src/state/StateStore";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { StateStore } from "src/state/StateStore";
+import { detectDrift } from "src/state/driftDetector";
+import { describe, expect, test } from "vitest";
 
-function makeEngine(containers: Array<{
-  Id: string;
-  Service: string;
-  Image: string;
-  Env: string[];
-  State: string;
-}>) {
+function makeEngine(
+  containers: Array<{
+    Id: string;
+    Service: string;
+    Image: string;
+    Env: string[];
+    State: string;
+  }>,
+) {
   return {
     listContainers: async () =>
       containers.map((c) => ({
@@ -24,7 +26,8 @@ function makeEngine(containers: Array<{
         },
       })),
     inspect: async (id: string) => {
-      const c = containers.find((x) => x.Id === id)!;
+      const c = containers.find((x) => x.Id === id);
+      if (c === undefined) throw new Error(`Missing container ${id}`);
       return {
         Id: c.Id,
         Name: `/${c.Service}-1`,

@@ -73,7 +73,7 @@ export interface ServiceDiff {
   service: string;
   desired: ServiceSnapshot | null;
   actual: ServiceSnapshot | null;
-  changes: Array<{ field: keyof ServiceSnapshot; from: unknown; to: unknown }>;
+  changes: Array<{ field: string; from: unknown; to: unknown }>;
 }
 
 export interface StackDiff {

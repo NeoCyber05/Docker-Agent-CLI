@@ -34,7 +34,8 @@ describe("ComposeRunner", () => {
       out.push(r.value);
     }
     expect(exit).toBe(0);
-    expect(spawner.calls[0]).toEqual({
+    expect(spawner.calls).toHaveLength(1);
+    expect(spawner.calls[0]!).toEqual({
       cmd: "docker",
       args: [
         "compose",
@@ -60,7 +61,8 @@ describe("ComposeRunner", () => {
     while (!(await gen.next()).done) {
       /* drain */
     }
-    expect(spawner.calls[0]?.args).toEqual(
+    expect(spawner.calls).toHaveLength(1);
+    expect(spawner.calls[0]!.args).toEqual(
       expect.arrayContaining(["--scale", "api=2", "--scale", "worker=3"]),
     );
   });
@@ -73,8 +75,9 @@ describe("ComposeRunner", () => {
     while (!(await gen.next()).done) {
       /* drain */
     }
-    expect(spawner.calls[0]?.args).toContain("-v");
-    expect(spawner.calls[0]?.args).toContain("down");
+    expect(spawner.calls).toHaveLength(1);
+    expect(spawner.calls[0]!.args).toContain("-v");
+    expect(spawner.calls[0]!.args).toContain("down");
   });
 
   test("ps json returns parsed JSON lines", async () => {
@@ -89,5 +92,60 @@ describe("ComposeRunner", () => {
       { Name: "s-web-1", Service: "web", State: "running" },
       { Name: "s-db-1", Service: "db", State: "running" },
     ]);
+  });
+
+  test("ps returns empty array when no rows", async () => {
+    const spawner = new StubSpawner();
+    spawner.stdout = [];
+    const runner = new ComposeRunner("/cwd", spawner);
+    const rows = await runner.forStack("s", "/y.yaml").ps({ json: true });
+    expect(rows).toEqual([]);
+  });
+
+  test("ps without json flag still collects output", async () => {
+    const spawner = new StubSpawner();
+    spawner.stdout = ["NAME           SERVICE   STATE\n", "s-web-1       web       running\n"];
+    const runner = new ComposeRunner("/cwd", spawner);
+    const rows = await runner.forStack("s", "/y.yaml").ps({});
+    expect(rows).toEqual([]);
+    expect(spawner.calls).toHaveLength(1);
+    expect(spawner.calls[0]!.args).toContain("ps");
+    expect(spawner.calls[0]!.args).not.toContain("--format");
+  });
+
+  test("logs yields output with service and tail filters", async () => {
+    const spawner = new StubSpawner();
+    const runner = new ComposeRunner("/cwd", spawner);
+    const bound = runner.forStack("svc", "/y.yaml");
+    const out: string[] = [];
+    for await (const chunk of bound.logs({ service: "api", tailLines: 50 })) {
+      out.push(chunk);
+    }
+    expect(spawner.calls).toHaveLength(1);
+    expect(spawner.calls[0]!.args).toContain("logs");
+    expect(spawner.calls[0]!.args).toContain("--tail");
+    expect(spawner.calls[0]!.args).toContain("50");
+    expect(spawner.calls[0]!.args).toContain("api");
+  });
+
+  test("non-zero exit code propagates from up", async () => {
+    const spawner = new StubSpawner();
+    spawner.exit = 1;
+    spawner.stdout = ["error output\n"];
+    const runner = new ComposeRunner("/cwd", spawner);
+    const bound = runner.forStack("s", "/y.yaml");
+    let exit = -1;
+    for await (const _ of bound.up({ detach: true })) {
+      /* drain */
+    }
+    const gen2 = bound.up({ detach: true });
+    while (true) {
+      const r = await gen2.next();
+      if (r.done) {
+        exit = r.value;
+        break;
+      }
+    }
+    expect(exit).toBe(1);
   });
 });

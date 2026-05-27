@@ -13,39 +13,46 @@ const defaultSpawner: Spawner = {
     const child = realSpawn(cmd, args, { cwd: opts.cwd, stdio: ["ignore", "pipe", "pipe"] });
     const out = child.stdout;
     const err = child.stderr;
-    const buffer: string[] = [];
     out.setEncoding("utf-8");
     err.setEncoding("utf-8");
-    let resolveLine: ((v: string | null) => void) | null = null;
-    const queue: Array<string | null> = [];
-    const pushLine = (chunk: string | null) => {
-      if (resolveLine) {
-        resolveLine(chunk);
-        resolveLine = null;
+    let lineBuffer = "";
+    let resolveChunk: ((v: string | null) => void) | null = null;
+    const chunkQueue: Array<string | null> = [];
+    const pushChunk = (chunk: string | null) => {
+      if (resolveChunk) {
+        resolveChunk(chunk);
+        resolveChunk = null;
       } else {
-        queue.push(chunk);
+        chunkQueue.push(chunk);
       }
     };
-    out.on("data", (chunk: string) => pushLine(chunk));
-    err.on("data", (chunk: string) => pushLine(chunk));
+    out.on("data", (chunk: string) => pushChunk(chunk));
+    err.on("data", (chunk: string) => pushChunk(chunk));
     const exitPromise = new Promise<number>((res) =>
       child.on("close", (code: number | null) => {
-        pushLine(null);
+        pushChunk(null);
         res(code ?? 0);
       }),
     );
     while (true) {
-      let next: string | null;
-      if (queue.length > 0) {
-        next = queue.shift() ?? null;
+      let chunk: string | null;
+      if (chunkQueue.length > 0) {
+        chunk = chunkQueue.shift() ?? null;
       } else {
-        next = await new Promise<string | null>((res) => (resolveLine = res));
+        chunk = await new Promise<string | null>((res) => (resolveChunk = res));
       }
-      if (next === null) break;
-      yield next;
+      if (chunk === null) {
+        if (lineBuffer.length > 0) yield lineBuffer;
+        break;
+      }
+      lineBuffer += chunk;
+      const lines = lineBuffer.split("\n");
+      lineBuffer = lines.pop()!;
+      for (const line of lines) {
+        yield line + "\n";
+      }
     }
     return await exitPromise;
-    void buffer;
   },
 };
 

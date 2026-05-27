@@ -66,16 +66,20 @@ export class MockBoundRunner {
 }
 
 export class MockComposeRunner {
-  forStackCalls: Array<{ stackName: string; yamlPath: string; cwd: string }> = [];
+  forStackCalls: Array<{ stackName: string; yamlPath: string }> = [];
   private bound = new Map<string, MockBoundRunner>();
-  forStack = vi.fn((stackName: string, yamlPath: string, cwd: string): MockBoundRunner => {
-    this.forStackCalls.push({ stackName, yamlPath, cwd });
+
+  constructor(private cwd: string = "/cwd") {}
+
+  forStack = vi.fn((stackName: string, yamlPath: string): MockBoundRunner => {
+    this.forStackCalls.push({ stackName, yamlPath });
     const existing = this.bound.get(stackName);
     if (existing) return existing;
-    const runner = new MockBoundRunner(stackName, yamlPath, cwd);
+    const runner = new MockBoundRunner(stackName, yamlPath, this.cwd);
     this.bound.set(stackName, runner);
     return runner;
   });
+
   boundFor(stackName: string): MockBoundRunner {
     const b = this.bound.get(stackName);
     if (!b) throw new Error(`No bound runner for stack ${stackName}`);

@@ -7,7 +7,7 @@
   "engines": { "node": ">=20" },
   "scripts": {
     "dev": "tsx watch src/entrypoints/cli.ts",
-    "build": "tsup src/entrypoints/cli.ts --format esm --target node20 --bundle --clean --out-dir dist && node -e \"require('fs').cpSync('src/prompts','dist/prompts',{recursive:true})\"",
+    "build": "tsup",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",

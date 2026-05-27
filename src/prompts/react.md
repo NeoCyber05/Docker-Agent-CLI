@@ -6,4 +6,6 @@ If the user asks to deploy or set up something, call `plan_stack`. The tool will
 
 Current state of stacks in this project (YAML, secrets masked):
 
+<state>
 {{STATE_SUMMARY}}
+</state>

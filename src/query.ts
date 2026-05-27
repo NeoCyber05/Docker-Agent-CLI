@@ -233,7 +233,7 @@ export async function* query(params: QueryParams): AsyncGenerator<LoopEvent, voi
           role: "tool",
           toolUseId: tu.id,
           content: r.resultMessage,
-          isError: false,
+          isError: !r.applied,
         });
         if (mode === "plan-once") return;
         continue;
@@ -252,11 +252,17 @@ export async function* query(params: QueryParams): AsyncGenerator<LoopEvent, voi
           });
           continue;
         }
-        let parsed: unknown = {};
+        let parsed: unknown;
         try {
           parsed = destroyAllStacks.inputSchema.parse(JSON.parse(tu.argsPartial || "{}"));
-        } catch {
-          /* fall through */
+        } catch (err) {
+          messages.push({
+            role: "tool",
+            toolUseId: tu.id,
+            content: `validation failed: ${(err as Error).message}`,
+            isError: true,
+          });
+          continue;
         }
         const result = yield* runTool(destroyAllStacks, parsed as never, ctx);
         messages.push({

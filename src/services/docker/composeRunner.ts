@@ -1,11 +1,7 @@
 import { spawn as realSpawn } from "node:child_process";
 
 export interface Spawner {
-  spawn(
-    cmd: string,
-    args: string[],
-    opts: { cwd: string },
-  ): AsyncGenerator<string, number>;
+  spawn(cmd: string, args: string[], opts: { cwd: string }): AsyncGenerator<string, number>;
 }
 
 const defaultSpawner: Spawner = {
@@ -39,7 +35,9 @@ const defaultSpawner: Spawner = {
       if (chunkQueue.length > 0) {
         chunk = chunkQueue.shift() ?? null;
       } else {
-        chunk = await new Promise<string | null>((res) => (resolveChunk = res));
+        chunk = await new Promise<string | null>((res) => {
+          resolveChunk = res;
+        });
       }
       if (chunk === null) {
         if (lineBuffer.length > 0) yield lineBuffer;
@@ -47,9 +45,9 @@ const defaultSpawner: Spawner = {
       }
       lineBuffer += chunk;
       const lines = lineBuffer.split("\n");
-      lineBuffer = lines.pop()!;
+      lineBuffer = lines.pop() ?? "";
       for (const line of lines) {
-        yield line + "\n";
+        yield `${line}\n`;
       }
     }
     return await exitPromise;
@@ -86,15 +84,7 @@ export class BoundComposeRunner {
   ) {}
 
   private baseArgs(): string[] {
-    return [
-      "compose",
-      "-p",
-      this.stackName,
-      "--project-directory",
-      this.cwd,
-      "-f",
-      this.yamlPath,
-    ];
+    return ["compose", "-p", this.stackName, "--project-directory", this.cwd, "-f", this.yamlPath];
   }
 
   async *up(opts: UpOpts = {}): AsyncGenerator<string, number> {

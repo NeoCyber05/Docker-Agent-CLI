@@ -1,8 +1,9 @@
+import { type GitRunner, checkEnvFileGitStatus } from "src/services/docker/gitGuard";
 import { describe, expect, test } from "vitest";
-import { checkEnvFileGitStatus, type GitRunner } from "src/services/docker/gitGuard";
 
 class StubGit implements GitRunner {
   hasGit = true;
+  existsCalls: Array<string | undefined> = [];
   lsFiles: Record<string, number> = {};
   checkIgnore: Record<string, number> = {};
   async run(args: string[], _cwd: string): Promise<number> {
@@ -10,7 +11,8 @@ class StubGit implements GitRunner {
     if (args[0] === "check-ignore") return this.checkIgnore[args[args.length - 1] ?? ""] ?? 1;
     return 1;
   }
-  exists(): boolean {
+  exists(cwd?: string): boolean {
+    this.existsCalls.push(cwd);
     return this.hasGit;
   }
 }
@@ -42,5 +44,11 @@ describe("gitGuard", () => {
     git.hasGit = false;
     const status = await checkEnvFileGitStatus([".env.api"], "/cwd", git);
     expect(status).toEqual({ refusals: [], warnings: [], skipped: true });
+  });
+
+  test("checks for .git under the requested cwd", async () => {
+    const git = new StubGit();
+    await checkEnvFileGitStatus([".env.api"], "/requested-cwd", git);
+    expect(git.existsCalls).toEqual(["/requested-cwd"]);
   });
 });

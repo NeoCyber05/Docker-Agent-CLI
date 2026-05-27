@@ -5,9 +5,7 @@ describe("MockComposeRunner", () => {
   test("forStack returns a bound runner that records its identity", () => {
     const runner = new MockComposeRunner("/cwd");
     const bound = runner.forStack("webapp", "/tmp/webapp.yaml");
-    expect(runner.forStackCalls).toEqual([
-      { stackName: "webapp", yamlPath: "/tmp/webapp.yaml" },
-    ]);
+    expect(runner.forStackCalls).toEqual([{ stackName: "webapp", yamlPath: "/tmp/webapp.yaml" }]);
     expect(bound.spawnedArgs).toEqual([
       "compose",
       "-p",

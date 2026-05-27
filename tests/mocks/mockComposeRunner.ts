@@ -69,7 +69,7 @@ export class MockComposeRunner {
   forStackCalls: Array<{ stackName: string; yamlPath: string }> = [];
   private bound = new Map<string, MockBoundRunner>();
 
-  constructor(private cwd: string = "/cwd") {}
+  constructor(private cwd = "/cwd") {}
 
   forStack = vi.fn((stackName: string, yamlPath: string): MockBoundRunner => {
     this.forStackCalls.push({ stackName, yamlPath });

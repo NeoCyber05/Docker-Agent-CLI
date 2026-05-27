@@ -1,14 +1,14 @@
+import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { spawn } from "node:child_process";
 
 export interface GitRunner {
-  exists(): boolean;
+  exists(cwd: string): boolean;
   run(args: string[], cwd: string): Promise<number>;
 }
 
 const realGit: GitRunner = {
-  exists: () => fs.existsSync(path.join(process.cwd(), ".git")),
+  exists: (cwd) => fs.existsSync(path.join(cwd, ".git")),
   run: (args, cwd) =>
     new Promise((resolve) => {
       const c = spawn("git", args, { cwd, stdio: "ignore" });
@@ -28,7 +28,7 @@ export async function checkEnvFileGitStatus(
   cwd: string,
   git: GitRunner = realGit,
 ): Promise<GitStatusReport> {
-  if (!git.exists()) return { refusals: [], warnings: [], skipped: true };
+  if (!git.exists(cwd)) return { refusals: [], warnings: [], skipped: true };
   const refusals: string[] = [];
   const warnings: string[] = [];
   for (const f of envFiles) {

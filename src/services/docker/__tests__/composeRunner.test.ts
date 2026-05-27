@@ -1,20 +1,22 @@
-import { describe, expect, test, vi } from "vitest";
 import { ComposeRunner, type Spawner } from "src/services/docker/composeRunner";
+import { describe, expect, test, vi } from "vitest";
 
 class StubSpawner implements Spawner {
   calls: Array<{ cmd: string; args: string[]; cwd: string }> = [];
   stdout = ["fake stdout line\n"];
   exit = 0;
-  spawn = vi.fn(async function* (
-    this: StubSpawner,
-    cmd: string,
-    args: string[],
-    opts: { cwd: string },
-  ): AsyncGenerator<string, number> {
-    this.calls.push({ cmd, args, cwd: opts.cwd });
-    for (const line of this.stdout) yield line;
-    return this.exit;
-  }.bind(this));
+  spawn = vi.fn(
+    async function* (
+      this: StubSpawner,
+      cmd: string,
+      args: string[],
+      opts: { cwd: string },
+    ): AsyncGenerator<string, number> {
+      this.calls.push({ cmd, args, cwd: opts.cwd });
+      for (const line of this.stdout) yield line;
+      return this.exit;
+    }.bind(this),
+  );
 }
 
 describe("ComposeRunner", () => {
@@ -35,7 +37,7 @@ describe("ComposeRunner", () => {
     }
     expect(exit).toBe(0);
     expect(spawner.calls).toHaveLength(1);
-    expect(spawner.calls[0]!).toEqual({
+    expect(spawner.calls[0]).toEqual({
       cmd: "docker",
       args: [
         "compose",
@@ -62,7 +64,7 @@ describe("ComposeRunner", () => {
       /* drain */
     }
     expect(spawner.calls).toHaveLength(1);
-    expect(spawner.calls[0]!.args).toEqual(
+    expect(spawner.calls[0]?.args).toEqual(
       expect.arrayContaining(["--scale", "api=2", "--scale", "worker=3"]),
     );
   });
@@ -76,15 +78,15 @@ describe("ComposeRunner", () => {
       /* drain */
     }
     expect(spawner.calls).toHaveLength(1);
-    expect(spawner.calls[0]!.args).toContain("-v");
-    expect(spawner.calls[0]!.args).toContain("down");
+    expect(spawner.calls[0]?.args).toContain("-v");
+    expect(spawner.calls[0]?.args).toContain("down");
   });
 
   test("ps json returns parsed JSON lines", async () => {
     const spawner = new StubSpawner();
     spawner.stdout = [
-      JSON.stringify({ Name: "s-web-1", Service: "web", State: "running" }) + "\n",
-      JSON.stringify({ Name: "s-db-1", Service: "db", State: "running" }) + "\n",
+      `${JSON.stringify({ Name: "s-web-1", Service: "web", State: "running" })}\n`,
+      `${JSON.stringify({ Name: "s-db-1", Service: "db", State: "running" })}\n`,
     ];
     const runner = new ComposeRunner("/cwd", spawner);
     const rows = await runner.forStack("s", "/y.yaml").ps({ json: true });
@@ -109,8 +111,8 @@ describe("ComposeRunner", () => {
     const rows = await runner.forStack("s", "/y.yaml").ps({});
     expect(rows).toEqual([]);
     expect(spawner.calls).toHaveLength(1);
-    expect(spawner.calls[0]!.args).toContain("ps");
-    expect(spawner.calls[0]!.args).not.toContain("--format");
+    expect(spawner.calls[0]?.args).toContain("ps");
+    expect(spawner.calls[0]?.args).not.toContain("--format");
   });
 
   test("logs yields output with service and tail filters", async () => {
@@ -122,10 +124,10 @@ describe("ComposeRunner", () => {
       out.push(chunk);
     }
     expect(spawner.calls).toHaveLength(1);
-    expect(spawner.calls[0]!.args).toContain("logs");
-    expect(spawner.calls[0]!.args).toContain("--tail");
-    expect(spawner.calls[0]!.args).toContain("50");
-    expect(spawner.calls[0]!.args).toContain("api");
+    expect(spawner.calls[0]?.args).toContain("logs");
+    expect(spawner.calls[0]?.args).toContain("--tail");
+    expect(spawner.calls[0]?.args).toContain("50");
+    expect(spawner.calls[0]?.args).toContain("api");
   });
 
   test("non-zero exit code propagates from up", async () => {

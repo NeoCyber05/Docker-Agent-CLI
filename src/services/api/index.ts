@@ -2,7 +2,7 @@ import type { ProviderName } from "src/config";
 import { GeminiProvider } from "./providers/gemini";
 import { OllamaProvider } from "./providers/ollama";
 import { OpenAIProvider } from "./providers/openai";
-import type { CallModelParams, Provider, ProviderEvent } from "./types";
+import type { CallModelParams, Provider, ProviderEvent, ToolSchema } from "./types";
 
 export function resolveProviderForRequest(
   name: ProviderName,
@@ -28,4 +28,4 @@ export async function* callModel(
   yield* provider.stream(params);
 }
 
-export type { Provider, ProviderEvent };
+export type { Provider, ProviderEvent, CallModelParams, ToolSchema };

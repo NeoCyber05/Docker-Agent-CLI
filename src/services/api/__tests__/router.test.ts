@@ -1,5 +1,5 @@
-import { describe, expect, test } from "vitest";
 import { resolveProviderForRequest } from "src/services/api";
+import { describe, expect, test } from "vitest";
 
 describe("provider router", () => {
   test("returns the requested provider by name", () => {

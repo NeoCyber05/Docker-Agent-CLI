@@ -1,10 +1,5 @@
 import type { z } from "zod";
-
-export interface ToolSchemaInput {
-  name: string;
-  description: string;
-  inputSchema: z.ZodSchema<unknown>;
-}
+import type { ToolSchema } from "./types";
 
 type JsonSchemaType = "string" | "number" | "integer" | "boolean" | "object" | "array";
 
@@ -71,7 +66,7 @@ export function toJsonSchema(schema: z.ZodTypeAny): JsonSchemaNode {
   }
 }
 
-export function toGeminiFunctionDeclaration(t: ToolSchemaInput) {
+export function toGeminiFunctionDeclaration(t: ToolSchema) {
   return {
     name: t.name,
     description: t.description,
@@ -79,7 +74,7 @@ export function toGeminiFunctionDeclaration(t: ToolSchemaInput) {
   };
 }
 
-export function toOpenAIFunction(t: ToolSchemaInput) {
+export function toOpenAIFunction(t: ToolSchema) {
   return {
     type: "function" as const,
     function: {

@@ -1,7 +1,7 @@
+import type { Message as OllamaMessage } from "ollama";
 import { Ollama } from "ollama";
 import { toOpenAIFunction } from "../toolSchema";
 import type { CallModelParams, Provider, ProviderEvent } from "../types";
-import type { ToolSchema } from "../types";
 
 export class OllamaProvider implements Provider {
   readonly name = "ollama";
@@ -11,24 +11,34 @@ export class OllamaProvider implements Provider {
     const host = this.env.OLLAMA_HOST ?? "http://localhost:11434";
     const model = params.model ?? this.env.OLLAMA_MODEL ?? "qwen2.5:14b";
     const client = new Ollama({ host });
-    const tools = (params.tools as ToolSchema[]).map((t) => {
-      const fn = toOpenAIFunction(t as never);
+    const toolDefs = params.tools.map((t) => {
+      const fn = toOpenAIFunction(t);
       return { type: "function" as const, function: fn.function };
     });
-    const messages = [
+    const messages: OllamaMessage[] = [
       { role: "system", content: params.system },
-      ...params.messages.map((m) => {
+      ...params.messages.map((m): OllamaMessage => {
         if (m.role === "user") return { role: "user", content: m.content };
         if (m.role === "assistant") {
+          const textParts = m.content
+            .filter((b): b is { type: "text"; text: string } => b.type === "text")
+            .map((b) => b.text)
+            .join("");
+          const toolCalls = m.content
+            .filter(
+              (b): b is { type: "tool_use"; id: string; name: string; input: unknown } =>
+                b.type === "tool_use",
+            )
+            .map((b) => ({
+              function: { name: b.name, arguments: b.input as Record<string, unknown> },
+            }));
           return {
-            role: "assistant",
-            content: m.content
-              .filter((b): b is { type: "text"; text: string } => b.type === "text")
-              .map((b) => b.text)
-              .join(""),
+            role: "assistant" as const,
+            content: textParts,
+            ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
           };
         }
-        return { role: "tool", content: m.content };
+        return { role: "tool" as const, content: m.content } as OllamaMessage;
       }),
     ];
     try {
@@ -36,7 +46,7 @@ export class OllamaProvider implements Provider {
         model,
         messages,
         stream: true,
-        ...(tools.length ? { tools } : {}),
+        ...(toolDefs.length ? { tools: toolDefs } : {}),
       });
       let outputTokens = 0;
       for await (const part of stream) {

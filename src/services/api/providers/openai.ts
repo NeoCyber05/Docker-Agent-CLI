@@ -1,7 +1,6 @@
 import OpenAI from "openai";
 import { toOpenAIFunction } from "../toolSchema";
-import type { CallModelParams, Provider, ProviderEvent } from "../types";
-import type { ToolSchema } from "../types";
+import type { CallModelParams, Provider, ProviderEvent, ToolSchema } from "../types";
 
 export class OpenAIProvider implements Provider {
   readonly name = "openai";
@@ -18,7 +17,7 @@ export class OpenAIProvider implements Provider {
       ...(this.env.OPENAI_BASE_URL ? { baseURL: this.env.OPENAI_BASE_URL } : {}),
     });
     const model = params.model ?? this.env.OPENAI_MODEL ?? "gpt-4o-mini";
-    const toolDefs = (params.tools as ToolSchema[]).map((t) => toOpenAIFunction(t as never));
+    const toolDefs = params.tools.map((t) => toOpenAIFunction(t));
 
     const messages: OpenAI.ChatCompletionMessageParam[] = [
       { role: "system", content: params.system },

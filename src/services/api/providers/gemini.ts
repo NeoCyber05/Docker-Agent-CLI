@@ -1,7 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { toGeminiFunctionDeclaration } from "../toolSchema";
-import type { CallModelParams, Provider, ProviderEvent } from "../types";
-import type { ToolSchema } from "../types";
+import type { CallModelParams, Provider, ProviderEvent, ToolSchema } from "../types";
 
 export class GeminiProvider implements Provider {
   readonly name = "gemini";
@@ -15,7 +14,7 @@ export class GeminiProvider implements Provider {
     }
     const modelId = params.model ?? this.env.GEMINI_MODEL ?? "gemini-2.0-flash-exp";
     const client = new GoogleGenerativeAI(apiKey);
-    const tools = params.tools as ToolSchema[];
+    const tools = params.tools;
     const model = client.getGenerativeModel({
       model: modelId,
       systemInstruction: params.system,
@@ -23,9 +22,7 @@ export class GeminiProvider implements Provider {
         ? {
             tools: [
               {
-                functionDeclarations: tools.map((t) =>
-                  toGeminiFunctionDeclaration(t as never),
-                ) as unknown[],
+                functionDeclarations: tools.map((t) => toGeminiFunctionDeclaration(t)),
               },
             ],
           }
@@ -45,7 +42,7 @@ export class GeminiProvider implements Provider {
         };
       return {
         role: "function",
-        parts: [{ functionResponse: { name: "tool", response: { content: m.content } } }],
+        parts: [{ functionResponse: { name: m.toolUseId, response: { content: m.content } } }],
       };
     });
 

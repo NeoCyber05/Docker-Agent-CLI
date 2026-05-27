@@ -1,5 +1,6 @@
 import type { Provider, ProviderEvent, ToolSchema, UsageInfo } from "src/services/api/types";
 import { describe, expect, test } from "vitest";
+import { z } from "zod";
 
 describe("ProviderEvent", () => {
   test("text_delta variant", () => {
@@ -53,11 +54,11 @@ describe("ToolSchema", () => {
     const ts: ToolSchema = {
       name: "plan_stack",
       description: "Generates a compose plan",
-      inputSchema: { type: "object" },
+      inputSchema: z.object({ stackName: z.string() }),
     };
     expect(ts.name).toBe("plan_stack");
     expect(ts.description).toBe("Generates a compose plan");
-    expect(ts.inputSchema).toEqual({ type: "object" });
+    expect(ts.inputSchema).toBeInstanceOf(z.ZodObject);
   });
 });
 

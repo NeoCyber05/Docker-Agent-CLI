@@ -20,7 +20,7 @@ export type ProviderEvent =
 export interface ToolSchema {
   name: string;
   description: string;
-  inputSchema: unknown;
+  inputSchema: import("zod").ZodSchema<unknown>;
 }
 
 export interface CallModelParams {
@@ -31,5 +31,6 @@ export interface CallModelParams {
 }
 
 export interface Provider {
+  readonly name: string;
   stream(params: CallModelParams): AsyncGenerator<ProviderEvent>;
 }

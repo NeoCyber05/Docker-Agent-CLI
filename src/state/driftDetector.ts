@@ -1,9 +1,9 @@
-import type { ContainerInspect, EngineClient } from "src/services/docker/engineClient";
-import type { ServiceSnapshot, ServiceDiff, StackDiff, ServiceSpec } from "src/types/stack";
-import type { StateStore } from "./StateStore";
-import { readEnvFile, mergeEnv } from "./envFile";
-import { redactEnv } from "./secretRedactor";
 import * as path from "node:path";
+import type { ContainerInspect, EngineClient } from "src/services/docker/engineClient";
+import type { ServiceDiff, ServiceSnapshot, ServiceSpec, StackDiff } from "src/types/stack";
+import type { StateStore } from "./StateStore";
+import { mergeEnv, readEnvFile } from "./envFile";
+import { redactEnv } from "./secretRedactor";
 
 const RUNTIME_ALLOWLIST = new Set([
   "PATH",
@@ -63,11 +63,7 @@ function diffSnapshots(
   actual: ServiceSnapshot,
 ): Array<{ field: string; from: unknown; to: unknown }> {
   const changes: Array<{ field: string; from: unknown; to: unknown }> = [];
-  const scalarFields: Array<keyof ServiceSnapshot> = [
-    "image",
-    "command",
-    "replicaCount",
-  ];
+  const scalarFields: Array<keyof ServiceSnapshot> = ["image", "command", "replicaCount"];
   for (const f of scalarFields) {
     if (JSON.stringify(desired[f]) !== JSON.stringify(actual[f])) {
       changes.push({ field: f as string, from: desired[f], to: actual[f] });
@@ -120,8 +116,12 @@ export async function detectDrift(
   for (const c of inspects) {
     const svc = c.Config.Labels["com.docker.compose.service"];
     if (!svc) continue;
-    if (!byService.has(svc)) byService.set(svc, []);
-    byService.get(svc)!.push(c);
+    let serviceContainers = byService.get(svc);
+    if (serviceContainers === undefined) {
+      serviceContainers = [];
+      byService.set(svc, serviceContainers);
+    }
+    serviceContainers.push(c);
   }
   const desiredServices = new Set(Object.keys(def.services));
   const actualServices = new Set(byService.keys());
@@ -144,8 +144,8 @@ export async function detectDrift(
       : null;
 
     let actualSnap: ServiceSnapshot | null = null;
-    if (containers.length > 0) {
-      const first = containers[0]!;
+    const first = containers[0];
+    if (first !== undefined) {
       const mergedEnvMap = envArrayToMap(first.Config.Env ?? []);
       actualSnap = snapshot(
         first.Config.Image,

@@ -1,9 +1,9 @@
-import { describe, expect, test, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { StateStore } from "src/state/StateStore";
 import type { StackDefinition } from "src/types/stack";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 function makeDef(name: string): StackDefinition {
   return {
@@ -43,6 +43,12 @@ describe("StateStore", () => {
     expect(store.read("missing")).toBeNull();
   });
 
+  test("read throws a clear error for invalid stack YAML", () => {
+    fs.writeFileSync(path.join(tmpRoot, "stacks", "bad.yaml"), "services: {}\n");
+
+    expect(() => store.read("bad")).toThrow(/Invalid stack state.*bad\.yaml/);
+  });
+
   test("list returns summary of all stacks", () => {
     store.write("a", makeDef("a"));
     store.write("b", makeDef("b"));
@@ -51,6 +57,16 @@ describe("StateStore", () => {
       .map((s) => s.name)
       .sort();
     expect(names).toEqual(["a", "b"]);
+  });
+
+  test("list skips malformed stack files", () => {
+    const warnings: string[] = [];
+    store = new StateStore(tmpRoot, { warn: (message) => warnings.push(message) });
+    store.write("good", makeDef("good"));
+    fs.writeFileSync(path.join(tmpRoot, "stacks", "bad.yaml"), "not: a stack\n");
+
+    expect(store.list()).toEqual([{ name: "good", serviceCount: 1, lastApplied: null }]);
+    expect(warnings.join("\n")).toMatch(/Skipping invalid stack state.*bad\.yaml/);
   });
 
   test("remove archives by default", () => {
@@ -76,17 +92,18 @@ describe("StateStore", () => {
       action: "drift_detected",
       details: {},
     });
-    const lines = fs
-      .readFileSync(path.join(tmpRoot, "history.json"), "utf-8")
-      .trim()
-      .split("\n");
+    const lines = fs.readFileSync(path.join(tmpRoot, "history.json"), "utf-8").trim().split("\n");
     expect(lines).toHaveLength(2);
-    expect(JSON.parse(lines[0]!).action).toBe("apply");
+    const [firstLine] = lines;
+    if (firstLine === undefined) throw new Error("missing first history line");
+    expect(JSON.parse(firstLine).action).toBe("apply");
   });
 
   test("summary produces redacted YAML for system prompt", () => {
     const def = makeDef("s");
-    def.services.web!.environment = { NODE_ENV: "prod", API_KEY: "real" };
+    const web = def.services.web;
+    if (web === undefined) throw new Error("missing web service");
+    web.environment = { NODE_ENV: "prod", API_KEY: "real" };
     store.write("s", def);
     const summary = store.summary();
     expect(summary).toContain("NODE_ENV: prod");
@@ -100,5 +117,13 @@ describe("StateStore", () => {
     release();
     const release2 = await store.acquireLock("x");
     release2();
+  });
+
+  test("acquireLock removes stale lock files", async () => {
+    fs.writeFileSync(path.join(tmpRoot, "locks", "stale.lock"), "99999999");
+
+    const release = await store.acquireLock("stale", { timeoutMs: 0 });
+
+    release();
   });
 });

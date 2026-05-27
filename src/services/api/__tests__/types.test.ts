@@ -65,6 +65,7 @@ describe("ToolSchema", () => {
 describe("Provider interface", () => {
   test("stream returns AsyncGenerator of ProviderEvent", () => {
     const provider: Provider = {
+      name: "mock",
       stream: async function* () {
         yield { type: "text_delta", text: "hello" };
       },

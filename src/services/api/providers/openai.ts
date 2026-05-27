@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { toOpenAIFunction } from "../toolSchema";
-import type { CallModelParams, Provider, ProviderEvent, ToolSchema } from "../types";
+import type { CallModelParams, Provider, ProviderEvent } from "../types";
 
 export class OpenAIProvider implements Provider {
   readonly name = "openai";
@@ -54,11 +54,12 @@ export class OpenAIProvider implements Provider {
         messages,
         ...(toolDefs.length ? { tools: toolDefs as unknown as OpenAI.ChatCompletionTool[] } : {}),
         stream: true,
+        stream_options: { include_usage: true },
       });
       const toolBuffers = new Map<number, { id: string; name: string; args: string }>();
       let inputTokens = 0;
       let outputTokens = 0;
-      let stopReason: "end_turn" | "tool_use" = "end_turn";
+      let stopReason: "end_turn" | "tool_use" | "max_tokens" = "end_turn";
       for await (const chunk of stream) {
         const delta = chunk.choices[0]?.delta;
         if (!delta) continue;
@@ -84,6 +85,9 @@ export class OpenAIProvider implements Provider {
         if (finish === "tool_calls") {
           for (const [, buf] of toolBuffers) yield { type: "tool_use_stop", id: buf.id };
           stopReason = "tool_use";
+        }
+        if (finish === "length") {
+          stopReason = "max_tokens";
         }
         if (chunk.usage) {
           inputTokens = chunk.usage.prompt_tokens ?? inputTokens;

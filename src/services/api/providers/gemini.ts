@@ -1,6 +1,6 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { toGeminiFunctionDeclaration } from "../toolSchema";
-import type { CallModelParams, Provider, ProviderEvent, ToolSchema } from "../types";
+import { type FunctionDeclaration, GoogleGenerativeAI } from "@google/generative-ai";
+import { stripForGemini, toGeminiFunctionDeclaration } from "../toolSchema";
+import type { CallModelParams, Provider, ProviderEvent } from "../types";
 
 export class GeminiProvider implements Provider {
   readonly name = "gemini";
@@ -15,6 +15,14 @@ export class GeminiProvider implements Provider {
     const modelId = params.model ?? this.env.GEMINI_MODEL ?? "gemini-2.0-flash-exp";
     const client = new GoogleGenerativeAI(apiKey);
     const tools = params.tools;
+    const toolUseToName = new Map<string, string>();
+    for (const m of params.messages) {
+      if (m.role === "assistant") {
+        for (const b of m.content) {
+          if (b.type === "tool_use") toolUseToName.set(b.id, b.name);
+        }
+      }
+    }
     const model = client.getGenerativeModel({
       model: modelId,
       systemInstruction: params.system,
@@ -27,7 +35,7 @@ export class GeminiProvider implements Provider {
             ],
           }
         : {}),
-    } as Parameters<typeof client.getGenerativeModel>[0]);
+    });
 
     const contents = params.messages.map((m) => {
       if (m.role === "user") return { role: "user", parts: [{ text: m.content }] };
@@ -42,7 +50,14 @@ export class GeminiProvider implements Provider {
         };
       return {
         role: "function",
-        parts: [{ functionResponse: { name: m.toolUseId, response: { content: m.content } } }],
+        parts: [
+          {
+            functionResponse: {
+              name: toolUseToName.get(m.toolUseId) ?? m.toolUseId,
+              response: { content: m.content },
+            },
+          },
+        ],
       };
     });
 
@@ -50,6 +65,7 @@ export class GeminiProvider implements Provider {
       const result = await model.generateContentStream({ contents });
       let inputTokens = 0;
       let outputTokens = 0;
+      let toolCallIdx = 0;
       for await (const chunk of result.stream) {
         for (const cand of chunk.candidates ?? []) {
           for (const part of cand.content.parts ?? []) {
@@ -57,7 +73,7 @@ export class GeminiProvider implements Provider {
               yield { type: "text_delta", text: part.text };
             }
             if (part.functionCall) {
-              const id = `gemini-${Math.random().toString(36).slice(2, 8)}`;
+              const id = `gemini-${toolCallIdx++}`;
               yield { type: "tool_use_start", id, name: part.functionCall.name };
               yield {
                 type: "tool_use_delta",

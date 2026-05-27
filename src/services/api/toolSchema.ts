@@ -1,3 +1,4 @@
+import type { FunctionDeclaration, FunctionDeclarationSchema } from "@google/generative-ai";
 import type { z } from "zod";
 import type { ToolSchema } from "./types";
 
@@ -61,16 +62,40 @@ export function toJsonSchema(schema: z.ZodTypeAny): JsonSchemaNode {
       return { type: "object" };
     case "ZodEffects":
       return toJsonSchema((def as unknown as { schema: z.ZodTypeAny }).schema);
+    case "ZodDefault":
+      return toJsonSchema((def as unknown as { innerType: z.ZodTypeAny }).innerType);
     default:
       return {};
   }
 }
 
-export function toGeminiFunctionDeclaration(t: ToolSchema) {
+export function stripForGemini(node: JsonSchemaNode): JsonSchemaNode {
+  const {
+    additionalProperties: _ap,
+    oneOf: _oo,
+    ...rest
+  } = node as JsonSchemaNode & { additionalProperties?: unknown; oneOf?: unknown };
+  const result: JsonSchemaNode = rest;
+  if (result.properties) {
+    const props: Record<string, JsonSchemaNode> = {};
+    for (const [k, v] of Object.entries(result.properties)) {
+      props[k] = stripForGemini(v);
+    }
+    result.properties = props;
+  }
+  if (result.items) {
+    result.items = stripForGemini(result.items);
+  }
+  return result;
+}
+
+export function toGeminiFunctionDeclaration(t: ToolSchema): FunctionDeclaration {
+  const raw = toJsonSchema(t.inputSchema) as JsonSchemaObject;
+  const parameters = stripForGemini(raw) as JsonSchemaObject;
   return {
     name: t.name,
     description: t.description,
-    parameters: toJsonSchema(t.inputSchema) as JsonSchemaObject,
+    parameters: parameters as unknown as FunctionDeclarationSchema,
   };
 }
 

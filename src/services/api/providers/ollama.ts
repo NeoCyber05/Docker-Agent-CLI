@@ -15,6 +15,14 @@ export class OllamaProvider implements Provider {
       const fn = toOpenAIFunction(t);
       return { type: "function" as const, function: fn.function };
     });
+    const toolUseToName = new Map<string, string>();
+    for (const m of params.messages) {
+      if (m.role === "assistant") {
+        for (const b of m.content) {
+          if (b.type === "tool_use") toolUseToName.set(b.id, b.name);
+        }
+      }
+    }
     const messages: OllamaMessage[] = [
       { role: "system", content: params.system },
       ...params.messages.map((m): OllamaMessage => {
@@ -38,7 +46,11 @@ export class OllamaProvider implements Provider {
             ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
           };
         }
-        return { role: "tool" as const, content: m.content } as OllamaMessage;
+        return {
+          role: "tool" as const,
+          name: toolUseToName.get(m.toolUseId) ?? m.toolUseId,
+          content: m.content,
+        } as OllamaMessage;
       }),
     ];
     try {
@@ -49,6 +61,7 @@ export class OllamaProvider implements Provider {
         ...(toolDefs.length ? { tools: toolDefs } : {}),
       });
       let outputTokens = 0;
+      let toolCallIdx = 0;
       for await (const part of stream) {
         if (part.message?.content) yield { type: "text_delta", text: part.message.content };
         const calls = (
@@ -58,7 +71,7 @@ export class OllamaProvider implements Provider {
         ).tool_calls;
         if (calls) {
           for (const c of calls) {
-            const id = `ollama-${Math.random().toString(36).slice(2, 8)}`;
+            const id = `ollama-${toolCallIdx++}`;
             yield { type: "tool_use_start", id, name: c.function.name };
             yield {
               type: "tool_use_delta",

@@ -31,5 +31,6 @@ export interface CallModelParams {
 }
 
 export interface Provider {
+  readonly name: string;
   stream(params: CallModelParams): AsyncGenerator<ProviderEvent>;
 }

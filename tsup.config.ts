@@ -10,4 +10,5 @@ export default defineConfig({
   splitting: false,
   sourcemap: true,
   banner: { js: "#!/usr/bin/env node" },
+  onSuccess: "node -e \"require('fs').cpSync(require('path').join(process.cwd(),'src','prompts'),require('path').join(process.cwd(),'dist','prompts'),{recursive:true})\"",
 });

@@ -109,7 +109,7 @@ function assistantBlocksFromCollected(
 async function* handlePlanStackToolUse(
   tu: CollectedToolUse,
   ctx: LoopContext,
-): AsyncGenerator<LoopEvent, { applied: boolean; resultMessage: string }> {
+): AsyncGenerator<LoopEvent, { isError: boolean; resultMessage: string }> {
   let parsed: unknown = (() => {
     try {
       return planStack.inputSchema.parse(JSON.parse(tu.argsPartial || "{}"));
@@ -121,7 +121,7 @@ async function* handlePlanStackToolUse(
   while (true) {
     if ((parsed as { _error?: string })._error) {
       return {
-        applied: false,
+        isError: true,
         resultMessage: `plan_stack validation failed: ${(parsed as { _error: string })._error}`,
       };
     }
@@ -132,7 +132,7 @@ async function* handlePlanStackToolUse(
       for (const [service, keys] of Object.entries(injected)) {
         const resp = yield* requestSecretsAndPatch(service, keys, ctx, parsed as never);
         if (resp === null) {
-          return { applied: false, resultMessage: "User cancelled secrets input." };
+          return { isError: false, resultMessage: "User cancelled secrets input." };
         }
         parsed = resp.patchedInput as typeof parsed;
       }
@@ -156,7 +156,7 @@ async function* handlePlanStackToolUse(
         : {}),
     });
     if (confirm.kind !== "approve") {
-      return { applied: false, resultMessage: "User declined plan." };
+      return { isError: false, resultMessage: "User declined plan." };
     }
     yield* runTool(applyStack, {
       stackName: (parsed as { stackName: string }).stackName,
@@ -165,7 +165,7 @@ async function* handlePlanStackToolUse(
         ? { scaleOverrides: planResult.scaleOverrides }
         : {}),
     }, ctx);
-    return { applied: true, resultMessage: "Stack applied." };
+    return { isError: false, resultMessage: "Stack applied." };
   }
 }
 
@@ -181,15 +181,15 @@ async function* requestSecretsAndPatch(
     stackName: string;
     services: Record<string, { env_file?: string[]; environment?: Record<string, string> }>;
   };
-  const fs = await import("node:fs");
   const path = await import("node:path");
+  const fs = await import("node:fs/promises");
   const secretsDir = path.join(ctx.cwd, ".docker-agent", "secrets");
-  fs.mkdirSync(secretsDir, { recursive: true });
+  await fs.mkdir(secretsDir, { recursive: true });
   const file = path.join(secretsDir, `${input.stackName}-${service}.env`);
   const lines = Object.entries(resp.values)
     .map(([k, v]) => `${k}=${v}`)
     .join("\n") + "\n";
-  fs.writeFileSync(file, lines, { mode: 0o600 });
+  await fs.writeFile(file, lines, { mode: 0o600 });
   const rel = `./.docker-agent/secrets/${input.stackName}-${service}.env`;
   const svc = input.services[service];
   if (svc) {
@@ -227,13 +227,13 @@ export async function* query(params: QueryParams): AsyncGenerator<LoopEvent, voi
     if (collected.toolUses.length === 0) return;
 
     for (const tu of collected.toolUses) {
-      if (tu.name === "plan_stack") {
+if (tu.name === "plan_stack") {
         const r = yield* handlePlanStackToolUse(tu, ctx);
         messages.push({
           role: "tool",
           toolUseId: tu.id,
           content: r.resultMessage,
-          isError: !r.applied,
+          isError: r.isError,
         });
         if (mode === "plan-once") return;
         continue;

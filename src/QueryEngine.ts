@@ -11,13 +11,6 @@ import type { StackDiff } from "src/types/stack";
 import { query } from "./query";
 import { AsyncQueue } from "./utils/AsyncQueue";
 
-const INTERACTIVE_TYPES = new Set([
-  "permission_request",
-  "plan_ready",
-  "typed_confirm_request",
-  "secrets_input_request",
-]);
-
 export interface QueryEngineDeps {
   cwd: string;
   stateStore: StateStore;
@@ -43,6 +36,7 @@ export class QueryEngine {
   private sessionAllowSet = new Set<string>();
   private abortController = new AbortController();
   public provider: Provider;
+  public totalUsage = { inputTokens: 0, outputTokens: 0 };
 
   constructor(private deps: QueryEngineDeps) {
     this.provider = deps.provider;
@@ -86,7 +80,6 @@ export class QueryEngine {
           ctx,
           provider: this.provider,
         })) {
-          if (INTERACTIVE_TYPES.has(ev.type)) continue;
           eventQueue.push(ev);
         }
       } catch (err) {
@@ -98,8 +91,18 @@ export class QueryEngine {
       }
     })();
 
-    for await (const ev of eventQueue) yield ev;
-    await loopPromise;
+    try {
+      for await (const ev of eventQueue) {
+        if (ev.type === "usage") {
+          this.totalUsage.inputTokens += ev.inputTokens;
+          this.totalUsage.outputTokens += ev.outputTokens;
+        }
+        yield ev;
+      }
+    } finally {
+      this.abortController.abort();
+      await loopPromise.catch(() => {});
+    }
   }
 
   respondTo(id: string, answer: PermissionResponse): boolean {
@@ -112,6 +115,7 @@ export class QueryEngine {
 
   abort(): void {
     this.abortController.abort();
+    this.abortController = new AbortController();
   }
 
   reset(): void {

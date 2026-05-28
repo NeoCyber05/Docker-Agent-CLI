@@ -8,7 +8,7 @@ import type { LoopEvent } from "src/types/events";
 import type { Message } from "src/types/message";
 import type { PermissionResponse } from "src/types/permissions";
 import type { StackDiff } from "src/types/stack";
-import { AsyncQueue } from "../tests/mocks/asyncQueue";
+import { AsyncQueue } from "./utils/AsyncQueue";
 import { query } from "./query";
 
 export interface QueryEngineDeps {

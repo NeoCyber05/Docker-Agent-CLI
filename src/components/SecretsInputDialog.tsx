@@ -1,6 +1,6 @@
 import { Box, Text, useInput } from "ink";
 import type React from "react";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import type { PermissionResponse } from "src/types/permissions";
 
 export function SecretsInputDialog({
@@ -18,10 +18,14 @@ export function SecretsInputDialog({
   const [values, setValues] = useState<Record<string, string>>({});
   const [buf, setBuf] = useState("");
   const currentKey = keys[idx] as string;
+  const answeredRef = useRef(false);
 
   useInput((input, key) => {
     if (key.escape) {
-      onAnswer({ kind: "deny" });
+      if (!answeredRef.current) {
+        answeredRef.current = true;
+        onAnswer({ kind: "deny" });
+      }
       return;
     }
     if (key.return) {
@@ -29,7 +33,10 @@ export function SecretsInputDialog({
       setValues(next);
       setBuf("");
       if (idx + 1 >= keys.length) {
-        onAnswer({ kind: "secrets_input_values", values: next });
+        if (!answeredRef.current) {
+          answeredRef.current = true;
+          onAnswer({ kind: "secrets_input_values", values: next });
+        }
       } else {
         setIdx(idx + 1);
       }
@@ -44,15 +51,20 @@ export function SecretsInputDialog({
 
   const masked = buf.replace(/./g, "*");
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="magenta" paddingX={1}>
-      <Text bold>Service {service} needs required env values</Text>
+    <Box flexDirection="column" borderStyle="round" borderColor="magenta" paddingX={1} marginY={1}>
+      <Text bold color="magenta">Service {service} needs required env values</Text>
       <Text dimColor>{reason}</Text>
-      <Text>
-        {currentKey}: {masked}
-      </Text>
-      <Text dimColor>
-        {idx + 1}/{keys.length} — Enter to submit, Esc to cancel
-      </Text>
+      <Box marginTop={1}>
+        <Text bold>
+          {currentKey}: <Text color="yellow">{masked}</Text>
+        </Text>
+      </Box>
+      <Box marginTop={1}>
+        <Text dimColor>
+          {idx + 1}/{keys.length} — Enter to submit, Esc to cancel
+        </Text>
+      </Box>
     </Box>
   );
 }
+

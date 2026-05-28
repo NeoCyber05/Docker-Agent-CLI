@@ -24,7 +24,7 @@ export function MessageList({ messages }: { messages: UIMessage[] }): React.Reac
           return (
             <Box key={m.key}>
               <Text color="blue">[{m.name}]</Text>
-              <Text dimColor> {m.status ?? ""}</Text>
+              <Text dimColor> {m.text || m.status || ""}</Text>
             </Box>
           );
         if (m.role === "error")

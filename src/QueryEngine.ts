@@ -8,8 +8,15 @@ import type { LoopEvent } from "src/types/events";
 import type { Message } from "src/types/message";
 import type { PermissionResponse } from "src/types/permissions";
 import type { StackDiff } from "src/types/stack";
-import { AsyncQueue } from "./utils/AsyncQueue";
 import { query } from "./query";
+import { AsyncQueue } from "./utils/AsyncQueue";
+
+const INTERACTIVE_TYPES = new Set([
+  "permission_request",
+  "plan_ready",
+  "typed_confirm_request",
+  "secrets_input_request",
+]);
 
 export interface QueryEngineDeps {
   cwd: string;
@@ -34,6 +41,7 @@ export class QueryEngine {
   private messages: Message[] = [];
   private pending = new Map<string, (v: PermissionResponse) => void>();
   private sessionAllowSet = new Set<string>();
+  private abortController = new AbortController();
   public provider: Provider;
 
   constructor(private deps: QueryEngineDeps) {
@@ -49,7 +57,7 @@ export class QueryEngine {
       stateStore: this.deps.stateStore,
       dockerEngine: this.deps.dockerEngine,
       composeRunner: this.deps.composeRunner,
-      abortSignal: new AbortController().signal,
+      abortSignal: this.abortController.signal,
       requestPermission: (tool, input) =>
         this.deferUserResponse(eventQueue, { type: "permission_request", tool, input }),
       requestConfirm: (plan: PlanReadyPayload) =>
@@ -71,13 +79,6 @@ export class QueryEngine {
       allowSet: this.sessionAllowSet,
     };
 
-    const INTERACTIVE_TYPES = new Set([
-      "permission_request",
-      "plan_ready",
-      "typed_confirm_request",
-      "secrets_input_request",
-    ]);
-
     const loopPromise = (async () => {
       try {
         for await (const ev of query({
@@ -92,6 +93,8 @@ export class QueryEngine {
         eventQueue.push({ type: "error", error: err as Error });
       } finally {
         eventQueue.close();
+        for (const [, resolve] of this.pending) resolve({ kind: "deny" });
+        this.pending.clear();
       }
     })();
 
@@ -99,11 +102,23 @@ export class QueryEngine {
     await loopPromise;
   }
 
-  respondTo(id: string, answer: PermissionResponse): void {
+  respondTo(id: string, answer: PermissionResponse): boolean {
     const resolver = this.pending.get(id);
-    if (!resolver) throw new Error(`Unknown pending id: ${id}`);
+    if (!resolver) return false;
     this.pending.delete(id);
     resolver(answer);
+    return true;
+  }
+
+  abort(): void {
+    this.abortController.abort();
+  }
+
+  reset(): void {
+    this.messages = [];
+    this.pending.clear();
+    this.sessionAllowSet.clear();
+    this.abortController = new AbortController();
   }
 
   private deferUserResponse(

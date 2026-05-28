@@ -5,13 +5,13 @@ import type { PermissionResponse } from "src/types/permissions";
 import type { StackDiff } from "src/types/stack";
 import { QueryEngine, type QueryEngineDeps } from "../QueryEngine";
 import { Footer } from "../components/Footer";
-import { Header } from "../components/Header";
 import { MessageList, type UIMessage } from "../components/MessageList";
 import { PermissionDialog } from "../components/PermissionDialog";
 import { PlanPreview } from "../components/PlanPreview";
 import { PromptInput } from "../components/PromptInput";
 import { SecretsInputDialog } from "../components/SecretsInputDialog";
 import { TypedConfirmDialog } from "../components/TypedConfirmDialog";
+import { WelcomeBanner } from "../components/WelcomeBanner";
 
 type Pending =
   | { kind: "permission"; id: string; tool: string; input: unknown }
@@ -27,7 +27,8 @@ type Pending =
 
 export function REPL({
   deps,
-}: { deps: QueryEngineDeps & { providerName: string } }): React.ReactElement {
+  version,
+}: { deps: QueryEngineDeps & { providerName: string }; version: string }): React.ReactElement {
   const engine = useMemo(() => new QueryEngine(deps), [deps]);
   const [messages, setMessages] = useState<UIMessage[]>([]);
   const [pending, setPending] = useState<Pending | null>(null);
@@ -195,7 +196,7 @@ export function REPL({
 
   return (
     <Box flexDirection="column">
-      <Header provider={deps.providerName} />
+      <WelcomeBanner version={version} provider={deps.providerName} />
       <MessageList messages={messages} />
       {pending?.kind === "permission" && (
         <PermissionDialog tool={pending.tool} input={pending.input} onAnswer={onAnswer} />

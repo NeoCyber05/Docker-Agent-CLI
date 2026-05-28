@@ -24,15 +24,13 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
   program
     .command("chat", { isDefault: true })
-    .option("-y, --yes", "auto-approve non-destructive ops")
+    .option("-y, --yes", "auto-approve non-destructive permissions")
     .action((opts) => {
       parsed = { ...parsed, command: "chat", ...opts };
     });
-  program
-    .command("status [stack]")
-    .action((stack: string | undefined) => {
-      parsed = { ...parsed, command: "status", ...(stack ? { stack } : {}) };
-    });
+  program.command("status [stack]").action((stack: string | undefined) => {
+    parsed = { ...parsed, command: "status", ...(stack ? { stack } : {}) };
+  });
   program
     .command("destroy [stack]")
     .option("--volumes")
@@ -50,11 +48,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
         ...(typeof opts.confirm === "string" ? { confirm: opts.confirm } : {}),
       };
     });
-  program
-    .command("plan <intent...>")
-    .action((intent: string[]) => {
-      parsed = { ...parsed, command: "plan", intent: intent.join(" ") };
-    });
+  program.command("plan <intent...>").action((intent: string[]) => {
+    parsed = { ...parsed, command: "plan", intent: intent.join(" ") };
+  });
 
   program.hook("preAction", (_thisCmd, actionCmd) => {
     const opts = actionCmd.optsWithGlobals();
@@ -74,6 +70,23 @@ export function parseArgs(argv: string[]): ParsedArgs {
   return parsed;
 }
 
+async function createDeps(args: ParsedArgs) {
+  const { StateStore } = await import("./state/StateStore");
+  const { ComposeRunner } = await import("./services/docker/composeRunner");
+  const { createEngineClient } = await import("./services/docker/engineClient");
+  const { resolveProviderForRequest } = await import("./services/api");
+  const { resolveProvider, projectStateDir } = await import("./config");
+  const providerName = resolveProvider({
+    ...(args.providerFlag ? { flag: args.providerFlag } : {}),
+  });
+  const cwd = process.cwd();
+  const stateStore = new StateStore(projectStateDir());
+  const composeRunner = new ComposeRunner(cwd);
+  const dockerEngine = createEngineClient();
+  const provider = resolveProviderForRequest(providerName);
+  return { cwd, stateStore, composeRunner, dockerEngine, provider };
+}
+
 export async function main(argv: string[]): Promise<number> {
   let args: ParsedArgs;
   try {
@@ -88,23 +101,14 @@ export async function main(argv: string[]): Promise<number> {
     const { render } = await import("ink");
     const React = await import("react");
     const { REPL } = await import("./screens/REPL");
-    const { StateStore } = await import("./state/StateStore");
-    const { ComposeRunner } = await import("./services/docker/composeRunner");
-    const { createEngineClient } = await import("./services/docker/engineClient");
-    const { resolveProviderForRequest } = await import("./services/api");
-    const { resolveProvider, projectStateDir } = await import("./config");
+    const { resolveProvider } = await import("./config");
     const providerName = resolveProvider({
       ...(args.providerFlag ? { flag: args.providerFlag } : {}),
     });
-    const cwd = process.cwd();
-    const stateDir = projectStateDir();
-    const stateStore = new StateStore(stateDir);
-    const composeRunner = new ComposeRunner(cwd);
-    const dockerEngine = createEngineClient();
-    const provider = resolveProviderForRequest(providerName);
+    const deps = await createDeps(args);
     const { waitUntilExit } = render(
       React.createElement(REPL, {
-        deps: { cwd, stateStore, composeRunner, dockerEngine, provider, providerName },
+        deps: { ...deps, providerName, ...(args.yes ? { yes: true } : {}) },
       }),
     );
     await waitUntilExit();
@@ -112,8 +116,7 @@ export async function main(argv: string[]): Promise<number> {
   }
 
   if (args.command === "status") {
-    await runHeadless(`show status of ${args.stack ?? "all stacks"}`, args);
-    return 0;
+    return await runHeadless(`show status of ${args.stack ?? "all stacks"}`, args);
   }
 
   if (args.command === "destroy") {
@@ -122,40 +125,26 @@ export async function main(argv: string[]): Promise<number> {
         process.stderr.write('destroy --all requires --confirm "DESTROY ALL"\n');
         return 1;
       }
-      await runHeadless("destroy all stacks", args);
-      return 0;
+      return await runHeadless("destroy all stacks", args);
     }
     if (!args.stack) {
       process.stderr.write("destroy requires a stack name or --all\n");
       return 1;
     }
-    await runHeadless(`destroy ${args.stack}${args.volumes ? " with volumes" : ""}`, args);
-    return 0;
+    return await runHeadless(`destroy ${args.stack}${args.volumes ? " with volumes" : ""}`, args);
   }
 
   if (args.command === "plan") {
-    await runHeadless(args.intent ?? "", args);
-    return 0;
+    return await runHeadless(args.intent ?? "", args);
   }
   return 0;
 }
 
-async function runHeadless(prompt: string, args: ParsedArgs): Promise<void> {
-  const { StateStore } = await import("./state/StateStore");
-  const { ComposeRunner } = await import("./services/docker/composeRunner");
-  const { createEngineClient } = await import("./services/docker/engineClient");
-  const { resolveProviderForRequest } = await import("./services/api");
+export async function runHeadless(prompt: string, args: ParsedArgs): Promise<number> {
   const { QueryEngine } = await import("./QueryEngine");
-  const { resolveProvider, projectStateDir } = await import("./config");
-  const providerName = resolveProvider({
-    ...(args.providerFlag ? { flag: args.providerFlag } : {}),
-  });
-  const cwd = process.cwd();
-  const stateStore = new StateStore(projectStateDir());
-  const composeRunner = new ComposeRunner(cwd);
-  const dockerEngine = createEngineClient();
-  const provider = resolveProviderForRequest(providerName);
-  const engine = new QueryEngine({ cwd, stateStore, composeRunner, dockerEngine, provider });
+  const deps = await createDeps(args);
+  const engine = new QueryEngine(deps);
+  let hasError = false;
   for await (const ev of engine.query(prompt)) {
     if (ev.type === "assistant_text") process.stdout.write(ev.delta);
     if (ev.type === "plan_ready") {
@@ -179,6 +168,10 @@ async function runHeadless(prompt: string, args: ParsedArgs): Promise<void> {
       );
       engine.respondTo(ev.id, { kind: "deny" });
     }
-    if (ev.type === "error") process.stderr.write(`error: ${ev.error.message}\n`);
+    if (ev.type === "error") {
+      process.stderr.write(`error: ${ev.error.message}\n`);
+      hasError = true;
+    }
   }
+  return hasError ? 1 : 0;
 }

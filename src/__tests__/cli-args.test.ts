@@ -1,5 +1,5 @@
-import { describe, expect, test } from "vitest";
 import { parseArgs } from "src/main";
+import { describe, expect, test } from "vitest";
 
 describe("CLI argument parsing", () => {
   test("default chat command", () => {

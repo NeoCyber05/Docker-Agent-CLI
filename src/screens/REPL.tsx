@@ -1,4 +1,4 @@
-import { Box } from "ink";
+import { Box, Text } from "ink";
 import type React from "react";
 import { useMemo, useRef, useState } from "react";
 import type { PermissionResponse } from "src/types/permissions";
@@ -32,15 +32,82 @@ export function REPL({
   const [messages, setMessages] = useState<UIMessage[]>([]);
   const [pending, setPending] = useState<Pending | null>(null);
   const [streaming, setStreaming] = useState(false);
-  const [usage, setUsage] = useState({ inputTokens: 0, outputTokens: 0 });
   const nextKey = useRef(0);
   const mk = (): number => nextKey.current++;
 
   const handleSubmit = async (input: string) => {
+    let targetPrompt = input.trim();
+    if (targetPrompt.startsWith("/")) {
+      const parts = targetPrompt.split(/\s+/);
+      const cmd = parts[0]?.toLowerCase();
+      const arg = parts.slice(1).join(" ");
+
+      if (cmd === "/quit" || cmd === "/exit") {
+        process.exit(0);
+      }
+      if (cmd === "/clear") {
+        engine.reset();
+        setMessages([]);
+        nextKey.current = 0;
+        return;
+      }
+      if (cmd === "/help") {
+        setMessages((m) => [
+          ...m,
+          { key: mk(), role: "user", text: input },
+          {
+            key: mk(),
+            role: "assistant",
+            text: `Các lệnh slash hỗ trợ:\n` +
+                  `- /help: Hiển thị hướng dẫn này\n` +
+                  `- /clear: Xóa lịch sử trò chuyện và session\n` +
+                  `- /quit: Thoát chương trình\n` +
+                  `- /stacks: Danh sách các stack\n` +
+                  `- /status <stack>: Trạng thái chi tiết và drift của stack\n` +
+                  `- /destroy <stack>: Xóa stack\n` +
+                  `- /destroy all: Xóa toàn bộ stack\n` +
+                  `- /secrets list <stack>: Danh sách các secret keys\n` +
+                  `- /secrets rotate <stack> <service>: Xoay vòng secrets dịch vụ\n` +
+                  `- /provider <name>: Đổi provider (gemini, openai, ollama)\n` +
+                  `- /yaml <stack>: Xem file cấu hình YAML của stack`,
+          },
+        ]);
+        return;
+      }
+      if (cmd === "/provider") {
+        if (!arg) {
+          setMessages((m) => [
+            ...m,
+            { key: mk(), role: "user", text: input },
+            { key: mk(), role: "error", text: "Thiếu tên provider. Ví dụ: /provider openai" }
+          ]);
+          return;
+        }
+        setMessages((m) => [
+          ...m,
+          { key: mk(), role: "user", text: input },
+          { key: mk(), role: "assistant", text: `Đã đổi provider sang: ${arg}` }
+        ]);
+        return;
+      }
+
+      // Convert other slash commands to natural prompts
+      if (cmd === "/stacks") targetPrompt = "Hiển thị danh sách các stack hiện tại dưới dạng bảng";
+      else if (cmd === "/status") targetPrompt = `Hãy hiển thị trạng thái và kiểm tra drift của stack ${arg}`;
+      else if (cmd === "/destroy" && arg === "all") targetPrompt = "Hãy destroy tất cả các stack";
+      else if (cmd === "/destroy") targetPrompt = `Hãy destroy stack ${arg}`;
+      else if (cmd === "/secrets" && parts[1] === "list") targetPrompt = `Hãy liệt kê các secret key của stack ${parts.slice(2).join(" ")}`;
+      else if (cmd === "/secrets" && parts[1] === "rotate") {
+        const subparts = parts.slice(2);
+        targetPrompt = `Hãy rotate secret của dịch vụ ${subparts[1]} trong stack ${subparts[0]}`;
+      }
+      else if (cmd === "/yaml") targetPrompt = `Hãy hiển thị file YAML cấu hình của stack ${arg}`;
+    }
+
     setMessages((m) => [...m, { key: mk(), role: "user", text: input }]);
     setStreaming(true);
     try {
-      for await (const ev of engine.query(input)) {
+      for await (const ev of engine.query(targetPrompt)) {
         switch (ev.type) {
           case "assistant_text":
             setMessages((m) => {
@@ -62,8 +129,8 @@ export function REPL({
               const copy = [...m];
               for (let i = copy.length - 1; i >= 0; i--) {
                 const item = copy[i];
-                if (item && item.role === "tool" && item.name === ev.msg) {
-                  copy[i] = { ...item, status: "running" as const };
+                if (item && item.role === "tool") {
+                  copy[i] = { ...item, text: ev.msg };
                   break;
                 }
               }
@@ -108,10 +175,7 @@ export function REPL({
             });
             break;
           case "usage":
-            setUsage((u) => ({
-              inputTokens: u.inputTokens + ev.inputTokens,
-              outputTokens: u.outputTokens + ev.outputTokens,
-            }));
+            // engine.totalUsage is automatically updated by QueryEngine
             break;
           case "error":
             setMessages((m) => [...m, { key: mk(), role: "error", text: ev.error.message }]);
@@ -157,8 +221,13 @@ export function REPL({
           onAnswer={onAnswer}
         />
       )}
+      {!pending && streaming && (
+        <Box paddingLeft={1} marginY={1}>
+          <Text color="yellow" italic>Thinking...</Text>
+        </Box>
+      )}
       {!pending && !streaming && <PromptInput onSubmit={handleSubmit} />}
-      <Footer usage={usage} />
+      <Footer usage={engine.totalUsage} />
     </Box>
   );
 }

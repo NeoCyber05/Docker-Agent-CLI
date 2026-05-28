@@ -22,6 +22,7 @@ export type LoopEvent =
       keys: string[];
       reason: string;
     }
+  | { type: "usage"; inputTokens: number; outputTokens: number }
   | { type: "error"; error: Error };
 
 export type { PermissionResponse } from "./permissions";

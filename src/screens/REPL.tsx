@@ -25,9 +25,11 @@ type Pending =
   | { kind: "typed"; id: string; phrase: string; reason: string }
   | { kind: "secrets"; id: string; service: string; keys: string[]; reason: string };
 
+const DESTRUCTIVE_TOOLS = new Set(["apply_stack", "destroy_stack", "destroy_all_stacks"]);
+
 export function REPL({
   deps,
-}: { deps: QueryEngineDeps & { providerName: string } }): React.ReactElement {
+}: { deps: QueryEngineDeps & { providerName: string; yes?: boolean } }): React.ReactElement {
   const engine = useMemo(() => new QueryEngine(deps), [deps]);
   const [messages, setMessages] = useState<UIMessage[]>([]);
   const [pending, setPending] = useState<Pending | null>(null);
@@ -58,18 +60,19 @@ export function REPL({
           {
             key: mk(),
             role: "assistant",
-            text: `Các lệnh slash hỗ trợ:\n` +
-                  `- /help: Hiển thị hướng dẫn này\n` +
-                  `- /clear: Xóa lịch sử trò chuyện và session\n` +
-                  `- /quit: Thoát chương trình\n` +
-                  `- /stacks: Danh sách các stack\n` +
-                  `- /status <stack>: Trạng thái chi tiết và drift của stack\n` +
-                  `- /destroy <stack>: Xóa stack\n` +
-                  `- /destroy all: Xóa toàn bộ stack\n` +
-                  `- /secrets list <stack>: Danh sách các secret keys\n` +
-                  `- /secrets rotate <stack> <service>: Xoay vòng secrets dịch vụ\n` +
-                  `- /provider <name>: Đổi provider (gemini, openai, ollama)\n` +
-                  `- /yaml <stack>: Xem file cấu hình YAML của stack`,
+            text:
+              "Các lệnh slash hỗ trợ:\n" +
+              "- /help: Hiển thị hướng dẫn này\n" +
+              "- /clear: Xóa lịch sử trò chuyện và session\n" +
+              "- /quit: Thoát chương trình\n" +
+              "- /stacks: Danh sách các stack\n" +
+              "- /status <stack>: Trạng thái chi tiết và drift của stack\n" +
+              "- /destroy <stack>: Xóa stack\n" +
+              "- /destroy all: Xóa toàn bộ stack\n" +
+              "- /secrets list <stack>: Danh sách các secret keys\n" +
+              "- /secrets rotate <stack> <service>: Xoay vòng secrets dịch vụ\n" +
+              "- /provider <name>: Đổi provider (gemini, openai, ollama)\n" +
+              "- /yaml <stack>: Xem file cấu hình YAML của stack",
           },
         ]);
         return;
@@ -79,29 +82,30 @@ export function REPL({
           setMessages((m) => [
             ...m,
             { key: mk(), role: "user", text: input },
-            { key: mk(), role: "error", text: "Thiếu tên provider. Ví dụ: /provider openai" }
+            { key: mk(), role: "error", text: "Thiếu tên provider. Ví dụ: /provider openai" },
           ]);
           return;
         }
         setMessages((m) => [
           ...m,
           { key: mk(), role: "user", text: input },
-          { key: mk(), role: "assistant", text: `Đã đổi provider sang: ${arg}` }
+          { key: mk(), role: "assistant", text: `Đã đổi provider sang: ${arg}` },
         ]);
         return;
       }
 
       // Convert other slash commands to natural prompts
       if (cmd === "/stacks") targetPrompt = "Hiển thị danh sách các stack hiện tại dưới dạng bảng";
-      else if (cmd === "/status") targetPrompt = `Hãy hiển thị trạng thái và kiểm tra drift của stack ${arg}`;
+      else if (cmd === "/status")
+        targetPrompt = `Hãy hiển thị trạng thái và kiểm tra drift của stack ${arg}`;
       else if (cmd === "/destroy" && arg === "all") targetPrompt = "Hãy destroy tất cả các stack";
       else if (cmd === "/destroy") targetPrompt = `Hãy destroy stack ${arg}`;
-      else if (cmd === "/secrets" && parts[1] === "list") targetPrompt = `Hãy liệt kê các secret key của stack ${parts.slice(2).join(" ")}`;
+      else if (cmd === "/secrets" && parts[1] === "list")
+        targetPrompt = `Hãy liệt kê các secret key của stack ${parts.slice(2).join(" ")}`;
       else if (cmd === "/secrets" && parts[1] === "rotate") {
         const subparts = parts.slice(2);
         targetPrompt = `Hãy rotate secret của dịch vụ ${subparts[1]} trong stack ${subparts[0]}`;
-      }
-      else if (cmd === "/yaml") targetPrompt = `Hãy hiển thị file YAML cấu hình của stack ${arg}`;
+      } else if (cmd === "/yaml") targetPrompt = `Hãy hiển thị file YAML cấu hình của stack ${arg}`;
     }
 
     setMessages((m) => [...m, { key: mk(), role: "user", text: input }]);
@@ -160,7 +164,11 @@ export function REPL({
             });
             break;
           case "permission_request":
-            setPending({ kind: "permission", id: ev.id, tool: ev.tool, input: ev.input });
+            if (deps.yes && !DESTRUCTIVE_TOOLS.has(ev.tool)) {
+              engine.respondTo(ev.id, { kind: "approve" });
+            } else {
+              setPending({ kind: "permission", id: ev.id, tool: ev.tool, input: ev.input });
+            }
             break;
           case "typed_confirm_request":
             setPending({ kind: "typed", id: ev.id, phrase: ev.phrase, reason: ev.reason });
@@ -223,7 +231,9 @@ export function REPL({
       )}
       {!pending && streaming && (
         <Box paddingLeft={1} marginY={1}>
-          <Text color="yellow" italic>Thinking...</Text>
+          <Text color="yellow" italic>
+            Thinking...
+          </Text>
         </Box>
       )}
       {!pending && !streaming && <PromptInput onSubmit={handleSubmit} />}

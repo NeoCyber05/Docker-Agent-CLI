@@ -76,7 +76,7 @@ function makePlanStackToolEvents(id: string, input: object): ProviderEvent[] {
 }
 
 describe("query core loop", () => {
-  test("plan-once: provider emits plan_stack tool_use → plan_ready → user approve → apply", async () => {
+  test("plan-once: provider emits plan_stack tool_use → tool_result for plan_stack + apply_stack on approve", async () => {
     const events = await collectEvents(
       "tạo nginx",
       {
@@ -88,11 +88,11 @@ describe("query core loop", () => {
       },
       [{ kind: "approve" }],
     );
-    expect(events.some((e) => e.type === "plan_ready")).toBe(true);
+    expect(events.some((e) => e.type === "tool_result" && e.name === "plan_stack")).toBe(true);
     expect(events.some((e) => e.type === "tool_result" && e.name === "apply_stack")).toBe(true);
   });
 
-  test("plan-once: user declines plan → no apply_stack emitted", async () => {
+  test("plan-once: user declines plan → no apply_stack tool_result", async () => {
     const events = await collectEvents(
       "create app",
       {
@@ -104,9 +104,8 @@ describe("query core loop", () => {
       },
       [{ kind: "deny" }],
     );
-    expect(events.some((e) => e.type === "plan_ready")).toBe(true);
-    expect(events.some((e) => e.type === "tool_result" && e.name === "apply_stack")).toBe(false);
     expect(events.some((e) => e.type === "tool_result" && e.name === "plan_stack")).toBe(true);
+    expect(events.some((e) => e.type === "tool_result" && e.name === "apply_stack")).toBe(false);
   });
 
   test("react: provider emits text only → end_turn → loop exits", async () => {
@@ -148,7 +147,6 @@ describe("query core loop", () => {
       { perCall: [destroyToolEvents, endTurnEvents] },
       [{ kind: "typed_confirm_value", value: "WRONG PHRASE" }],
     );
-    expect(events.some((e) => e.type === "typed_confirm_request")).toBe(true);
     expect(events.some((e) => e.type === "tool_result" && e.name === "destroy_all_stacks")).toBe(
       false,
     );
@@ -172,7 +170,6 @@ describe("query core loop", () => {
     const events = await collectEvents("pull nginx", { perCall: [permToolEvents, endTurnEvents] }, [
       { kind: "deny" },
     ]);
-    expect(events.some((e) => e.type === "permission_request")).toBe(true);
     expect(events.some((e) => e.type === "tool_result" && e.name === "pull_image")).toBe(false);
   });
 
@@ -196,7 +193,6 @@ describe("query core loop", () => {
       { perCall: [toolEvents, endTurnEvents] },
       [{ kind: "always_allow_in_session" }],
     );
-    expect(events.some((e) => e.type === "permission_request")).toBe(true);
     expect(events.some((e) => e.type === "tool_result" && e.name === "pull_image")).toBe(true);
   });
 

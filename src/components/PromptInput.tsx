@@ -74,7 +74,7 @@ export function PromptInput({
   return (
     <Box flexDirection="column" marginLeft={1} marginTop={1}>
       <Box>
-        <Text color="green" bold>▶ </Text>
+        <Text color="cyan" bold>▶ </Text>
         <Text>{text}</Text>
         <Text color="cyan" bold>█</Text>
       </Box>

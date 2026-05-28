@@ -1,14 +1,15 @@
 import { Command } from "commander";
+import Docker from "dockerode";
 import { render } from "ink";
 import React from "react";
-import { resolveProvider, projectStateDir } from "./config";
 import { QueryEngine } from "./QueryEngine";
+import { projectStateDir, resolveProvider } from "./config";
 import { REPL } from "./screens/REPL";
 import { resolveProviderForRequest } from "./services/api";
 import { ComposeRunner } from "./services/docker/composeRunner";
-import Docker from "dockerode";
 import type { EngineClient } from "./services/docker/engineClient";
 import { StateStore } from "./state/StateStore";
+import { runInAlternateScreen } from "./terminal";
 
 const VERSION = "0.1.0";
 
@@ -31,7 +32,9 @@ function createEngineClient(): EngineClient {
     },
     async inspect(id) {
       const info = await docker.getContainer(id).inspect();
-      return info as unknown as ReturnType<EngineClient["inspect"]> extends Promise<infer R> ? R : never;
+      return info as unknown as ReturnType<EngineClient["inspect"]> extends Promise<infer R>
+        ? R
+        : never;
     },
   };
 }
@@ -130,13 +133,15 @@ export async function main(argv: string[]): Promise<number> {
 
   if (args.command === "chat") {
     const deps = await createDeps(args);
-    const { waitUntilExit } = render(
-      React.createElement(REPL, {
-        version: VERSION,
-        deps: { ...deps, ...(args.yes ? { yes: true } : {}) },
-      }),
-    );
-    await waitUntilExit();
+    await runInAlternateScreen(process.stdout, async () => {
+      const { waitUntilExit } = render(
+        React.createElement(REPL, {
+          version: VERSION,
+          deps: { ...deps, ...(args.yes ? { yes: true } : {}) },
+        }),
+      );
+      await waitUntilExit();
+    });
     return 0;
   }
 

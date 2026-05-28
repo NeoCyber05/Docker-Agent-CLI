@@ -16,7 +16,7 @@ export function MessageList({ messages }: { messages: UIMessage[] }): React.Reac
         if (m.role === "user")
           return (
             <Box key={m.key}>
-              <Text color="green">▶ </Text>
+              <Text color="cyan">▶ </Text>
               <Text>{m.text}</Text>
             </Box>
           );

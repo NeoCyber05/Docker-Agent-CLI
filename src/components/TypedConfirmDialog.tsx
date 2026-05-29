@@ -1,6 +1,6 @@
 import { Box, Text, useInput } from "ink";
 import type React from "react";
-import { useState, useRef } from "react";
+import { useRef, useState } from "react";
 import type { PermissionResponse } from "src/types/permissions";
 
 export function TypedConfirmDialog({
@@ -46,4 +46,3 @@ export function TypedConfirmDialog({
     </Box>
   );
 }
-

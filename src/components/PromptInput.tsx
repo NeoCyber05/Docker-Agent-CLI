@@ -16,7 +16,7 @@ export function PromptInput({
     // Multi-line support: Alt+Enter (key.meta && key.return)
     if (key.return) {
       if (key.meta || key.ctrl) {
-        setText((s) => s + "\n");
+        setText((s) => `${s}\n`);
         return;
       }
       const t = text.trim();
@@ -74,16 +74,17 @@ export function PromptInput({
   return (
     <Box flexDirection="column" marginLeft={1} marginTop={1}>
       <Box>
-        <Text color="cyan" bold>▶ </Text>
+        <Text color="cyan" bold>
+          ▶{" "}
+        </Text>
         <Text>{text}</Text>
-        <Text color="cyan" bold>█</Text>
+        <Text color="cyan" bold>
+          █
+        </Text>
       </Box>
       <Box marginTop={0}>
-        <Text dimColor>
-          (Alt+Enter for newline, Up/Down for history)
-        </Text>
+        <Text dimColor>(Alt+Enter for newline, Up/Down for history)</Text>
       </Box>
     </Box>
   );
 }
-

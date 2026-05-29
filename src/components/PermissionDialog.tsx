@@ -38,13 +38,21 @@ export function PermissionDialog({
 
   return (
     <Box flexDirection="column" borderStyle="round" borderColor="magenta" paddingX={1} marginY={1}>
-      <Text bold color="magenta">Permission required</Text>
-      <Text>Tool: <Text color="cyan" bold>{tool}</Text></Text>
-      <Text>Input: <Text dimColor>{JSON.stringify(input)}</Text></Text>
+      <Text bold color="magenta">
+        Permission required
+      </Text>
+      <Text>
+        Tool:{" "}
+        <Text color="cyan" bold>
+          {tool}
+        </Text>
+      </Text>
+      <Text>
+        Input: <Text dimColor>{JSON.stringify(input)}</Text>
+      </Text>
       <Box marginTop={1}>
         <Text bold>[y] approve [n] deny [a] always for this session</Text>
       </Box>
     </Box>
   );
 }
-

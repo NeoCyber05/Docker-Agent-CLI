@@ -1,6 +1,6 @@
 import { Box, Text, useInput } from "ink";
 import type React from "react";
-import { useState, useRef } from "react";
+import { useRef, useState } from "react";
 import type { PermissionResponse } from "src/types/permissions";
 
 export function SecretsInputDialog({
@@ -52,7 +52,9 @@ export function SecretsInputDialog({
   const masked = buf.replace(/./g, "*");
   return (
     <Box flexDirection="column" borderStyle="round" borderColor="magenta" paddingX={1} marginY={1}>
-      <Text bold color="magenta">Service {service} needs required env values</Text>
+      <Text bold color="magenta">
+        Service {service} needs required env values
+      </Text>
       <Text dimColor>{reason}</Text>
       <Box marginTop={1}>
         <Text bold>
@@ -67,4 +69,3 @@ export function SecretsInputDialog({
     </Box>
   );
 }
-

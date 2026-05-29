@@ -1,13 +1,18 @@
 import OpenAI from "openai";
+import type { ApiKeyStore } from "src/secrets/apiKeyStore";
+import { resolveStoredApiKey } from "src/secrets/apiKeyStore";
 import { toOpenAIFunction } from "../toolSchema";
 import type { CallModelParams, Provider, ProviderEvent } from "../types";
 
 export class OpenAIProvider implements Provider {
   readonly name = "openai";
-  constructor(private env: NodeJS.ProcessEnv) {}
+  constructor(
+    private env: NodeJS.ProcessEnv,
+    private apiKeyStore?: ApiKeyStore,
+  ) {}
 
   async *stream(params: CallModelParams): AsyncGenerator<ProviderEvent> {
-    const apiKey = this.env.OPENAI_API_KEY;
+    const apiKey = await resolveStoredApiKey("openai", this.env, this.apiKeyStore);
     if (!apiKey) {
       yield { type: "error", error: new Error("OPENAI_API_KEY not set") };
       return;

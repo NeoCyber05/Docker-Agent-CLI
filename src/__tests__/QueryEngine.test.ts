@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { QueryEngine } from "src/QueryEngine";
-import type { ProviderEvent } from "src/services/api/types";
+import type { CallModelParams, ProviderEvent } from "src/services/api/types";
 import { StateStore } from "src/state/StateStore";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { MockComposeRunner } from "../../tests/mocks/mockComposeRunner";
@@ -12,6 +12,16 @@ function fakeProvider(events: ProviderEvent[]) {
   return {
     name: "fake",
     stream: async function* () {
+      for (const ev of events) yield ev;
+    },
+  };
+}
+
+function recordingProvider(events: ProviderEvent[], calls: CallModelParams[]) {
+  return {
+    name: "recording",
+    stream: async function* (params: CallModelParams) {
+      calls.push(params);
       for (const ev of events) yield ev;
     },
   };
@@ -93,6 +103,31 @@ describe("QueryEngine", () => {
       provider: fakeProvider([]),
     });
     expect(engine.respondTo("nonexistent", { kind: "approve" })).toBe(false);
+  });
+
+  test("passes the active model override to the provider", async () => {
+    const calls: CallModelParams[] = [];
+    const engine = new QueryEngine({
+      stateStore: new StateStore(tmp),
+      dockerEngine: new MockDockerEngine() as never,
+      composeRunner: new MockComposeRunner(tmp) as never,
+      cwd: tmp,
+      provider: recordingProvider(
+        [
+          { type: "text_delta", text: "ok" },
+          { type: "message_stop", stopReason: "end_turn" },
+        ],
+        calls,
+      ),
+      model: "gpt-4.1-mini",
+    });
+
+    for await (const _ of engine.query("hello")) {
+      // drain
+    }
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.model).toBe("gpt-4.1-mini");
   });
 
   test("reset clears messages and allow set", async () => {

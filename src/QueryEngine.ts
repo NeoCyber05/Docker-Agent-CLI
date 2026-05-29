@@ -17,6 +17,7 @@ export interface QueryEngineDeps {
   dockerEngine: EngineClient;
   composeRunner: ComposeRunner;
   provider: Provider;
+  model?: string;
 }
 
 type DeferredBase =
@@ -36,10 +37,12 @@ export class QueryEngine {
   private sessionAllowSet = new Set<string>();
   private abortController = new AbortController();
   public provider: Provider;
+  public model: string | undefined;
   public totalUsage = { inputTokens: 0, outputTokens: 0 };
 
   constructor(private deps: QueryEngineDeps) {
     this.provider = deps.provider;
+    this.model = deps.model;
   }
 
   async *query(userInput: string): AsyncGenerator<LoopEvent, void> {
@@ -79,6 +82,7 @@ export class QueryEngine {
           messages: this.messages,
           ctx,
           provider: this.provider,
+          ...(this.model ? { model: this.model } : {}),
         })) {
           eventQueue.push(ev);
         }

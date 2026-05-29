@@ -50,10 +50,10 @@ export function loadUserConfig(): UserConfig {
   }
 }
 
-export function resolveProvider(opts: { flag?: string }): ProviderName {
+export function resolveProvider(opts: { flag?: string; config?: UserConfig }): ProviderName {
   if (opts.flag && isValidProvider(opts.flag)) return opts.flag;
   if (process.env.DOCKER_AGENT_PROVIDER && isValidProvider(process.env.DOCKER_AGENT_PROVIDER)) {
     return process.env.DOCKER_AGENT_PROVIDER;
   }
-  return loadUserConfig().provider;
+  return (opts.config ?? loadUserConfig()).provider;
 }

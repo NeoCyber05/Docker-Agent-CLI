@@ -1,13 +1,18 @@
 import { type FunctionDeclaration, GoogleGenerativeAI } from "@google/generative-ai";
+import type { ApiKeyStore } from "src/secrets/apiKeyStore";
+import { resolveStoredApiKey } from "src/secrets/apiKeyStore";
 import { stripForGemini, toGeminiFunctionDeclaration } from "../toolSchema";
 import type { CallModelParams, Provider, ProviderEvent } from "../types";
 
 export class GeminiProvider implements Provider {
   readonly name = "gemini";
-  constructor(private env: NodeJS.ProcessEnv) {}
+  constructor(
+    private env: NodeJS.ProcessEnv,
+    private apiKeyStore?: ApiKeyStore,
+  ) {}
 
   async *stream(params: CallModelParams): AsyncGenerator<ProviderEvent> {
-    const apiKey = this.env.GEMINI_API_KEY;
+    const apiKey = await resolveStoredApiKey("gemini", this.env, this.apiKeyStore);
     if (!apiKey) {
       yield { type: "error", error: new Error("GEMINI_API_KEY not set") };
       return;

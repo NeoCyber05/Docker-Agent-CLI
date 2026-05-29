@@ -6,9 +6,10 @@ import { type Instance, render } from "ink";
 import React from "react";
 import { renderWelcomeBannerForTerminal } from "src/main";
 import { REPL } from "src/screens/REPL";
+import { MemoryApiKeyStore } from "src/secrets/apiKeyStore";
 import type { ProviderEvent } from "src/services/api/types";
 import { StateStore } from "src/state/StateStore";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { MockComposeRunner } from "../../../tests/mocks/mockComposeRunner";
 import { MockDockerEngine } from "../../../tests/mocks/mockDockerEngine";
 
@@ -76,7 +77,13 @@ function countOccurrences(value: string, needle: string): number {
 
 function renderRepl(
   size: { columns: number; rows: number },
-  options: { debug?: boolean; writeWelcome?: boolean } = {},
+  options: {
+    debug?: boolean;
+    writeWelcome?: boolean;
+    provider?: ReturnType<typeof fakeProvider>;
+    model?: string;
+    apiKeyStore?: MemoryApiKeyStore;
+  } = {},
 ): {
   app: Instance;
   stdin: TestStdin;
@@ -104,8 +111,10 @@ function renderRepl(
         stateStore: new StateStore(tmp),
         dockerEngine: new MockDockerEngine() as never,
         composeRunner: new MockComposeRunner(tmp) as never,
-        provider: fakeProvider() as never,
+        provider: (options.provider ?? fakeProvider()) as never,
         providerName: "fake",
+        ...(options.model ? { model: options.model } : {}),
+        ...(options.apiKeyStore ? { apiKeyStore: options.apiKeyStore } : {}),
       },
     }),
     {
@@ -121,11 +130,26 @@ function renderRepl(
   return { app, stdin, stdout, tmp };
 }
 
+async function typeLine(stdin: TestStdin, value: string): Promise<void> {
+  stdin.push(value);
+  stdin.emit("readable");
+  await new Promise((resolve) => setImmediate(resolve));
+  stdin.push("\r");
+  stdin.emit("readable");
+  await new Promise((resolve) => setImmediate(resolve));
+}
+
 describe("REPL terminal rendering", () => {
   const apps: Instance[] = [];
   const tmpDirs: string[] = [];
+  let originalEnv: NodeJS.ProcessEnv;
+
+  beforeEach(() => {
+    originalEnv = { ...process.env };
+  });
 
   afterEach(() => {
+    process.env = originalEnv;
     for (const app of apps.splice(0)) {
       app.unmount();
       app.cleanup();
@@ -206,5 +230,68 @@ describe("REPL terminal rendering", () => {
 
     await expect(waitForExit).resolves.toBeUndefined();
     expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  test("slash provider updates the visible active provider", async () => {
+    const rendered = renderRepl({ columns: 100, rows: 24 });
+    apps.push(rendered.app);
+    tmpDirs.push(rendered.tmp);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    await typeLine(rendered.stdin, "/provider openai");
+
+    const output = stripAnsi(rendered.stdout.output());
+    expect(output).toContain("provider: openai");
+  });
+
+  test("slash model updates the visible active model", async () => {
+    const rendered = renderRepl({ columns: 100, rows: 24 });
+    apps.push(rendered.app);
+    tmpDirs.push(rendered.tmp);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    await typeLine(rendered.stdin, "/model gpt-4.1-mini");
+
+    const output = stripAnsi(rendered.stdout.output());
+    expect(output).toContain("model: gpt-4.1-mini");
+  });
+
+  test("slash apikey status reports each provider separately", async () => {
+    Reflect.deleteProperty(process.env, "OPENAI_API_KEY");
+    Reflect.deleteProperty(process.env, "GEMINI_API_KEY");
+    const apiKeyStore = new MemoryApiKeyStore({ openai: "stored-openai-key" });
+    const rendered = renderRepl({ columns: 100, rows: 24 }, { apiKeyStore });
+    apps.push(rendered.app);
+    tmpDirs.push(rendered.tmp);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    await typeLine(rendered.stdin, "/apikey status");
+
+    const output = stripAnsi(rendered.stdout.output());
+    expect(output).toContain("openai: set");
+    expect(output).toContain("gemini: unset");
+    expect(output).not.toContain("stored-openai-key");
+  });
+
+  test("slash apikey set saves a masked key without echoing the value", async () => {
+    const apiKeyStore = new MemoryApiKeyStore();
+    const rendered = renderRepl({ columns: 100, rows: 24 }, { apiKeyStore });
+    apps.push(rendered.app);
+    tmpDirs.push(rendered.tmp);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    await typeLine(rendered.stdin, "/apikey set openai");
+    rendered.stdin.push("sk-persistent-test-key");
+    rendered.stdin.emit("readable");
+    await new Promise((resolve) => setImmediate(resolve));
+    rendered.stdin.push("\r");
+    rendered.stdin.emit("readable");
+    await new Promise((resolve) => setImmediate(resolve));
+
+    await expect(apiKeyStore.get("openai")).resolves.toBe("sk-persistent-test-key");
+    const output = stripAnsi(rendered.stdout.output());
+    expect(output).toContain("API key saved for openai");
+    expect(output).toContain("**********************");
+    expect(output).not.toContain("sk-persistent-test-key");
   });
 });

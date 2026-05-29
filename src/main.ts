@@ -5,8 +5,9 @@ import { render } from "ink";
 import React from "react";
 import { QueryEngine, type QueryEngineDeps } from "./QueryEngine";
 import { WelcomeBanner } from "./components/WelcomeBanner";
-import { projectStateDir, resolveProvider } from "./config";
+import { loadUserConfig, projectStateDir, resolveProvider } from "./config";
 import { REPL } from "./screens/REPL";
+import { type ApiKeyStore, createApiKeyStore } from "./secrets/apiKeyStore";
 import { resolveProviderForRequest } from "./services/api";
 import { ComposeRunner } from "./services/docker/composeRunner";
 import type { EngineClient } from "./services/docker/engineClient";
@@ -148,15 +149,28 @@ export function parseArgs(argv: string[]): ParsedArgs {
 }
 
 async function createDeps(args: ParsedArgs) {
+  const userConfig = loadUserConfig();
   const providerName = resolveProvider({
     ...(args.providerFlag ? { flag: args.providerFlag } : {}),
+    config: userConfig,
   });
+  const model = args.model ?? userConfig.model;
   const cwd = process.cwd();
   const stateStore = new StateStore(projectStateDir());
   const composeRunner = new ComposeRunner(cwd);
   const dockerEngine = createEngineClient();
-  const provider = resolveProviderForRequest(providerName);
-  return { cwd, stateStore, composeRunner, dockerEngine, provider, providerName };
+  const apiKeyStore = createApiKeyStore();
+  const provider = resolveProviderForRequest(providerName, process.env, { apiKeyStore });
+  return {
+    cwd,
+    stateStore,
+    composeRunner,
+    dockerEngine,
+    provider,
+    providerName,
+    apiKeyStore,
+    ...(model ? { model } : {}),
+  };
 }
 
 export function renderWelcomeBannerForTerminal({
@@ -189,7 +203,7 @@ export function renderWelcomeBannerForTerminal({
 }
 
 export async function renderChatSession(
-  deps: QueryEngineDeps & { providerName: string; yes?: boolean },
+  deps: QueryEngineDeps & { providerName: string; yes?: boolean; apiKeyStore?: ApiKeyStore },
   options: { renderImpl?: ChatRender; version?: string; writeWelcome?: boolean } = {},
 ): Promise<void> {
   const renderImpl = options.renderImpl ?? render;

@@ -13,6 +13,7 @@ export interface QueryParams {
   messages: Message[];
   ctx: LoopContext;
   provider: Provider;
+  model?: string;
 }
 
 interface CollectedToolUse {
@@ -26,6 +27,7 @@ async function* runProvider(
   messages: Message[],
   mode: QueryMode,
   ctx: LoopContext,
+  model: string | undefined,
 ): AsyncGenerator<LoopEvent, { text: string; toolUses: CollectedToolUse[] }> {
   const tools = getToolsForMode(mode);
   const system = buildSystemPrompt(mode, ctx.stateStore.summary());
@@ -37,6 +39,7 @@ async function* runProvider(
       inputSchema: t.inputSchema,
     })),
     system,
+    ...(model ? { model } : {}),
   });
   let text = "";
   const toolUses: CollectedToolUse[] = [];
@@ -201,7 +204,7 @@ async function* requestSecretsAndPatch(
 }
 
 export async function* query(params: QueryParams): AsyncGenerator<LoopEvent, void> {
-  const { ctx, provider } = params;
+  const { ctx, provider, model } = params;
   const messages = [...params.messages];
   const lastUser = [...messages]
     .reverse()
@@ -211,7 +214,7 @@ export async function* query(params: QueryParams): AsyncGenerator<LoopEvent, voi
 
   for (let iter = 0; iter < maxIterations; iter++) {
     yield { type: "iteration_start", n: iter + 1 };
-    const stream = runProvider(provider, messages, mode, ctx);
+    const stream = runProvider(provider, messages, mode, ctx, model);
     let collected: { text: string; toolUses: CollectedToolUse[] } = { text: "", toolUses: [] };
     while (true) {
       const r = await stream.next();

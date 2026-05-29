@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { Readable, Writable } from "node:stream";
 import { type Instance, render } from "ink";
 import React from "react";
+import { renderWelcomeBannerForTerminal } from "src/main";
 import { REPL } from "src/screens/REPL";
 import type { ProviderEvent } from "src/services/api/types";
 import { StateStore } from "src/state/StateStore";
@@ -69,7 +70,14 @@ function visibleLineCount(value: string): number {
     .filter((line) => line.length > 0).length;
 }
 
-function renderRepl(size: { columns: number; rows: number }): {
+function countOccurrences(value: string, needle: string): number {
+  return value.split(needle).length - 1;
+}
+
+function renderRepl(
+  size: { columns: number; rows: number },
+  options: { debug?: boolean; writeWelcome?: boolean } = {},
+): {
   app: Instance;
   stdin: TestStdin;
   stdout: TestStdout;
@@ -79,6 +87,15 @@ function renderRepl(size: { columns: number; rows: number }): {
   const stdout = new TestStdout(size);
   const stderr = new TestStdout(size);
   const stdin = new TestStdin();
+  if (options.writeWelcome) {
+    stdout.write(
+      renderWelcomeBannerForTerminal({
+        provider: "fake",
+        version: "0.1.0",
+        stdout: stdout as unknown as NodeJS.WriteStream,
+      }),
+    );
+  }
   const app = render(
     React.createElement(REPL, {
       version: "0.1.0",
@@ -95,7 +112,7 @@ function renderRepl(size: { columns: number; rows: number }): {
       stdout: stdout as unknown as NodeJS.WriteStream,
       stderr: stderr as unknown as NodeJS.WriteStream,
       stdin: stdin as unknown as NodeJS.ReadStream,
-      debug: true,
+      debug: options.debug ?? true,
       patchConsole: false,
       exitOnCtrlC: false,
     },
@@ -119,16 +136,18 @@ describe("REPL terminal rendering", () => {
     vi.restoreAllMocks();
   });
 
-  test("uses a compact startup frame in a short terminal", () => {
-    const rendered = renderRepl({ columns: 60, rows: 8 });
-    apps.push(rendered.app);
-    tmpDirs.push(rendered.tmp);
-
-    const output = stripAnsi(rendered.stdout.output());
+  test("uses a compact startup banner in a short terminal", () => {
+    const stdout = new TestStdout({ columns: 60, rows: 8 });
+    const output = stripAnsi(
+      renderWelcomeBannerForTerminal({
+        provider: "fake",
+        version: "0.1.0",
+        stdout: stdout as unknown as NodeJS.WriteStream,
+      }),
+    );
 
     expect(output).toContain("docker agent");
     expect(output).toContain("provider: fake");
-    expect(output).toContain("\u25b6");
     expect(output).not.toContain("Welcome back");
     expect(output).not.toContain("Tips for getting started");
     expect(visibleLineCount(output)).toBeLessThanOrEqual(8);
@@ -138,7 +157,7 @@ describe("REPL terminal rendering", () => {
     const onSpy = vi.spyOn(process.stdout, "on");
     const clearSpy = vi.spyOn(console, "clear").mockImplementation(() => {});
 
-    const rendered = renderRepl({ columns: 100, rows: 24 });
+    const rendered = renderRepl({ columns: 100, rows: 24 }, { debug: false, writeWelcome: true });
     apps.push(rendered.app);
     tmpDirs.push(rendered.tmp);
     await new Promise((resolve) => setImmediate(resolve));
@@ -147,6 +166,26 @@ describe("REPL terminal rendering", () => {
     process.stdout.emit("resize");
     await new Promise((resolve) => setTimeout(resolve, 150));
     expect(clearSpy).not.toHaveBeenCalled();
+  });
+
+  test("does not append duplicate welcome frames when the terminal is resized", async () => {
+    const rendered = renderRepl({ columns: 100, rows: 24 }, { debug: false, writeWelcome: true });
+    apps.push(rendered.app);
+    tmpDirs.push(rendered.tmp);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    rendered.stdout.columns = 92;
+    rendered.stdout.rows = 22;
+    rendered.stdout.emit("resize");
+    await new Promise((resolve) => setImmediate(resolve));
+    rendered.stdout.columns = 100;
+    rendered.stdout.rows = 24;
+    rendered.stdout.emit("resize");
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const output = stripAnsi(rendered.stdout.output());
+    expect(countOccurrences(output, "docker agent")).toBe(1);
+    expect(countOccurrences(output, "Tips for getting started")).toBe(1);
   });
 
   test("slash quit exits through Ink instead of process.exit", async () => {

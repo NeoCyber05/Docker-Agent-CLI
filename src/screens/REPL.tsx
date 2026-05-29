@@ -1,6 +1,6 @@
-import { Box, Text, useApp, useStdout } from "ink";
+import { Box, Text, useApp } from "ink";
 import type React from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { PermissionResponse } from "src/types/permissions";
 import type { StackDiff } from "src/types/stack";
 import { QueryEngine, type QueryEngineDeps } from "../QueryEngine";
@@ -11,7 +11,6 @@ import { PlanPreview } from "../components/PlanPreview";
 import { PromptInput } from "../components/PromptInput";
 import { SecretsInputDialog } from "../components/SecretsInputDialog";
 import { TypedConfirmDialog } from "../components/TypedConfirmDialog";
-import { WelcomeBanner } from "../components/WelcomeBanner";
 
 type Pending =
   | { kind: "permission"; id: string; tool: string; input: unknown }
@@ -26,39 +25,6 @@ type Pending =
   | { kind: "secrets"; id: string; service: string; keys: string[]; reason: string };
 
 const DESTRUCTIVE_TOOLS = new Set(["apply_stack", "destroy_stack", "destroy_all_stacks"]);
-const COMPACT_WELCOME_MAX_ROWS = 16;
-const COMPACT_WELCOME_MAX_COLUMNS = 84;
-
-interface TerminalSize {
-  columns: number;
-  rows: number;
-}
-
-function readTerminalSize(stdout: NodeJS.WriteStream): TerminalSize {
-  return {
-    columns: stdout.columns || 80,
-    rows: stdout.rows || 24,
-  };
-}
-
-function useTerminalSize(): TerminalSize {
-  const { stdout } = useStdout();
-  const [size, setSize] = useState(() => readTerminalSize(stdout));
-
-  useEffect(() => {
-    const handleResize = () => {
-      setSize(readTerminalSize(stdout));
-    };
-
-    stdout.on("resize", handleResize);
-    return () => {
-      stdout.off("resize", handleResize);
-    };
-  }, [stdout]);
-
-  return size;
-}
-
 export function REPL({
   deps,
   version,
@@ -71,12 +37,8 @@ export function REPL({
   const [pending, setPending] = useState<Pending | null>(null);
   const [streaming, setStreaming] = useState(false);
   const { exit } = useApp();
-  const terminalSize = useTerminalSize();
   const nextKey = useRef(0);
   const mk = (): number => nextKey.current++;
-  const compactWelcome =
-    terminalSize.rows <= COMPACT_WELCOME_MAX_ROWS ||
-    terminalSize.columns < COMPACT_WELCOME_MAX_COLUMNS;
 
   const handleSubmit = async (input: string) => {
     let targetPrompt = input.trim();
@@ -245,7 +207,6 @@ export function REPL({
 
   return (
     <Box flexDirection="column">
-      <WelcomeBanner version={version} provider={deps.providerName} compact={compactWelcome} />
       <MessageList messages={messages} />
       {pending?.kind === "permission" && (
         <PermissionDialog tool={pending.tool} input={pending.input} onAnswer={onAnswer} />

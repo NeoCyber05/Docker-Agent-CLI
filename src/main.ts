@@ -1,17 +1,55 @@
+import { Readable, Writable } from "node:stream";
 import { Command } from "commander";
 import Docker from "dockerode";
 import { render } from "ink";
 import React from "react";
-import { QueryEngine } from "./QueryEngine";
+import { QueryEngine, type QueryEngineDeps } from "./QueryEngine";
+import { WelcomeBanner } from "./components/WelcomeBanner";
 import { projectStateDir, resolveProvider } from "./config";
 import { REPL } from "./screens/REPL";
 import { resolveProviderForRequest } from "./services/api";
 import { ComposeRunner } from "./services/docker/composeRunner";
 import type { EngineClient } from "./services/docker/engineClient";
 import { StateStore } from "./state/StateStore";
-import { runInAlternateScreen } from "./terminal";
 
 const VERSION = "0.1.0";
+const COMPACT_WELCOME_MAX_ROWS = 16;
+const COMPACT_WELCOME_MAX_COLUMNS = 84;
+
+type ChatRender = (node: React.ReactElement) => {
+  waitUntilExit(): Promise<void>;
+};
+
+class BufferedStdout extends Writable {
+  isTTY = true;
+  columns: number;
+  rows: number;
+  private chunks: string[] = [];
+
+  constructor({ columns, rows }: { columns: number; rows: number }) {
+    super();
+    this.columns = columns;
+    this.rows = rows;
+  }
+
+  _write(chunk: Buffer | string, _encoding: BufferEncoding, callback: (error?: Error) => void) {
+    this.chunks.push(String(chunk));
+    callback();
+  }
+
+  output(): string {
+    return this.chunks.join("");
+  }
+}
+
+class BufferedStdin extends Readable {
+  isTTY = false;
+  setRawMode() {
+    return this;
+  }
+
+  _read() {}
+}
 
 function createEngineClient(): EngineClient {
   const docker = new Docker();
@@ -121,6 +159,57 @@ async function createDeps(args: ParsedArgs) {
   return { cwd, stateStore, composeRunner, dockerEngine, provider, providerName };
 }
 
+export function renderWelcomeBannerForTerminal({
+  provider,
+  version = VERSION,
+  stdout = process.stdout,
+}: {
+  provider: string;
+  version?: string;
+  stdout?: NodeJS.WriteStream;
+}): string {
+  const columns = stdout.columns || 80;
+  const rows = stdout.rows || 24;
+  const compact = rows <= COMPACT_WELCOME_MAX_ROWS || columns < COMPACT_WELCOME_MAX_COLUMNS;
+  const captureStdout = new BufferedStdout({ columns, rows });
+  const captureStderr = new BufferedStdout({ columns, rows });
+  const captureStdin = new BufferedStdin();
+  const app = render(React.createElement(WelcomeBanner, { version, provider, compact }), {
+    stdout: captureStdout as unknown as NodeJS.WriteStream,
+    stderr: captureStderr as unknown as NodeJS.WriteStream,
+    stdin: captureStdin as unknown as NodeJS.ReadStream,
+    debug: true,
+    patchConsole: false,
+    exitOnCtrlC: false,
+  });
+  const output = captureStdout.output();
+  app.unmount();
+  app.cleanup();
+  return output.endsWith("\n") ? output : `${output}\n`;
+}
+
+export async function renderChatSession(
+  deps: QueryEngineDeps & { providerName: string; yes?: boolean },
+  options: { renderImpl?: ChatRender; version?: string; writeWelcome?: boolean } = {},
+): Promise<void> {
+  const renderImpl = options.renderImpl ?? render;
+  if (options.writeWelcome ?? true) {
+    process.stdout.write(
+      renderWelcomeBannerForTerminal({
+        provider: deps.providerName,
+        version: options.version ?? VERSION,
+      }),
+    );
+  }
+  const { waitUntilExit } = renderImpl(
+    React.createElement(REPL, {
+      version: options.version ?? VERSION,
+      deps,
+    }),
+  );
+  await waitUntilExit();
+}
+
 export async function main(argv: string[]): Promise<number> {
   let args: ParsedArgs;
   try {
@@ -133,15 +222,7 @@ export async function main(argv: string[]): Promise<number> {
 
   if (args.command === "chat") {
     const deps = await createDeps(args);
-    await runInAlternateScreen(process.stdout, async () => {
-      const { waitUntilExit } = render(
-        React.createElement(REPL, {
-          version: VERSION,
-          deps: { ...deps, ...(args.yes ? { yes: true } : {}) },
-        }),
-      );
-      await waitUntilExit();
-    });
+    await renderChatSession({ ...deps, ...(args.yes ? { yes: true } : {}) });
     return 0;
   }
 

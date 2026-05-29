@@ -184,9 +184,10 @@ export function renderWelcomeBannerForTerminal({
 }): string {
   const columns = stdout.columns || 80;
   const rows = stdout.rows || 24;
-  const compact = rows <= COMPACT_WELCOME_MAX_ROWS || columns < COMPACT_WELCOME_MAX_COLUMNS;
-  const captureStdout = new BufferedStdout({ columns, rows });
-  const captureStderr = new BufferedStdout({ columns, rows });
+  const renderColumns = Math.max(1, columns - 1);
+  const compact = rows <= COMPACT_WELCOME_MAX_ROWS || renderColumns < COMPACT_WELCOME_MAX_COLUMNS;
+  const captureStdout = new BufferedStdout({ columns: renderColumns, rows });
+  const captureStderr = new BufferedStdout({ columns: renderColumns, rows });
   const captureStdin = new BufferedStdin();
   const app = render(React.createElement(WelcomeBanner, { version, provider, compact }), {
     stdout: captureStdout as unknown as NodeJS.WriteStream,

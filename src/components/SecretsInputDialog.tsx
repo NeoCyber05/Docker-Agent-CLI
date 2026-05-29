@@ -20,6 +20,12 @@ export function SecretsInputDialog({
   const currentKey = keys[idx] as string;
   const answeredRef = useRef(false);
 
+  // Refs to handle duplicate paste on Windows Terminal
+  const justPastedRef = useRef(false);
+  const pastedCharsRef = useRef<string[]>([]);
+  const pastedIndexRef = useRef(0);
+  const lastPasteTimeRef = useRef(0);
+
   useInput((input, key) => {
     if (key.escape) {
       if (!answeredRef.current) {
@@ -46,7 +52,42 @@ export function SecretsInputDialog({
       setBuf((s) => s.slice(0, -1));
       return;
     }
-    if (input && !key.ctrl && !key.meta) setBuf((s) => s + input);
+    if (input && !key.ctrl && !key.meta) {
+      const now = Date.now();
+
+      // If it is a paste chunk (length > 1)
+      if (input.length > 1) {
+        setBuf((s) => s + input);
+        justPastedRef.current = true;
+        pastedCharsRef.current = Array.from(input);
+        pastedIndexRef.current = 0;
+        lastPasteTimeRef.current = now;
+        return;
+      }
+
+      // If in paste filtering state and receiving simulated single characters
+      if (justPastedRef.current) {
+        const timeDiff = now - lastPasteTimeRef.current;
+        // Windows Terminal simulates key presses extremely fast (usually < 10ms)
+        if (timeDiff > 50) {
+          justPastedRef.current = false;
+        } else {
+          const expectedChar = pastedCharsRef.current[pastedIndexRef.current];
+          if (input === expectedChar) {
+            pastedIndexRef.current++;
+            lastPasteTimeRef.current = now;
+            if (pastedIndexRef.current >= pastedCharsRef.current.length) {
+              justPastedRef.current = false;
+            }
+            return;
+          } else {
+            justPastedRef.current = false;
+          }
+        }
+      }
+
+      setBuf((s) => s + input);
+    }
   });
 
   const masked = buf.replace(/./g, "*");

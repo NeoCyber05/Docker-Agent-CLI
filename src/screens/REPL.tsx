@@ -1,6 +1,6 @@
-import { Box, Text, useApp } from "ink";
+import { Box, Text, useApp, useStdout } from "ink";
 import type React from "react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { PermissionResponse } from "src/types/permissions";
 import type { StackDiff } from "src/types/stack";
 import { QueryEngine, type QueryEngineDeps } from "../QueryEngine";
@@ -40,6 +40,25 @@ type Pending =
 
 const DESTRUCTIVE_TOOLS = new Set(["apply_stack", "destroy_stack", "destroy_all_stacks"]);
 
+function safeFrameWidth(stdout: NodeJS.WriteStream): number {
+  return Math.max(1, (stdout.columns || 80) - 1);
+}
+
+function useSafeFrameWidth(): number {
+  const { stdout } = useStdout();
+  const [width, setWidth] = useState(() => safeFrameWidth(stdout));
+
+  useEffect(() => {
+    const onResize = () => setWidth(safeFrameWidth(stdout));
+    stdout.on("resize", onResize);
+    return () => {
+      stdout.off("resize", onResize);
+    };
+  }, [stdout]);
+
+  return width;
+}
+
 export function REPL({
   deps,
   version,
@@ -55,6 +74,7 @@ export function REPL({
   const [activeProviderName, setActiveProviderName] = useState(deps.providerName);
   const [activeModel, setActiveModel] = useState<string | undefined>(deps.model);
   const { exit } = useApp();
+  const frameWidth = useSafeFrameWidth();
   const nextKey = useRef(0);
   const mk = (): number => nextKey.current++;
 
@@ -296,7 +316,7 @@ export function REPL({
   };
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" width={frameWidth}>
       <Header provider={activeProviderName} {...(activeModel ? { model: activeModel } : {})} />
       <MessageList messages={messages} />
       {pending?.kind === "permission" && (

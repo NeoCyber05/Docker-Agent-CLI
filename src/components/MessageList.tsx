@@ -1,5 +1,6 @@
 import { Box, Text } from "ink";
 import type React from "react";
+import { FormattedText } from "./FormattedText";
 
 export interface UIMessage {
   key: number;
@@ -35,7 +36,7 @@ export function MessageList({ messages }: { messages: UIMessage[] }): React.Reac
           );
         return (
           <Box key={m.key}>
-            <Text>{m.text}</Text>
+            <FormattedText text={m.text || ""} />
           </Box>
         );
       })}

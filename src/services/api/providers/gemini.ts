@@ -17,7 +17,7 @@ export class GeminiProvider implements Provider {
       yield { type: "error", error: new Error("GEMINI_API_KEY not set") };
       return;
     }
-    const modelId = params.model ?? this.env.GEMINI_MODEL ?? "gemini-2.0-flash-exp";
+    const modelId = params.model ?? this.env.GEMINI_MODEL ?? "gemini-2.0-flash";
     const client = new GoogleGenerativeAI(apiKey);
     const tools = params.tools;
     const toolUseToName = new Map<string, string>();

@@ -1,6 +1,6 @@
 import { Box, Text, useInput } from "ink";
 import type React from "react";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { type SlashCommandSuggestion, getSlashCommandSuggestions } from "src/slashCommands";
 
 function shouldCompleteSuggestion(text: string, suggestion: SlashCommandSuggestion): boolean {
@@ -19,6 +19,12 @@ export function PromptInput({
   const [suggestionIdx, setSuggestionIdx] = useState(0);
   const suggestions = getSlashCommandSuggestions(text);
   const selectedSuggestion = suggestions[Math.min(suggestionIdx, suggestions.length - 1)];
+
+  // Refs to handle duplicate paste on Windows Terminal
+  const justPastedRef = useRef(false);
+  const pastedCharsRef = useRef<string[]>([]);
+  const pastedIndexRef = useRef(0);
+  const lastPasteTimeRef = useRef(0);
 
   useInput((input, key) => {
     const acceptSuggestion = (suggestion: SlashCommandSuggestion) => {
@@ -106,6 +112,39 @@ export function PromptInput({
 
     if (input && !key.ctrl && !key.meta) {
       setSuggestionIdx(0);
+      const now = Date.now();
+
+      // If it is a paste chunk (length > 1)
+      if (input.length > 1) {
+        setText((s) => s + input);
+        justPastedRef.current = true;
+        pastedCharsRef.current = Array.from(input);
+        pastedIndexRef.current = 0;
+        lastPasteTimeRef.current = now;
+        return;
+      }
+
+      // If in paste filtering state and receiving simulated single characters
+      if (justPastedRef.current) {
+        const timeDiff = now - lastPasteTimeRef.current;
+        // Windows Terminal simulates key presses extremely fast (usually < 10ms)
+        if (timeDiff > 50) {
+          justPastedRef.current = false;
+        } else {
+          const expectedChar = pastedCharsRef.current[pastedIndexRef.current];
+          if (input === expectedChar) {
+            pastedIndexRef.current++;
+            lastPasteTimeRef.current = now;
+            if (pastedIndexRef.current >= pastedCharsRef.current.length) {
+              justPastedRef.current = false;
+            }
+            return;
+          } else {
+            justPastedRef.current = false;
+          }
+        }
+      }
+
       setText((s) => s + input);
     }
   });

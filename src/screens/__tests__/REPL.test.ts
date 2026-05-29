@@ -71,6 +71,15 @@ function visibleLineCount(value: string): number {
     .filter((line) => line.length > 0).length;
 }
 
+function maxVisibleLineWidth(value: string): number {
+  return Math.max(
+    0,
+    ...stripAnsi(value)
+      .split("\n")
+      .map((line) => line.length),
+  );
+}
+
 function countOccurrences(value: string, needle: string): number {
   return value.split(needle).length - 1;
 }
@@ -175,6 +184,26 @@ describe("REPL terminal rendering", () => {
     expect(output).not.toContain("Welcome back");
     expect(output).not.toContain("Tips for getting started");
     expect(visibleLineCount(output)).toBeLessThanOrEqual(8);
+  });
+
+  test("keeps startup banner lines narrower than the terminal to avoid resize autowrap", () => {
+    const stdout = new TestStdout({ columns: 100, rows: 24 });
+    const output = renderWelcomeBannerForTerminal({
+      provider: "fake",
+      version: "0.1.0",
+      stdout: stdout as unknown as NodeJS.WriteStream,
+    });
+
+    expect(maxVisibleLineWidth(output)).toBeLessThan(stdout.columns);
+  });
+
+  test("keeps interactive frame lines narrower than the terminal to avoid resize autowrap", async () => {
+    const rendered = renderRepl({ columns: 100, rows: 24 });
+    apps.push(rendered.app);
+    tmpDirs.push(rendered.tmp);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(maxVisibleLineWidth(rendered.stdout.output())).toBeLessThan(rendered.stdout.columns);
   });
 
   test("does not attach a global resize clear handler outside Ink", async () => {

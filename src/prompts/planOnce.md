@@ -9,6 +9,8 @@ Rules:
 - Use `scale: N` (service-level) for multiple replicas — NOT `deploy.replicas`.
 - For bind mounts, use paths relative to the project root.
 - Pick stable, specific image tags (`nginx:1.27-alpine`, not `nginx:latest`).
+- Always write any prose, comments, or descriptions in the exact same language used by the user in their query/prompt (e.g. if they query in Vietnamese, describe the plan in Vietnamese; if in English, describe in English).
+
 
 Current state of stacks in this project (YAML, secrets masked):
 

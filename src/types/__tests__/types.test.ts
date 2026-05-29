@@ -42,7 +42,7 @@ describe("type shape sanity", () => {
         lastApplied: null,
         intent: "demo",
         provider: "gemini",
-        generatedBy: "gemini-2.0-flash-exp",
+        generatedBy: "gemini-2.0-flash",
         envFileSources: {},
       },
       services: { nginx: { image: "nginx:1.27" } },

@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { ToolContext } from "src/Tool";
 import type { ComposeRunner } from "src/services/docker/composeRunner";
+import type { ImageValidator } from "src/services/docker/imageValidator";
 import { StateStore } from "src/state/StateStore";
 import { planStack } from "src/tools/planStack";
 import { beforeEach, describe, expect, test } from "vitest";
@@ -26,6 +27,27 @@ function makeCtx(tmpRoot: string): ToolContext {
     dockerEngine: new MockDockerEngine() as never,
     composeRunner: new MockComposeRunner() as unknown as ComposeRunner,
     abortSignal: new AbortController().signal,
+  };
+}
+
+function invalidImageValidator(image: string): ImageValidator {
+  return {
+    validateImage: async () => ({
+      image,
+      status: "invalid",
+      source: "registry",
+      error: "manifest not found",
+      suggestion: "postgres:17-alpine",
+    }),
+    validateImages: async () => [
+      {
+        image,
+        status: "invalid",
+        source: "registry",
+        error: "manifest not found",
+        suggestion: "postgres:17-alpine",
+      },
+    ],
   };
 }
 
@@ -146,5 +168,24 @@ describe("plan_stack", () => {
     if (result.blocked) throw new Error("plan should not be blocked");
     expect(result.composeYaml).toMatch(/api:\s*[\s\S]*scale:\s*2/);
     expect(result.scaleOverrides).toEqual({ api: 2 });
+  });
+
+  test("rejects invalid image tags before writing generated secrets", async () => {
+    const ctx = makeCtx(tmpRoot);
+    ctx.imageValidator = invalidImageValidator("postgres:99-alpine");
+
+    await expect(
+      drain(
+        planStack.call(
+          {
+            stackName: "bad",
+            intent: "postgres",
+            services: { db: { image: "postgres:99-alpine" } },
+          },
+          ctx,
+        ),
+      ),
+    ).rejects.toThrow("Invalid Docker images detected");
+    expect(fs.existsSync(path.join(tmpRoot, ".docker-agent/secrets/bad-db.env"))).toBe(false);
   });
 });

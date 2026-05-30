@@ -1,6 +1,5 @@
 import { Readable, Writable } from "node:stream";
 import { Command } from "commander";
-import Docker from "dockerode";
 import { render } from "ink";
 import React from "react";
 import { QueryEngine, type QueryEngineDeps } from "./QueryEngine";
@@ -10,7 +9,7 @@ import { REPL } from "./screens/REPL";
 import { type ApiKeyStore, createApiKeyStore } from "./secrets/apiKeyStore";
 import { resolveProviderForRequest } from "./services/api";
 import { ComposeRunner } from "./services/docker/composeRunner";
-import type { EngineClient } from "./services/docker/engineClient";
+import { createEngineClient } from "./services/docker/engineClient";
 import { StateStore } from "./state/StateStore";
 
 const VERSION = "0.1.0";
@@ -50,32 +49,6 @@ class BufferedStdin extends Readable {
   }
 
   _read() {}
-}
-
-function createEngineClient(): EngineClient {
-  const docker = new Docker();
-  return {
-    async listContainers(opts) {
-      const list = await docker.listContainers({
-        all: opts.all ?? false,
-        ...(opts.filters
-          ? { filters: opts.filters as unknown as { [key: string]: string[] } }
-          : {}),
-      });
-      return list.map((c) => ({
-        Id: c.Id,
-        Names: c.Names,
-        State: c.State,
-        Labels: c.Labels ?? {},
-      }));
-    },
-    async inspect(id) {
-      const info = await docker.getContainer(id).inspect();
-      return info as unknown as ReturnType<EngineClient["inspect"]> extends Promise<infer R>
-        ? R
-        : never;
-    },
-  };
 }
 
 export interface ParsedArgs {

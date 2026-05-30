@@ -8,6 +8,7 @@ import { scrubLine, shouldRedact } from "src/state/secretRedactor";
 import type { StackDefinition } from "src/types/stack";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
+import { validateImagesForTool } from "./shared/imageValidation";
 
 export const ApplyStackInputSchema = z.object({
   stackName: z.string(),
@@ -68,6 +69,17 @@ export const applyStack: Tool<ApplyStackInput, ApplyStackResult> = {
   call: async function* (input, ctx): AsyncGenerator<ToolProgress, ApplyStackResult> {
     const yamlPath = path.join(ctx.cwd, ".docker-agent", "stacks", `${input.stackName}.yaml`);
     const def = parseStackDefinition(parseYaml(input.composeYaml), "apply_stack input");
+    const imageValidation = await validateImagesForTool(
+      Object.values(def.services).map((spec) => spec.image),
+      ctx,
+    );
+    if (imageValidation.error) {
+      return { ok: false, exitCode: 1, yamlPath, errorOutput: imageValidation.error };
+    }
+    for (const warning of imageValidation.warnings) {
+      yield { type: "progress", msg: warning };
+    }
+
     const envFiles = stackEnvFiles(def);
     const gitStatus = await checkEnvFileGitStatus(envFiles, ctx.cwd);
     if (gitStatus.refusals.length > 0) {

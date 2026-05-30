@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ToolContext } from "src/Tool";
+import type { ImageValidator } from "src/services/docker/imageValidator";
 import { StateStore } from "src/state/StateStore";
 import { applyStack } from "src/tools/applyStack";
 import { beforeEach, describe, expect, test } from "vitest";
@@ -35,6 +36,27 @@ function makeCtx(tmpRoot: string, composeRunner: MockComposeRunner): ToolContext
     dockerEngine: new MockDockerEngine() as never,
     composeRunner: composeRunner as never,
     abortSignal: new AbortController().signal,
+  };
+}
+
+function invalidImageValidator(image: string): ImageValidator {
+  return {
+    validateImage: async () => ({
+      image,
+      status: "invalid",
+      source: "registry",
+      error: "manifest not found",
+      suggestion: "postgres:17-alpine",
+    }),
+    validateImages: async () => [
+      {
+        image,
+        status: "invalid",
+        source: "registry",
+        error: "manifest not found",
+        suggestion: "postgres:17-alpine",
+      },
+    ],
   };
 }
 
@@ -112,5 +134,23 @@ describe("apply_stack", () => {
 
     expect(progress.join("\n")).toContain("API_KEY=***");
     expect(progress.join("\n")).not.toContain("leakvalue");
+  });
+
+  test("rejects invalid image tags before writing state or running compose", async () => {
+    const runner = new MockComposeRunner(tmpRoot);
+    const ctx = makeCtx(tmpRoot, runner);
+    ctx.imageValidator = invalidImageValidator("postgres:99-alpine");
+    const yaml =
+      "x-docker-agent:\n  name: bad\n  createdAt: '2026-05-26T00:00:00.000Z'\n  lastApplied: null\n  intent: test\n  provider: test\n  generatedBy: test\n  envFileSources: {}\nservices:\n  db:\n    image: postgres:99-alpine\n";
+
+    const result = await drain(applyStack.call({ stackName: "bad", composeYaml: yaml }, ctx));
+
+    expect(result).toMatchObject({
+      ok: false,
+      exitCode: 1,
+      errorOutput: expect.stringContaining("Invalid Docker images detected"),
+    });
+    expect(runner.forStackCalls).toEqual([]);
+    expect(ctx.stateStore.read("bad")).toBeNull();
   });
 });

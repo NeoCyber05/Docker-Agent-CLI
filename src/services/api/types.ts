@@ -33,4 +33,10 @@ export interface CallModelParams {
 export interface Provider {
   readonly name: string;
   stream(params: CallModelParams): AsyncGenerator<ProviderEvent>;
+  /**
+   * List the models available for this provider, if discoverable.
+   * Providers that cannot enumerate models (or fail to reach their backend)
+   * may omit this method or reject the returned promise.
+   */
+  listModels?(): Promise<string[]>;
 }

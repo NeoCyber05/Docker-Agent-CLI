@@ -166,6 +166,8 @@ Once inside the interactive REPL shell, you can use these convenient shortcut co
 | `/secrets list <stack>` | Lists all environment secret keys required by a stack (actual values are securely masked). |
 | `/secrets rotate <stack> <service>` | Triggers a rotation for the secrets of a specific service in a stack. |
 | `/provider <name>` | Dynamically switches the LLM provider for the current session (e.g., `/provider openai`). |
+| `/models` | Lists all models available for the current provider and lets you pick one quickly with arrow keys. |
+| `/model <id>` | Sets a specific model override for this session (e.g., `/model gemma2`). |
 | `/clear` | Resets the conversation context and clears the terminal screen. |
 | `/quit` or `/exit` | Gracefully terminates the REPL session and exits the program. |
 

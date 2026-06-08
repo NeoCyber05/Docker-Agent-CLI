@@ -7,8 +7,21 @@ export class OllamaProvider implements Provider {
   readonly name = "ollama";
   constructor(private env: NodeJS.ProcessEnv) {}
 
+  private get host(): string {
+    return this.env.OLLAMA_HOST ?? "http://localhost:11434";
+  }
+
+  async listModels(): Promise<string[]> {
+    const client = new Ollama({ host: this.host });
+    const res = await client.list();
+    return res.models
+      .map((m) => m.name)
+      .filter((name): name is string => typeof name === "string" && name.length > 0)
+      .sort((a, b) => a.localeCompare(b));
+  }
+
   async *stream(params: CallModelParams): AsyncGenerator<ProviderEvent> {
-    const host = this.env.OLLAMA_HOST ?? "http://localhost:11434";
+    const host = this.host;
     const model = params.model ?? this.env.OLLAMA_MODEL ?? "qwen2.5:14b";
     const client = new Ollama({ host });
     const toolDefs = params.tools.map((t) => {

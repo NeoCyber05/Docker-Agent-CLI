@@ -8,6 +8,7 @@ import { ApiKeyInputDialog } from "../components/ApiKeyInputDialog";
 import { Footer } from "../components/Footer";
 import { Header } from "../components/Header";
 import { MessageList, type UIMessage } from "../components/MessageList";
+import { ModelPickerDialog } from "../components/ModelPickerDialog";
 import { PermissionDialog } from "../components/PermissionDialog";
 import { PlanPreview } from "../components/PlanPreview";
 import { PromptInput } from "../components/PromptInput";
@@ -36,7 +37,8 @@ type Pending =
     }
   | { kind: "typed"; id: string; phrase: string; reason: string }
   | { kind: "secrets"; id: string; service: string; keys: string[]; reason: string }
-  | { kind: "apiKey"; provider: ApiKeyProviderName };
+  | { kind: "apiKey"; provider: ApiKeyProviderName }
+  | { kind: "modelPicker"; models: string[] };
 
 const DESTRUCTIVE_TOOLS = new Set(["apply_stack", "destroy_stack", "destroy_all_stacks"]);
 
@@ -176,6 +178,47 @@ export function REPL({
         ]);
         return;
       }
+      if (cmd === "/models") {
+        const provider = engine.provider;
+        if (typeof provider.listModels !== "function") {
+          setMessages((m) => [
+            ...m,
+            { key: mk(), role: "user", text: input },
+            {
+              key: mk(),
+              role: "error",
+              text: `Provider "${activeProviderName}" cannot list models. Use /model <id> to set one manually.`,
+            },
+          ]);
+          return;
+        }
+        setMessages((m) => [...m, { key: mk(), role: "user", text: input }]);
+        try {
+          const models = await provider.listModels();
+          if (models.length === 0) {
+            setMessages((m) => [
+              ...m,
+              {
+                key: mk(),
+                role: "assistant",
+                text: `No models found for ${activeProviderName}. For Ollama, pull one with: ollama pull <model>`,
+              },
+            ]);
+            return;
+          }
+          setPending({ kind: "modelPicker", models });
+        } catch (err) {
+          setMessages((m) => [
+            ...m,
+            {
+              key: mk(),
+              role: "error",
+              text: `Failed to list models: ${(err as Error).message}`,
+            },
+          ]);
+        }
+        return;
+      }
       if (cmd === "/model") {
         const model = arg.trim();
         if (!model) {
@@ -295,9 +338,16 @@ export function REPL({
   };
 
   const onAnswer = (answer: PermissionResponse) => {
-    if (!pending || pending.kind === "apiKey") return;
+    if (!pending || pending.kind === "apiKey" || pending.kind === "modelPicker") return;
     engine.respondTo(pending.id, answer);
     setPending(null);
+  };
+
+  const onModelPicked = (model: string) => {
+    engine.model = model;
+    setActiveModel(model);
+    setPending(null);
+    setMessages((m) => [...m, { key: mk(), role: "assistant", text: `Model set to ${model}` }]);
   };
 
   const onApiKeySubmit = async (provider: ApiKeyProviderName, value: string) => {
@@ -353,6 +403,20 @@ export function REPL({
             setMessages((m) => [
               ...m,
               { key: mk(), role: "assistant", text: "API key setup cancelled" },
+            ]);
+          }}
+        />
+      )}
+      {pending?.kind === "modelPicker" && (
+        <ModelPickerDialog
+          models={pending.models}
+          {...(activeModel ? { current: activeModel } : {})}
+          onSelect={onModelPicked}
+          onCancel={() => {
+            setPending(null);
+            setMessages((m) => [
+              ...m,
+              { key: mk(), role: "assistant", text: "Model selection cancelled" },
             ]);
           }}
         />

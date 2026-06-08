@@ -19,6 +19,10 @@ describe("config resolution", () => {
     originalCwd = process.cwd();
     originalEnv = { ...process.env };
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "docker-agent-config-test-"));
+    // Isolate from any real ~/.docker-agent/config.json on the developer's machine.
+    // Points at a non-existent file so loadUserConfig() yields defaults unless a
+    // test explicitly writes its own config and overrides this.
+    process.env.DOCKER_AGENT_CONFIG = path.join(tmpDir, "isolated-config.json");
   });
 
   afterEach(() => {

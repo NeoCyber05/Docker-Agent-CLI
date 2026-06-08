@@ -71,6 +71,11 @@ export const SLASH_COMMANDS: readonly SlashCommandSuggestion[] = [
     insertText: "/apikey status",
   },
   {
+    usage: "/models",
+    description: "List available models and pick one quickly",
+    insertText: "/models",
+  },
+  {
     usage: "/model <id>",
     description: "Set model override for this session",
     insertText: "/model ",

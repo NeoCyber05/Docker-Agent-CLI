@@ -11,6 +11,20 @@ export class OpenAIProvider implements Provider {
     private apiKeyStore?: ApiKeyStore,
   ) {}
 
+  async listModels(): Promise<string[]> {
+    const apiKey = await resolveStoredApiKey("openai", this.env, this.apiKeyStore);
+    if (!apiKey) throw new Error("OPENAI_API_KEY not set");
+    const client = new OpenAI({
+      apiKey,
+      ...(this.env.OPENAI_BASE_URL ? { baseURL: this.env.OPENAI_BASE_URL } : {}),
+    });
+    const res = await client.models.list();
+    return res.data
+      .map((m) => m.id)
+      .filter((id): id is string => typeof id === "string" && id.length > 0)
+      .sort((a, b) => a.localeCompare(b));
+  }
+
   async *stream(params: CallModelParams): AsyncGenerator<ProviderEvent> {
     const apiKey = await resolveStoredApiKey("openai", this.env, this.apiKeyStore);
     if (!apiKey) {

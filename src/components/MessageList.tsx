@@ -35,7 +35,10 @@ export function MessageList({ messages }: { messages: UIMessage[] }): React.Reac
             </Box>
           );
         return (
-          <Box key={m.key}>
+          <Box key={m.key} flexDirection="column">
+            <Text color="magenta" bold>
+              Agent
+            </Text>
             <FormattedText text={m.text || ""} />
           </Box>
         );

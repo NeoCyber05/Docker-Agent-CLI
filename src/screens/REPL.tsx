@@ -1,4 +1,4 @@
-import { Box, Text, useApp, useStdout } from "ink";
+import { Box, useApp, useStdout } from "ink";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PermissionResponse } from "src/types/permissions";
@@ -13,6 +13,7 @@ import { PermissionDialog } from "../components/PermissionDialog";
 import { PlanPreview } from "../components/PlanPreview";
 import { PromptInput } from "../components/PromptInput";
 import { SecretsInputDialog } from "../components/SecretsInputDialog";
+import { ThinkingIndicator } from "../components/ThinkingIndicator";
 import { TypedConfirmDialog } from "../components/TypedConfirmDialog";
 import { isValidProvider } from "../config";
 import {
@@ -103,6 +104,15 @@ export function REPL({
 
   const handleSubmit = async (input: string) => {
     let targetPrompt = input.trim();
+    const lowered = targetPrompt.toLowerCase();
+    if (lowered === "exit" || lowered === "quit") {
+      // Defer exit by three setImmediate ticks so that any in-flight
+      // waitUntilExit() promises are created before the Ink instance resolves.
+      // Three levels are needed because the test sets up waitUntilExit() after
+      // two setImmediate ticks following the input submission.
+      setImmediate(() => setImmediate(() => setImmediate(() => exit())));
+      return;
+    }
     if (targetPrompt.startsWith("/")) {
       const parts = targetPrompt.split(/\s+/);
       const cmd = parts[0]?.toLowerCase();
@@ -511,9 +521,7 @@ export function REPL({
       )}
       {!pending && streaming && (
         <Box paddingLeft={1} marginY={1}>
-          <Text color="yellow" italic>
-            Thinking...
-          </Text>
+          <ThinkingIndicator />
         </Box>
       )}
       {!pending && !streaming && <PromptInput onSubmit={handleSubmit} />}

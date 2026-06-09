@@ -14,3 +14,6 @@ docs
 short_description_plan.md 
 AGENTS.md
 docker_agent_cli_report_template.md
+.kiro
+.claude
+.cursor

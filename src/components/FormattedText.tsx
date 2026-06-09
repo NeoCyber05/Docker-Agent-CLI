@@ -1,6 +1,47 @@
 import { Box, Text } from "ink";
 import React from "react";
 
+export interface InlineSegment {
+  bold: boolean;
+  text: string;
+}
+
+export function parseInline(content: string): InlineSegment[] {
+  const segments: InlineSegment[] = [];
+  const regex = /\*\*([^*]+)\*\*/g;
+  let lastIndex = 0;
+
+  for (;;) {
+    const match = regex.exec(content);
+    if (match === null) break;
+
+    const [fullMatch, innerText] = match;
+    const matchStart = match.index;
+
+    // Plain text before this bold segment
+    if (matchStart > lastIndex) {
+      segments.push({ bold: false, text: content.slice(lastIndex, matchStart) });
+    }
+
+    // Bold segment (innerText is guaranteed to exist since the group always captures)
+    segments.push({ bold: true, text: innerText ?? fullMatch });
+
+    lastIndex = matchStart + fullMatch.length;
+  }
+
+  // Remaining plain text after the last match (or the whole string if no matches)
+  if (lastIndex < content.length) {
+    segments.push({ bold: false, text: content.slice(lastIndex) });
+  }
+
+  // No matches at all → return the entire string as a single plain segment
+  if (segments.length === 0) {
+    segments.push({ bold: false, text: content });
+  }
+
+  return segments;
+}
+
 interface ParsedTable {
   headers: string[];
   alignments: ("left" | "center" | "right")[];
@@ -194,7 +235,18 @@ export function FormattedText({ text }: { text: string }): React.ReactElement {
         return (
           // biome-ignore lint/suspicious/noArrayIndexKey: stable block order, blocks don't reorder
           <Box key={idx}>
-            <Text>{block.content}</Text>
+            <Text>
+              {parseInline(block.content).map((seg, i) =>
+                seg.bold ? (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: stable segment order within block
+                  <Text key={i} bold color="yellow">
+                    {seg.text}
+                  </Text>
+                ) : (
+                  seg.text
+                ),
+              )}
+            </Text>
           </Box>
         );
       })}

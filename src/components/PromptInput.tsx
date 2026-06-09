@@ -1,6 +1,6 @@
 import { Box, Text, useInput } from "ink";
 import type React from "react";
-import { useState, useRef } from "react";
+import { useRef, useState } from "react";
 import { type SlashCommandSuggestion, getSlashCommandSuggestions } from "src/slashCommands";
 
 function shouldCompleteSuggestion(text: string, suggestion: SlashCommandSuggestion): boolean {
@@ -139,9 +139,8 @@ export function PromptInput({
               justPastedRef.current = false;
             }
             return;
-          } else {
-            justPastedRef.current = false;
           }
+          justPastedRef.current = false;
         }
       }
 

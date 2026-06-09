@@ -23,6 +23,19 @@ export type LoopEvent =
       reason: string;
     }
   | { type: "usage"; inputTokens: number; outputTokens: number }
-  | { type: "error"; error: Error };
+  | { type: "error"; error: Error }
+  | {
+      type: "rollback_started";
+      stackName: string;
+      reason: "apply_failed" | "unhealthy";
+      detail: string; // e.g. "exit 1" or "unhealthy: db, cache"
+    }
+  | {
+      type: "rollback_result";
+      stackName: string;
+      ok: boolean;
+      restored: "previous" | "removed" | "none";
+      detail?: string;
+    };
 
 export type { PermissionResponse } from "./permissions";

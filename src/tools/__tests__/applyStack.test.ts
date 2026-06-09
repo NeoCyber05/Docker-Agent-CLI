@@ -72,11 +72,18 @@ describe("apply_stack", () => {
     const ctx = makeCtx(tmpRoot, runner);
     const yaml =
       "x-docker-agent:\n  name: webapp\n  createdAt: '2026-05-26T00:00:00.000Z'\n  lastApplied: null\n  intent: test\n  provider: test\n  generatedBy: test\n  envFileSources: {}\nservices:\n  web:\n    image: nginx:1.27\n";
+
+    // Pre-create the bound runner and configure it to return healthy services for the health gate
+    const yamlPath = path.join(tmpRoot, ".docker-agent/stacks/webapp.yaml");
+    const preCreated = runner.forStack("webapp", yamlPath);
+    preCreated.setRunningServices(["web"]);
+    // Reset forStackCalls so the test assertion sees the call from applyStack (index 0)
+    runner.forStackCalls.length = 0;
+
     const result = await drain(
       applyStack.call({ stackName: "webapp", composeYaml: yaml, scaleOverrides: { web: 2 } }, ctx),
     );
 
-    const yamlPath = path.join(tmpRoot, ".docker-agent/stacks/webapp.yaml");
     expect(result).toMatchObject({ ok: true });
     expect(fs.existsSync(yamlPath)).toBe(true);
     expect(runner.forStackCalls[0]).toMatchObject({
@@ -123,6 +130,7 @@ describe("apply_stack", () => {
           yield "API_KEY=leakvalue\n";
           return 0;
         },
+        ps: async () => [{ Name: "webapp-web-1", Service: "web", State: "running" }],
       }),
     } as never;
     const yaml =

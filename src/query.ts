@@ -1,5 +1,6 @@
 import type { LoopContext } from "src/loopContext";
 import type { Provider } from "src/services/api/types";
+import { captureKnownGood, planRollback } from "src/state/rollback";
 import type { LoopEvent } from "src/types/events";
 import type { AssistantBlock, Message } from "src/types/message";
 import { type Tool, findToolByName } from "./Tool";
@@ -7,7 +8,9 @@ import { buildSystemPrompt, classifyIntent } from "./context";
 import { type QueryMode, getToolsForMode } from "./tools";
 import { applyStack } from "./tools/applyStack";
 import { destroyAllStacks } from "./tools/destroyAllStacks";
+import { destroyStack } from "./tools/destroyStack";
 import { planStack } from "./tools/planStack";
+import { remediateDrift } from "./tools/remediateDrift";
 
 export interface QueryParams {
   messages: Message[];
@@ -109,6 +112,84 @@ function assistantBlocksFromCollected(
   return blocks;
 }
 
+async function* applyWithRollback(
+  stackName: string,
+  desiredYaml: string,
+  scaleOverrides: Record<string, number> | undefined,
+  ctx: LoopContext,
+): AsyncGenerator<LoopEvent, { ok: boolean; resultMessage: string }> {
+  // Capture known-good state BEFORE applyStack overwrites on-disk state
+  const known = captureKnownGood(stackName, ctx);
+
+  const applyResult = yield* runTool(
+    applyStack,
+    {
+      stackName,
+      composeYaml: desiredYaml,
+      ...(scaleOverrides && Object.keys(scaleOverrides).length ? { scaleOverrides } : {}),
+    },
+    ctx,
+  );
+
+  if (applyResult.ok) {
+    return { ok: true, resultMessage: "Stack applied." };
+  }
+
+  // Determine failure reason
+  const reason = applyResult.healthy === false ? "unhealthy" : "apply_failed";
+  const detail =
+    reason === "unhealthy"
+      ? `unhealthy: ${(applyResult.unhealthyServices ?? []).join(", ")}`
+      : `exit ${applyResult.exitCode}: ${applyResult.errorOutput ?? "unknown"}`;
+
+  yield { type: "rollback_started", stackName, reason, detail };
+
+  const plan = planRollback(known, stackName);
+  let restored: "previous" | "removed" | "none" = "none";
+  let rollbackOk = true;
+
+  try {
+    if (plan.strategy === "restore_previous") {
+      // UPDATE with recoverable prior → re-apply it
+      const restore = yield* runTool(applyStack, { stackName, composeYaml: plan.composeYaml }, ctx);
+      rollbackOk = restore.ok;
+      restored = "previous";
+    } else if (plan.strategy === "teardown_partial") {
+      // FIRST-TIME CREATE → tear down partial stack
+      const down = yield* runTool(destroyStack, { stackName }, ctx);
+      rollbackOk = (down as { ok?: boolean }).ok ?? true;
+      restored = "removed";
+    } else {
+      // UPDATE expected but unrecoverable → abort, do NOT modify on-disk state
+      rollbackOk = false;
+      restored = "none";
+    }
+  } catch {
+    rollbackOk = false;
+  }
+
+  ctx.stateStore.appendHistory({
+    ts: new Date().toISOString(),
+    sessionId: ctx.sessionId ?? "unknown",
+    stackName,
+    action: "rollback",
+    details: { reason, restored, rollbackOk },
+  });
+
+  yield {
+    type: "rollback_result",
+    stackName,
+    ok: rollbackOk,
+    restored,
+    ...(!rollbackOk ? { detail: "manual intervention may be required" } : {}),
+  };
+
+  return {
+    ok: false,
+    resultMessage: `apply failed (${detail}); rollback ${rollbackOk ? "succeeded" : "FAILED"} (${restored}).`,
+  };
+}
+
 async function* handlePlanStackToolUse(
   tu: CollectedToolUse,
   ctx: LoopContext,
@@ -152,25 +233,72 @@ async function* handlePlanStackToolUse(
     if (confirm.kind !== "approve") {
       return { isError: false, resultMessage: "User declined plan." };
     }
-    const applyResult = yield* runTool(
-      applyStack,
-      {
-        stackName: (parsed as { stackName: string }).stackName,
-        composeYaml: planResult.composeYaml,
-        ...(Object.keys(planResult.scaleOverrides).length
-          ? { scaleOverrides: planResult.scaleOverrides }
-          : {}),
-      },
+    const r = yield* applyWithRollback(
+      (parsed as { stackName: string }).stackName,
+      planResult.composeYaml,
+      Object.keys(planResult.scaleOverrides).length ? planResult.scaleOverrides : undefined,
       ctx,
     );
-    if (!applyResult.ok) {
-      return {
-        isError: true,
-        resultMessage: `apply failed (exit ${applyResult.exitCode}): ${applyResult.errorOutput ?? "unknown error"}`,
-      };
-    }
-    return { isError: false, resultMessage: "Stack applied." };
+    return { isError: !r.ok, resultMessage: r.resultMessage };
   }
+}
+
+async function* handleRemediateDriftToolUse(
+  tu: CollectedToolUse,
+  ctx: LoopContext,
+): AsyncGenerator<LoopEvent, { isError: boolean; resultMessage: string }> {
+  let parsed: ReturnType<typeof remediateDrift.inputSchema.parse>;
+  try {
+    parsed = remediateDrift.inputSchema.parse(JSON.parse(tu.argsPartial || "{}"));
+  } catch (err) {
+    return {
+      isError: true,
+      resultMessage: `remediate_drift validation failed: ${(err as Error).message}`,
+    };
+  }
+
+  const result = yield* runTool(remediateDrift, parsed, ctx);
+
+  if (!result.remediable) {
+    return {
+      isError: false,
+      resultMessage: `No remediation needed: ${result.reason ?? "unknown"}`,
+    };
+  }
+
+  // Reuse the plan_ready / requestConfirm pattern (same as plan_stack)
+  const confirm = await ctx.requestConfirm({
+    composeYaml: result.desiredYaml,
+    diff: result.diff,
+  });
+  if (confirm.kind !== "approve") {
+    return { isError: false, resultMessage: "User declined remediation." };
+  }
+
+  // Re-apply desired state with rollback protection
+  const r = yield* applyWithRollback(parsed.stackName, result.desiredYaml, undefined, ctx);
+
+  // For `extra` status: report orphan services, mark not fully clean
+  let resultMessage = r.resultMessage;
+  let fullyClean = r.ok;
+  if (result.diff.status === "extra") {
+    const orphans = result.diff.serviceDiffs
+      .filter((d) => d.desired === null && d.actual !== null)
+      .map((d) => d.service);
+    if (orphans.length > 0) {
+      fullyClean = false;
+      resultMessage += ` Remediation not fully clean: ${orphans.length} orphan service(s) remain (${orphans.join(", ")}). Automatic orphan removal is out of scope (future option).`;
+    }
+  }
+
+  ctx.stateStore.appendHistory({
+    ts: new Date().toISOString(),
+    sessionId: ctx.sessionId ?? "unknown",
+    stackName: parsed.stackName,
+    action: "remediate",
+    details: { status: result.diff.status, ok: r.ok, fullyClean },
+  });
+  return { isError: !r.ok, resultMessage };
 }
 
 async function* requestSecretsAndPatch(
@@ -274,6 +402,16 @@ export async function* query(params: QueryParams): AsyncGenerator<LoopEvent, voi
           toolUseId: tu.id,
           content: JSON.stringify(result),
           isError: false,
+        });
+        continue;
+      }
+      if (tu.name === "remediate_drift") {
+        const r = yield* handleRemediateDriftToolUse(tu, ctx);
+        messages.push({
+          role: "tool",
+          toolUseId: tu.id,
+          content: r.resultMessage,
+          isError: r.isError,
         });
         continue;
       }

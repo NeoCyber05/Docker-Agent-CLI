@@ -14,6 +14,11 @@ export class MockBoundRunner {
   psCalls: Array<{ json?: boolean }> = [];
   logsCalls: Array<{ service?: string; tailLines?: number }> = [];
   lastExitCode = 0;
+  /**
+   * Rows returned by ps(). When null (default), ps() returns an empty array.
+   * Set this to non-empty rows to simulate healthy services for the health gate in applyStack.
+   */
+  psRows: ComposePsRow[] | null = null;
 
   up = vi.fn(
     async function* (
@@ -41,7 +46,7 @@ export class MockBoundRunner {
 
   ps = vi.fn(async (opts: { json?: boolean } = {}): Promise<ComposePsRow[]> => {
     this.psCalls.push(opts);
-    return [];
+    return this.psRows ?? [];
   });
 
   logs = vi.fn(
@@ -56,6 +61,15 @@ export class MockBoundRunner {
     }.bind(this),
   );
 
+  /** Convenience: set psRows to make all listed service names appear as running. */
+  setRunningServices(serviceNames: string[]): void {
+    this.psRows = serviceNames.map((svc) => ({
+      Name: `${this.stackName}-${svc}-1`,
+      Service: svc,
+      State: "running",
+    }));
+  }
+
   constructor(
     public stackName: string,
     public yamlPath: string,
@@ -68,6 +82,8 @@ export class MockBoundRunner {
 export class MockComposeRunner {
   forStackCalls: Array<{ stackName: string; yamlPath: string }> = [];
   private bound = new Map<string, MockBoundRunner>();
+  /** Optional callback invoked each time a new MockBoundRunner is created. */
+  onBoundRunnerCreated?: (runner: MockBoundRunner) => void;
 
   constructor(private cwd = "/cwd") {}
 
@@ -77,6 +93,7 @@ export class MockComposeRunner {
     if (existing) return existing;
     const runner = new MockBoundRunner(stackName, yamlPath, this.cwd);
     this.bound.set(stackName, runner);
+    this.onBoundRunnerCreated?.(runner);
     return runner;
   });
 

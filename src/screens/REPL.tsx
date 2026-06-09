@@ -25,6 +25,7 @@ import {
 } from "../secrets/apiKeyStore";
 import { resolveProviderForRequest } from "../services/api";
 import { formatSlashHelp } from "../slashCommands";
+import type { SessionStore } from "../state/SessionStore";
 
 type Pending =
   | { kind: "permission"; id: string; tool: string; input: unknown }
@@ -64,13 +65,33 @@ function useSafeFrameWidth(): number {
 export function REPL({
   deps,
   version,
+  resumedRecord,
 }: {
   deps: QueryEngineDeps & { providerName: string; yes?: boolean; apiKeyStore?: ApiKeyStore };
   version: string;
+  resumedRecord?: import("../state/SessionStore").SessionRecord;
 }): React.ReactElement {
   const engine = useMemo(() => new QueryEngine(deps), [deps]);
   const apiKeyStore = useMemo(() => deps.apiKeyStore ?? createApiKeyStore(), [deps.apiKeyStore]);
-  const [messages, setMessages] = useState<UIMessage[]>([]);
+  const [messages, setMessages] = useState<UIMessage[]>(() => {
+    if (resumedRecord) {
+      engine.loadSession(resumedRecord);
+      return engine.getMessages().map((m, i) => {
+        if (m.role === "user") {
+          return { key: i, role: "user" as const, text: m.content };
+        }
+        if (m.role === "assistant") {
+          const text = m.content
+            .filter((b) => b.type === "text")
+            .map((b) => (b as { type: "text"; text: string }).text)
+            .join("");
+          return { key: i, role: "assistant" as const, text };
+        }
+        return { key: i, role: "assistant" as const, text: "(tool result)" };
+      });
+    }
+    return [];
+  });
   const [pending, setPending] = useState<Pending | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [activeProviderName, setActiveProviderName] = useState(deps.providerName);
@@ -239,6 +260,51 @@ export function REPL({
         return;
       }
 
+      if (cmd === "/resume") {
+        const sessionStore = deps.sessionStore;
+        if (!sessionStore) {
+          setMessages((m) => [
+            ...m,
+            { key: mk(), role: "user", text: input },
+            { key: mk(), role: "error", text: "Session persistence not configured." },
+          ]);
+          return;
+        }
+        const sessionId = arg.trim() || undefined;
+        const rec = sessionId ? sessionStore.read(sessionId) : sessionStore.latest();
+        if (!rec) {
+          setMessages((m) => [
+            ...m,
+            { key: mk(), role: "user", text: input },
+            {
+              key: mk(),
+              role: "error",
+              text: sessionId
+                ? `Session "${sessionId}" not found.`
+                : "No previous session found to resume.",
+            },
+          ]);
+          return;
+        }
+        engine.loadSession(rec);
+        const repainted = engine.getMessages().map((m, i) => {
+          if (m.role === "user") {
+            return { key: i, role: "user" as const, text: m.content };
+          }
+          if (m.role === "assistant") {
+            const text = m.content
+              .filter((b) => b.type === "text")
+              .map((b) => (b as { type: "text"; text: string }).text)
+              .join("");
+            return { key: i, role: "assistant" as const, text };
+          }
+          return { key: i, role: "assistant" as const, text: "(tool result)" };
+        });
+        nextKey.current = repainted.length;
+        setMessages(repainted);
+        return;
+      }
+
       if (cmd === "/stacks") targetPrompt = "Show the current stacks as a table";
       else if (cmd === "/status") targetPrompt = `Show status and drift for stack ${arg}`;
       else if (cmd === "/destroy" && arg === "all") targetPrompt = "Destroy all stacks";
@@ -329,6 +395,28 @@ export function REPL({
             break;
           case "error":
             setMessages((m) => [...m, { key: mk(), role: "error", text: ev.error.message }]);
+            break;
+          case "rollback_started":
+            setMessages((m) => [
+              ...m,
+              {
+                key: mk(),
+                role: "assistant" as const,
+                text: `⚠️ Rolling back stack "${ev.stackName}" (reason: ${ev.reason})${ev.detail ? ` — ${ev.detail}` : ""}`,
+              },
+            ]);
+            break;
+          case "rollback_result":
+            setMessages((m) => [
+              ...m,
+              {
+                key: mk(),
+                role: ev.ok ? ("assistant" as const) : ("error" as const),
+                text: ev.ok
+                  ? `✅ Rollback succeeded for stack "${ev.stackName}" (restored: ${ev.restored})`
+                  : `❌ Rollback FAILED for stack "${ev.stackName}" (restored: ${ev.restored})${ev.detail ? ` — ${ev.detail}` : ""}. Manual intervention may be required.`,
+              },
+            ]);
             break;
         }
       }

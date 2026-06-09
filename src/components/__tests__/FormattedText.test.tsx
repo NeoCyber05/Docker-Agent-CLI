@@ -1,5 +1,5 @@
-import { describe, expect, test } from "vitest";
 import { parseMarkdown } from "src/components/FormattedText";
+import { describe, expect, test } from "vitest";
 
 describe("parseMarkdown", () => {
   test("parses plain text without tables", () => {
@@ -24,8 +24,10 @@ Hope you like it!`;
     expect(blocks[0]).toEqual({ type: "text", content: "Here is a table:\n" });
     expect(blocks[2]).toEqual({ type: "text", content: "\nHope you like it!" });
 
-    expect(blocks[1]!.type).toBe("table");
-    const table = (blocks[1] as { table: any }).table;
+    expect(blocks[1]?.type).toBe("table");
+    const table = (
+      blocks[1] as { table: { headers: string[]; alignments: string[]; rows: string[][] } }
+    ).table;
     expect(table.headers).toEqual(["Stack Name", "Services", "Last Applied"]);
     expect(table.alignments).toEqual(["left", "center", "right"]);
     expect(table.rows).toEqual([
@@ -40,8 +42,10 @@ Hope you like it!`;
 foo | bar`;
     const blocks = parseMarkdown(text);
     expect(blocks).toHaveLength(1);
-    expect(blocks[0]!.type).toBe("table");
-    const table = (blocks[0] as { table: any }).table;
+    expect(blocks[0]?.type).toBe("table");
+    const table = (
+      blocks[0] as { table: { headers: string[]; alignments: string[]; rows: string[][] } }
+    ).table;
     expect(table.headers).toEqual(["Name", "Value"]);
     expect(table.rows).toEqual([["foo", "bar"]]);
   });

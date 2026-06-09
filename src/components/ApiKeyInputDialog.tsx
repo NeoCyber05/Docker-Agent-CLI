@@ -78,9 +78,8 @@ export function ApiKeyInputDialog({
               justPastedRef.current = false;
             }
             return;
-          } else {
-            justPastedRef.current = false;
           }
+          justPastedRef.current = false;
         }
       }
 

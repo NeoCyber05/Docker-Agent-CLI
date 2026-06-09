@@ -10,6 +10,7 @@ import { type ApiKeyStore, createApiKeyStore } from "./secrets/apiKeyStore";
 import { resolveProviderForRequest } from "./services/api";
 import { ComposeRunner } from "./services/docker/composeRunner";
 import { createEngineClient } from "./services/docker/engineClient";
+import { SessionStore } from "./state/SessionStore";
 import { StateStore } from "./state/StateStore";
 
 const VERSION = "0.1.0";
@@ -61,6 +62,7 @@ export interface ParsedArgs {
   confirm?: string;
   providerFlag?: string;
   model?: string;
+  resume?: string | true; // true = latest, string = specific id
 }
 
 export function parseArgs(argv: string[]): ParsedArgs {
@@ -76,8 +78,17 @@ export function parseArgs(argv: string[]): ParsedArgs {
   program
     .command("chat", { isDefault: true })
     .option("-y, --yes", "auto-approve non-destructive permissions")
+    .option("--resume [id]", "resume a previous session (omit id for latest)")
     .action((opts) => {
-      parsed = { ...parsed, command: "chat", ...opts };
+      parsed = {
+        ...parsed,
+        command: "chat",
+        ...opts,
+        // normalize: --resume with no value comes in as true, with value as string
+        ...(opts.resume !== undefined
+          ? { resume: opts.resume === true || opts.resume === "" ? true : opts.resume }
+          : {}),
+      };
     });
   program.command("status [stack]").action((stack: string | undefined) => {
     parsed = { ...parsed, command: "status", ...(stack ? { stack } : {}) };
@@ -134,9 +145,11 @@ async function createDeps(args: ParsedArgs) {
   const dockerEngine = createEngineClient();
   const apiKeyStore = createApiKeyStore();
   const provider = resolveProviderForRequest(providerName, process.env, { apiKeyStore });
+  const sessionStore = new SessionStore(projectStateDir());
   return {
     cwd,
     stateStore,
+    sessionStore,
     composeRunner,
     dockerEngine,
     provider,
@@ -176,8 +189,30 @@ export function renderWelcomeBannerForTerminal({
   return output.endsWith("\n") ? output : `${output}\n`;
 }
 
+async function resolveResume(
+  args: ParsedArgs,
+  sessionStore: SessionStore,
+): Promise<import("./state/SessionStore").SessionRecord | null> {
+  if (!args.resume) return null;
+  const rec =
+    typeof args.resume === "string" ? sessionStore.read(args.resume) : sessionStore.latest();
+  if (!rec) {
+    process.stderr.write(
+      args.resume === true
+        ? "No previous session found to resume.\n"
+        : `Session ${args.resume} not found.\n`,
+    );
+  }
+  return rec;
+}
+
 export async function renderChatSession(
-  deps: QueryEngineDeps & { providerName: string; yes?: boolean; apiKeyStore?: ApiKeyStore },
+  deps: QueryEngineDeps & {
+    providerName: string;
+    yes?: boolean;
+    apiKeyStore?: ApiKeyStore;
+    resumedRecord?: import("./state/SessionStore").SessionRecord;
+  },
   options: { renderImpl?: ChatRender; version?: string; writeWelcome?: boolean } = {},
 ): Promise<void> {
   const renderImpl = options.renderImpl ?? render;
@@ -193,6 +228,7 @@ export async function renderChatSession(
     React.createElement(REPL, {
       version: options.version ?? VERSION,
       deps,
+      ...(deps.resumedRecord ? { resumedRecord: deps.resumedRecord } : {}),
     }),
   );
   await waitUntilExit();
@@ -210,7 +246,12 @@ export async function main(argv: string[]): Promise<number> {
 
   if (args.command === "chat") {
     const deps = await createDeps(args);
-    await renderChatSession({ ...deps, ...(args.yes ? { yes: true } : {}) });
+    const resumedRecord = await resolveResume(args, deps.sessionStore);
+    await renderChatSession({
+      ...deps,
+      ...(args.yes ? { yes: true } : {}),
+      ...(resumedRecord ? { resumedRecord } : {}),
+    });
     return 0;
   }
 

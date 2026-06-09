@@ -60,21 +60,21 @@ export function parseMarkdown(text: string): Block[] {
 
   let i = 0;
   while (i < lines.length) {
-    const line = lines[i]!;
+    const line = lines[i] ?? "";
 
-    if (line.includes("|") && i + 1 < lines.length && isDividerLine(lines[i + 1]!)) {
+    if (line.includes("|") && i + 1 < lines.length && isDividerLine(lines[i + 1] ?? "")) {
       flushText();
 
       const headerLine = line;
-      const dividerLine = lines[i + 1]!;
+      const dividerLine = lines[i + 1] ?? "";
       i += 2;
 
       const headers = parseTableRow(headerLine);
       const alignments = parseAlignments(dividerLine, headers.length);
       const rows: string[][] = [];
 
-      while (i < lines.length && lines[i]!.includes("|") && !isDividerLine(lines[i]!)) {
-        rows.push(parseTableRow(lines[i]!));
+      while (i < lines.length && lines[i]?.includes("|") && !isDividerLine(lines[i] ?? "")) {
+        rows.push(parseTableRow(lines[i] ?? ""));
         i++;
       }
 
@@ -130,9 +130,10 @@ export function FormattedTable({ table }: { table: ParsedTable }): React.ReactEl
     <Box flexDirection="row">
       <Text dimColor>│</Text>
       {headers.map((h, i) => {
-        const width = colWidths[i]!;
+        const width = colWidths[i] ?? h.length;
         const align = alignments[i] || "left";
         return (
+          // biome-ignore lint/suspicious/noArrayIndexKey: stable column order, headers don't reorder
           <React.Fragment key={i}>
             <Text bold color="cyan">
               {` ${padString(h, width, align)} `}
@@ -149,14 +150,14 @@ export function FormattedTable({ table }: { table: ParsedTable }): React.ReactEl
 
   // Data rows
   const renderedRows = rows.map((row, rowIdx) => (
-    // biome-ignore lint/correctness/useJsxKeyInIterable: unique indices/values
+    // biome-ignore lint/suspicious/noArrayIndexKey: stable row order, data rows don't reorder
     <Box flexDirection="row" key={rowIdx}>
       <Text dimColor>│</Text>
       {colWidths.map((w, colIdx) => {
         const val = row[colIdx] || "";
         const align = alignments[colIdx] || "left";
         return (
-          // biome-ignore lint/correctness/useJsxKeyInIterable: stable index key
+          // biome-ignore lint/suspicious/noArrayIndexKey: stable column order, columns don't reorder
           <React.Fragment key={colIdx}>
             <Text>{` ${padString(val, w, align)} `}</Text>
             <Text dimColor>│</Text>
@@ -187,11 +188,11 @@ export function FormattedText({ text }: { text: string }): React.ReactElement {
     <Box flexDirection="column">
       {blocks.map((block, idx) => {
         if (block.type === "table") {
-          // biome-ignore lint/correctness/useJsxKeyInIterable: stable block index
+          // biome-ignore lint/suspicious/noArrayIndexKey: stable block order, blocks don't reorder
           return <FormattedTable key={idx} table={block.table} />;
         }
         return (
-          // biome-ignore lint/correctness/useJsxKeyInIterable: stable block index
+          // biome-ignore lint/suspicious/noArrayIndexKey: stable block order, blocks don't reorder
           <Box key={idx}>
             <Text>{block.content}</Text>
           </Box>

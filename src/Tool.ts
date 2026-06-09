@@ -11,6 +11,9 @@ export interface ToolContext {
   composeRunner: ComposeRunner;
   abortSignal: AbortSignal;
   imageValidator?: ImageValidator;
+  sessionId?: string;
+  /** Override the health-check deadline (ms). Defaults to 120 000 ms. Used in tests to avoid timeouts. */
+  healthCheckDeadlineMs?: number;
 }
 
 export interface ToolProgress {

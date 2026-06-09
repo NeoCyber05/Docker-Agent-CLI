@@ -85,6 +85,16 @@ export const SLASH_COMMANDS: readonly SlashCommandSuggestion[] = [
     description: "Show stack YAML",
     insertText: "/yaml ",
   },
+  {
+    usage: "/resume",
+    description: "Resume the most recent session",
+    insertText: "/resume",
+  },
+  {
+    usage: "/resume <id>",
+    description: "Resume a specific session by id",
+    insertText: "/resume ",
+  },
 ];
 
 export function getSlashCommandSuggestions(input: string): SlashCommandSuggestion[] {

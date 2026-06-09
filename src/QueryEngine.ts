@@ -3,6 +3,7 @@ import type { LoopContext, PlanReadyPayload } from "src/loopContext";
 import type { Provider } from "src/services/api/types";
 import type { ComposeRunner } from "src/services/docker/composeRunner";
 import type { EngineClient } from "src/services/docker/engineClient";
+import type { SessionRecord, SessionStore } from "src/state/SessionStore";
 import type { StateStore } from "src/state/StateStore";
 import type { LoopEvent } from "src/types/events";
 import type { Message } from "src/types/message";
@@ -14,10 +15,13 @@ import { AsyncQueue } from "./utils/AsyncQueue";
 export interface QueryEngineDeps {
   cwd: string;
   stateStore: StateStore;
+  sessionStore?: SessionStore; // optional — if absent, session is not persisted
   dockerEngine: EngineClient;
   composeRunner: ComposeRunner;
   provider: Provider;
   model?: string;
+  /** Override health-check deadline (ms). Defaults to 120 000 ms. Used in tests. */
+  healthCheckDeadlineMs?: number;
 }
 
 type DeferredBase =
@@ -36,6 +40,8 @@ export class QueryEngine {
   private pending = new Map<string, (v: PermissionResponse) => void>();
   private sessionAllowSet = new Set<string>();
   private abortController = new AbortController();
+  private _sessionId: string = nanoid();
+  private resumedId: string | null = null;
   public provider: Provider;
   public model: string | undefined;
   public totalUsage = { inputTokens: 0, outputTokens: 0 };
@@ -43,6 +49,25 @@ export class QueryEngine {
   constructor(private deps: QueryEngineDeps) {
     this.provider = deps.provider;
     this.model = deps.model;
+  }
+
+  get sessionId(): string {
+    return this._sessionId;
+  }
+
+  /** Rehydrate a prior session record. Must be called before the first query(). */
+  loadSession(record: SessionRecord): void {
+    if (record.schemaVersion !== 1) return; // guard against bad calls
+    this.messages = [...record.messages];
+    this.resumedId = record.id;
+    this._sessionId = record.id; // continue under same id
+    this.pending.clear();
+    this.sessionAllowSet.clear(); // permissions are NEVER resumed (safety)
+  }
+
+  /** Returns current messages for REPL repaint after resume. */
+  getMessages(): readonly Message[] {
+    return this.messages;
   }
 
   async *query(userInput: string): AsyncGenerator<LoopEvent, void> {
@@ -55,6 +80,10 @@ export class QueryEngine {
       dockerEngine: this.deps.dockerEngine,
       composeRunner: this.deps.composeRunner,
       abortSignal: this.abortController.signal,
+      sessionId: this._sessionId,
+      ...(this.deps.healthCheckDeadlineMs !== undefined
+        ? { healthCheckDeadlineMs: this.deps.healthCheckDeadlineMs }
+        : {}),
       requestPermission: (tool, input) =>
         this.deferUserResponse(eventQueue, { type: "permission_request", tool, input }),
       requestConfirm: (plan: PlanReadyPayload) =>
@@ -106,6 +135,25 @@ export class QueryEngine {
     } finally {
       this.abortController.abort();
       await loopPromise.catch(() => {});
+      // Persist transcript after turn ends
+      if (this.deps.sessionStore) {
+        const firstUserMsg = this.messages.find((m) => m.role === "user");
+        const firstPrompt = firstUserMsg?.role === "user" ? firstUserMsg.content : "(empty)";
+        this.deps.sessionStore.save({
+          schemaVersion: 1,
+          id: this._sessionId,
+          createdAt: new Date().toISOString(), // SessionStore.save will update updatedAt on overwrite
+          updatedAt: new Date().toISOString(),
+          cwd: this.deps.cwd,
+          provider:
+            typeof this.provider === "object" && "name" in this.provider
+              ? (this.provider as { name: string }).name
+              : "unknown",
+          firstPrompt,
+          stackNames: [],
+          messages: this.messages,
+        });
+      }
     }
   }
 

@@ -66,7 +66,7 @@ export interface HistoryEvent {
   ts: string;
   sessionId: string;
   stackName: string;
-  action: "plan" | "apply" | "destroy" | "drift_detected";
+  action: "plan" | "apply" | "destroy" | "drift_detected" | "rollback" | "remediate";
   details: Record<string, unknown>;
 }
 
@@ -167,6 +167,27 @@ export class StateStore {
       fs.copyFileSync(dst, path.join(this.root, "stacks", ".archive", `${stackName}.yaml`));
     } else {
       fs.unlinkSync(src);
+    }
+  }
+
+  readArchive(stackName: string): StackDefinition | null {
+    const p = path.join(this.root, "stacks", ".archive", `${stackName}.yaml`);
+    if (!fs.existsSync(p)) return null;
+    try {
+      return this.readStackFile(p);
+    } catch (err) {
+      this.warn(`readArchive: could not parse archive for ${stackName}: ${errorMessage(err)}`);
+      return null;
+    }
+  }
+
+  hasArchiveMarker(stackName: string): boolean {
+    const archiveDir = path.join(this.root, "stacks", ".archive");
+    try {
+      const entries = fs.readdirSync(archiveDir);
+      return entries.some((name) => name.startsWith(stackName) && name.endsWith(".yaml"));
+    } catch {
+      return false;
     }
   }
 

@@ -1,30 +1,59 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
 import { describe, expect, test } from "vitest";
 
-function* walk(dir: string): Generator<string> {
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    const p = path.join(dir, e.name);
-    if (e.isDirectory()) {
-      if (e.name === "node_modules" || e.name === "dist" || e.name === "coverage") continue;
-      yield* walk(p);
-    } else if (e.isFile() && (e.name.endsWith(".ts") || e.name.endsWith(".tsx"))) {
-      yield p;
+const ROOT = join(import.meta.dirname ?? __dirname, "..", "..");
+const SRC = join(ROOT, "src");
+
+function walk(dir: string): string[] {
+  const results: string[] = [];
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) {
+      results.push(...walk(full));
+    } else if (full.endsWith(".ts") || full.endsWith(".tsx")) {
+      results.push(full);
     }
   }
+  return results;
 }
 
 describe("ComposeRunner invariant", () => {
-  test("no source file outside composeRunner.ts contains a raw `docker compose` invocation", () => {
-    const root = path.resolve(__dirname, "../../src");
-    const offenders: string[] = [];
-    for (const file of walk(root)) {
-      if (file.endsWith(path.join("services", "docker", "composeRunner.ts"))) continue;
-      const text = fs.readFileSync(file, "utf-8");
-      // We allow the string in markdown/docstrings; the regex looks for it as an executable token.
-      if (/\bspawn\([^)]*docker[^)]*compose/.test(text)) offenders.push(file);
-      if (/\bexec(?:Sync)?\([^)]*docker compose/.test(text)) offenders.push(file);
-    }
+  test("no source file outside composeRunner.ts spawns docker compose directly", () => {
+    const files = walk(SRC);
+    const offenders = files
+      .filter((f) => !f.endsWith("composeRunner.ts") && !f.endsWith("composeRunner.test.ts"))
+      .filter((f) => {
+        const content = readFileSync(f, "utf-8");
+        return /\bdocker[\s-]+compose\b/.test(content);
+      })
+      .map((f) => relative(ROOT, f));
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("Layer isolation invariant", () => {
+  const L4_RESTRICTED = [
+    join(SRC, "state", "rollback.ts"),
+    join(SRC, "tools", "remediateDrift.ts"),
+  ];
+
+  const FORBIDDEN_PATTERNS = [
+    /requestPermission/,
+    /requestConfirm/,
+    /requestTypedConfirm/,
+    /requestSecretsInput/,
+  ];
+
+  test("L4 rollback helper does not reference user-interaction functions", () => {
+    for (const file of L4_RESTRICTED) {
+      const content = readFileSync(file, "utf-8");
+      for (const pattern of FORBIDDEN_PATTERNS) {
+        expect(
+          pattern.test(content),
+          `${relative(ROOT, file)} must not reference ${pattern.source}`,
+        ).toBe(false);
+      }
+    }
   });
 });

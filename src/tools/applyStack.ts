@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Tool, ToolProgress } from "src/Tool";
+import type { BoundComposeRunner, ComposePsRow } from "src/services/docker/composeRunner";
 import { checkEnvFileGitStatus } from "src/services/docker/gitGuard";
 import { parseStackDefinition } from "src/state/StateStore";
 import { readEnvFile } from "src/state/envFile";
@@ -23,6 +24,43 @@ export interface ApplyStackResult {
   exitCode: number;
   yamlPath: string;
   errorOutput?: string;
+  healthy?: boolean; // false when health gate timed out
+  unhealthyServices?: string[]; // services not running/healthy at deadline
+}
+
+const HEALTH_DEADLINE_MS_DEFAULT = 120_000; // 120s default
+const POLL_INTERVAL_MS_DEFAULT = 2_000; // 2s default
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, n));
+}
+
+export async function verifyHealth(
+  bound: BoundComposeRunner,
+  expectedServices: string[],
+  deadlineMs: number, // clamped 10_000..600_000
+  abort: AbortSignal,
+): Promise<{ healthy: boolean; unhealthy: string[] }> {
+  const POLL_INTERVAL_MS = POLL_INTERVAL_MS_DEFAULT; // 2s
+  const deadline = Date.now() + deadlineMs;
+  while (true) {
+    if (abort.aborted) return { healthy: false, unhealthy: expectedServices };
+    let rows: ComposePsRow[] = [];
+    try {
+      rows = await bound.ps({ json: true });
+    } catch {
+      // treat as unhealthy, keep polling
+    }
+    const unhealthy = expectedServices.filter((svc) => {
+      const row = rows.find((r) => r.Service === svc);
+      if (!row) return true;
+      if (row.Health) return row.Health !== "healthy";
+      return row.State !== "running";
+    });
+    if (unhealthy.length === 0) return { healthy: true, unhealthy: [] };
+    if (Date.now() >= deadline) return { healthy: false, unhealthy };
+    await new Promise<void>((r) => setTimeout(r, POLL_INTERVAL_MS));
+  }
 }
 
 function resolveEnvFile(cwd: string, envFilePath: string): string {
@@ -133,6 +171,33 @@ export const applyStack: Tool<ApplyStackInput, ApplyStackResult> = {
           if (r.value !== 0) {
             return { ok: false, exitCode: r.value, yamlPath, errorOutput: captured };
           }
+
+          // Health gate: poll until all services are running/healthy or deadline elapses
+          const expectedServices = Object.keys(def.services);
+          const rawDeadline = ctx.healthCheckDeadlineMs ?? HEALTH_DEADLINE_MS_DEFAULT;
+          // Only clamp if using the default (not a test override)
+          const deadlineMs =
+            ctx.healthCheckDeadlineMs !== undefined
+              ? rawDeadline
+              : clamp(rawDeadline, 10_000, 600_000);
+          yield { type: "progress", msg: "Waiting for services to become healthy..." };
+          const healthResult = await verifyHealth(
+            bound,
+            expectedServices,
+            deadlineMs,
+            ctx.abortSignal,
+          );
+
+          if (!healthResult.healthy) {
+            return {
+              ok: false,
+              exitCode: 0,
+              yamlPath,
+              healthy: false,
+              unhealthyServices: healthResult.unhealthy,
+            };
+          }
+
           ctx.stateStore.write(input.stackName, {
             ...def,
             "x-docker-agent": {
@@ -140,7 +205,7 @@ export const applyStack: Tool<ApplyStackInput, ApplyStackResult> = {
               lastApplied: new Date().toISOString(),
             },
           });
-          return { ok: true, exitCode: r.value, yamlPath };
+          return { ok: true, exitCode: r.value, yamlPath, healthy: true, unhealthyServices: [] };
         }
 
         const scrubbed = scrubLine(r.value, secretKeys);

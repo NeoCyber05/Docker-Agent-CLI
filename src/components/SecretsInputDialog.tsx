@@ -80,9 +80,8 @@ export function SecretsInputDialog({
               justPastedRef.current = false;
             }
             return;
-          } else {
-            justPastedRef.current = false;
           }
+          justPastedRef.current = false;
         }
       }
 

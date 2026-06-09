@@ -3,15 +3,64 @@ import { Box, Text } from "ink";
 import type React from "react";
 
 const WHALE = [
-  "        ##         .",
-  "  ## ## ##        ==",
-  "  ## ## ## ##    ===",
-  '/""""""""""""""""\\___/ ===',
-  "{                       /  ===-",
-  "\\______ O           __/",
+  "          ##         .",
+  "    ## ## ##        ==",
+  " ## ## ## ##       ===",
+  '/"""""""""""""""\\___/ ===',
+  "{                   /  ===-",
+  "\\______ o         __/",
   " \\    \\         __/",
   "  \\____\\_______/",
 ];
+
+type SegType = "container" | "water" | "eye" | "outline";
+
+function segColor(type: SegType): string {
+  switch (type) {
+    case "container":
+      return "blue";
+    case "water":
+      return "cyan";
+    case "eye":
+      return "yellow";
+    default:
+      return "cyan";
+  }
+}
+
+function charType(ch: string): SegType {
+  if (ch === "#") return "container";
+  if (ch === "o" || ch === "●") return "eye";
+  if (ch === "=" || ch === "." || ch === "~") return "water";
+  return "outline";
+}
+
+function WhaleLine({ line }: { line: string }): React.ReactElement {
+  const segs: { text: string; type: SegType }[] = [];
+  let buf = "";
+  let cur: SegType = "outline";
+  for (const ch of line) {
+    const t = charType(ch);
+    if (t !== cur) {
+      if (buf) segs.push({ text: buf, type: cur });
+      buf = ch;
+      cur = t;
+    } else {
+      buf += ch;
+    }
+  }
+  if (buf) segs.push({ text: buf, type: cur });
+  return (
+    <Box>
+      {segs.map((s, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: segments derived from static line string, order is stable
+        <Text key={i} color={segColor(s.type)}>
+          {s.text}
+        </Text>
+      ))}
+    </Box>
+  );
+}
 
 interface Tip {
   cmd: string;
@@ -74,10 +123,9 @@ export function WelcomeBanner({
               !
             </Text>
           </Box>
-          {WHALE.map((line) => (
-            <Box key={line}>
-              <Text color="blue">{line}</Text>
-            </Box>
+          {WHALE.map((line, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: WHALE is a static constant array, order never changes
+            <WhaleLine key={i} line={line} />
           ))}
           <Box justifyContent="center" marginTop={1}>
             <Text color="cyan" bold>

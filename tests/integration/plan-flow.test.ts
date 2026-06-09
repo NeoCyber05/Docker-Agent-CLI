@@ -46,6 +46,7 @@ function makeEngine({
     dockerEngine: new MockDockerEngine() as never,
     composeRunner: composeRunner as never,
     provider: fakeProvider(providerEvents),
+    healthCheckDeadlineMs: 0, // avoid health-gate polling in integration tests
   });
 }
 
@@ -80,6 +81,11 @@ describe("plan-once flow", () => {
   });
 
   test("nginx: plan -> confirm -> apply via ComposeRunner.forStack", async () => {
+    // Configure bound runners to return healthy service rows so the health gate passes
+    composeRunner.onBoundRunnerCreated = (runner) => {
+      runner.setRunningServices(["web"]);
+    };
+
     const engine = makeEngine({
       tmp,
       stateStore,

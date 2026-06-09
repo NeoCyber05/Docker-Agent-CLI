@@ -43,6 +43,7 @@ async function collectEvents(
     dockerEngine: new MockDockerEngine() as never,
     composeRunner: new MockComposeRunner(tmp) as never,
     abortSignal: new AbortController().signal,
+    healthCheckDeadlineMs: 0, // avoid health-gate polling in unit tests
     requestPermission: responder,
     requestConfirm: responder,
     requestTypedConfirm: responder,

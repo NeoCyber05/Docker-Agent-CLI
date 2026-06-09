@@ -8,6 +8,7 @@ import { inspectDrift } from "./tools/inspectDrift";
 import { listStacks } from "./tools/listStacks";
 import { planStack } from "./tools/planStack";
 import { pullImage } from "./tools/pullImage";
+import { remediateDrift } from "./tools/remediateDrift";
 
 export type QueryMode = "plan-once" | "react";
 
@@ -19,6 +20,7 @@ export function getAllTools(): Tool[] {
     destroyAllStacks as Tool,
     listStacks as Tool,
     inspectDrift as Tool,
+    remediateDrift as Tool,
     getStackStatus as Tool,
     pullImage as Tool,
     execDocker as Tool,
@@ -33,6 +35,7 @@ export function getToolsForMode(mode: QueryMode): Tool[] {
     destroyAllStacks as Tool,
     listStacks as Tool,
     inspectDrift as Tool,
+    remediateDrift as Tool,
     getStackStatus as Tool,
     pullImage as Tool,
     execDocker as Tool,

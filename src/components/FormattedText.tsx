@@ -235,7 +235,7 @@ export function FormattedText({ text }: { text: string }): React.ReactElement {
         return (
           // biome-ignore lint/suspicious/noArrayIndexKey: stable block order, blocks don't reorder
           <Box key={idx}>
-            <Text>
+            <Text wrap="wrap">
               {parseInline(block.content).map((seg, i) =>
                 seg.bold ? (
                   // biome-ignore lint/suspicious/noArrayIndexKey: stable segment order within block

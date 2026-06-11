@@ -213,21 +213,14 @@ export async function renderChatSession(
     apiKeyStore?: ApiKeyStore;
     resumedRecord?: import("./state/SessionStore").SessionRecord;
   },
-  options: { renderImpl?: ChatRender; version?: string; writeWelcome?: boolean } = {},
+  options: { renderImpl?: ChatRender; version?: string; showBanner?: boolean } = {},
 ): Promise<void> {
   const renderImpl = options.renderImpl ?? render;
-  if (options.writeWelcome ?? true) {
-    process.stdout.write(
-      renderWelcomeBannerForTerminal({
-        provider: deps.providerName,
-        version: options.version ?? VERSION,
-      }),
-    );
-  }
   const { waitUntilExit } = renderImpl(
     React.createElement(REPL, {
       version: options.version ?? VERSION,
       deps,
+      showBanner: options.showBanner ?? true,
       ...(deps.resumedRecord ? { resumedRecord: deps.resumedRecord } : {}),
     }),
   );

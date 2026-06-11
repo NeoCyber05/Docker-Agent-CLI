@@ -63,7 +63,7 @@ export function PlanPreview(props: PlanPreviewProps): React.ReactElement {
   });
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1} marginY={1}>
+    <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1} marginY={1} overflowX="hidden">
       <Text bold color="yellow">
         Plan: {props.diff.stackName}
       </Text>
@@ -130,6 +130,7 @@ export function PlanPreview(props: PlanPreviewProps): React.ReactElement {
           borderStyle="single"
           borderColor="cyan"
           paddingX={1}
+          overflowX="hidden"
         >
           <Text color="cyan" bold>
             Auto-generated secrets (Press 's' to toggle values):
@@ -161,7 +162,7 @@ export function PlanPreview(props: PlanPreviewProps): React.ReactElement {
       <Box flexDirection="column" marginTop={1}>
         <Text bold>YAML Configuration (Press 'x' to {showYaml ? "collapse" : "expand"}):</Text>
         {showYaml ? (
-          <Box borderStyle="classic" borderColor="gray" paddingX={1} marginY={1}>
+          <Box borderStyle="classic" borderColor="gray" paddingX={1} marginY={1} overflowX="hidden">
             <Text dimColor>{props.composeYaml}</Text>
           </Box>
         ) : (

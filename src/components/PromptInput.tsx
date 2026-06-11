@@ -7,6 +7,65 @@ function shouldCompleteSuggestion(text: string, suggestion: SlashCommandSuggesti
   return text.trimEnd().toLowerCase() !== suggestion.insertText.trimEnd().toLowerCase();
 }
 
+// Counts user-perceived characters, treating Unicode combining marks (\p{M})
+// as part of the preceding base character. A single Vietnamese keystroke
+// (e.g. "ế" delivered as base + combining marks) counts as 1, not 3.
+function baseCharCount(text: string): number {
+  let count = 0;
+  for (const ch of text) {
+    if (!/\p{M}/u.test(ch)) count++;
+  }
+  return count;
+}
+
+// Splits a string into grapheme-like clusters, grouping combining marks with
+// their preceding base character. Used to align the Windows Terminal
+// duplicate-paste filter with multi-code-point graphemes.
+function splitGraphemes(text: string): string[] {
+  const clusters: string[] = [];
+  for (const ch of text) {
+    if (/\p{M}/u.test(ch) && clusters.length > 0) {
+      clusters[clusters.length - 1] += ch;
+    } else {
+      clusters.push(ch);
+    }
+  }
+  return clusters;
+}
+
+// A genuine paste contains a newline or more than one base character.
+// A single typed character — even a Vietnamese grapheme spanning several
+// code points — is NOT a paste and must bypass the dedup heuristic.
+function isPasteChunk(text: string): boolean {
+  if (/[\r\n]/.test(text)) return true;
+  return baseCharCount(text) > 1;
+}
+
+const DEL = "\u007f";
+const BS = "\u0008";
+
+// The Vietnamese Telex IME rewrites a character by emitting a DEL (0x7f) or
+// backspace (0x08) control character immediately followed by the recomposed
+// text (e.g. typing "dd" arrives as "\u007fđ", "chay"→"chạy" arrives as a
+// "\u007f\u007f" chunk then "ạy"). Ink only surfaces a *lone* control byte as
+// key.delete; when it is bundled with other characters it lands here as raw
+// input. Apply each control char as a backspace and insert the rest in order.
+function hasEditingControl(text: string): boolean {
+  return text.includes(DEL) || text.includes(BS);
+}
+
+function applyInlineEdits(current: string, input: string): string {
+  let result = current;
+  for (const ch of input) {
+    if (ch === DEL || ch === BS) {
+      result = result.slice(0, -1);
+    } else if (ch >= " ") {
+      result += ch;
+    }
+  }
+  return result;
+}
+
 export function PromptInput({
   onSubmit,
 }: {
@@ -112,13 +171,27 @@ export function PromptInput({
 
     if (input && !key.ctrl && !key.meta) {
       setSuggestionIdx(0);
+      // Normalize to NFC so Vietnamese combining sequences (e.g. "e" + ◌̂ + ◌́)
+      // collapse into a single precomposed code point where possible.
+      const normalized = input.normalize("NFC");
       const now = Date.now();
 
-      // If it is a paste chunk (length > 1)
-      if (input.length > 1) {
-        setText((s) => s + input);
+      // IME backspace-and-rewrite: DEL/BS control chars embedded in the input
+      // string (Ink does not surface these as key.delete when bundled). Apply
+      // them as backspaces so Telex character conversion works correctly.
+      if (hasEditingControl(normalized)) {
+        justPastedRef.current = false;
+        setText((s) => applyInlineEdits(s, normalized));
+        return;
+      }
+
+      // Genuine paste chunk (multiple base characters or a newline).
+      // Single typed graphemes fall through to the normal append path even if
+      // they span multiple code points (combining diacritics).
+      if (isPasteChunk(normalized)) {
+        setText((s) => s + normalized);
         justPastedRef.current = true;
-        pastedCharsRef.current = Array.from(input);
+        pastedCharsRef.current = splitGraphemes(normalized);
         pastedIndexRef.current = 0;
         lastPasteTimeRef.current = now;
         return;
@@ -132,7 +205,7 @@ export function PromptInput({
           justPastedRef.current = false;
         } else {
           const expectedChar = pastedCharsRef.current[pastedIndexRef.current];
-          if (input === expectedChar) {
+          if (normalized === expectedChar) {
             pastedIndexRef.current++;
             lastPasteTimeRef.current = now;
             if (pastedIndexRef.current >= pastedCharsRef.current.length) {
@@ -144,7 +217,7 @@ export function PromptInput({
         }
       }
 
-      setText((s) => s + input);
+      setText((s) => s + normalized);
     }
   });
 

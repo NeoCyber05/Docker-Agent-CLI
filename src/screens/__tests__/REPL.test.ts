@@ -84,11 +84,64 @@ function countOccurrences(value: string, needle: string): number {
   return value.split(needle).length - 1;
 }
 
+function renderTerminal(raw: string): string {
+  const lines: string[] = [];
+  let y = 0;
+  let x = 0;
+  let i = 0;
+  while (i < raw.length) {
+    if (raw.startsWith("\u001b[", i)) {
+      i += 2;
+      let seq = "";
+      while (i < raw.length && !/[a-zA-Z]/.test(raw[i]!)) {
+        seq += raw[i];
+        i++;
+      }
+      const cmd = raw[i];
+      i++;
+      if (cmd === "A") {
+        y = Math.max(0, y - (seq ? parseInt(seq, 10) : 1));
+      } else if (cmd === "H" || cmd === "f") {
+        if (seq) {
+          const parts = seq.split(";");
+          y = Math.max(0, (parts[0] ? parseInt(parts[0], 10) - 1 : 0));
+          x = Math.max(0, (parts[1] ? parseInt(parts[1], 10) - 1 : 0));
+        } else {
+          y = 0;
+          x = 0;
+        }
+      } else if (cmd === "K") {
+        if (seq === "2") lines[y] = "";
+      } else if (cmd === "G") {
+        x = 0;
+      }
+    } else if (raw[i] === "\n") {
+      y++;
+      x = 0;
+      i++;
+    } else if (raw[i] === "\r") {
+      x = 0;
+      i++;
+    } else {
+      if (!lines[y]) lines[y] = "";
+      const line = lines[y]!;
+      if (x > line.length) {
+        lines[y] = line + " ".repeat(x - line.length) + raw[i];
+      } else {
+        lines[y] = line.slice(0, x) + raw[i] + line.slice(x + 1);
+      }
+      x++;
+      i++;
+    }
+  }
+  return stripAnsi(lines.filter((l) => l !== undefined).join("\n"));
+}
+
 function renderRepl(
   size: { columns: number; rows: number },
   options: {
     debug?: boolean;
-    writeWelcome?: boolean;
+    showBanner?: boolean;
     provider?: ReturnType<typeof fakeProvider>;
     model?: string;
     apiKeyStore?: MemoryApiKeyStore;
@@ -103,18 +156,10 @@ function renderRepl(
   const stdout = new TestStdout(size);
   const stderr = new TestStdout(size);
   const stdin = new TestStdin();
-  if (options.writeWelcome) {
-    stdout.write(
-      renderWelcomeBannerForTerminal({
-        provider: "fake",
-        version: "0.1.0",
-        stdout: stdout as unknown as NodeJS.WriteStream,
-      }),
-    );
-  }
   const app = render(
     React.createElement(REPL, {
       version: "0.1.0",
+      showBanner: options.showBanner ?? false,
       deps: {
         cwd: tmp,
         stateStore: new StateStore(tmp),
@@ -179,7 +224,7 @@ describe("REPL terminal rendering", () => {
       }),
     );
 
-    expect(output).toContain("docker agent");
+    expect(output).toContain("docker-agent");
     expect(output).toContain("provider: fake");
     expect(output).not.toContain("Welcome back");
     expect(output).not.toContain("Tips for getting started");
@@ -210,7 +255,7 @@ describe("REPL terminal rendering", () => {
     const onSpy = vi.spyOn(process.stdout, "on");
     const clearSpy = vi.spyOn(console, "clear").mockImplementation(() => {});
 
-    const rendered = renderRepl({ columns: 100, rows: 24 }, { debug: false, writeWelcome: true });
+    const rendered = renderRepl({ columns: 100, rows: 24 }, { debug: false, showBanner: true });
     apps.push(rendered.app);
     tmpDirs.push(rendered.tmp);
     await new Promise((resolve) => setImmediate(resolve));
@@ -222,7 +267,7 @@ describe("REPL terminal rendering", () => {
   });
 
   test("does not append duplicate welcome frames when the terminal is resized", async () => {
-    const rendered = renderRepl({ columns: 100, rows: 24 }, { debug: false, writeWelcome: true });
+    const rendered = renderRepl({ columns: 100, rows: 24 }, { debug: false, showBanner: true });
     apps.push(rendered.app);
     tmpDirs.push(rendered.tmp);
     await new Promise((resolve) => setImmediate(resolve));
@@ -236,8 +281,8 @@ describe("REPL terminal rendering", () => {
     rendered.stdout.emit("resize");
     await new Promise((resolve) => setImmediate(resolve));
 
-    const output = stripAnsi(rendered.stdout.output());
-    expect(countOccurrences(output, "docker agent")).toBe(1);
+    const output = renderTerminal(rendered.stdout.output());
+    expect(countOccurrences(output, "docker-agent")).toBe(1);
     expect(countOccurrences(output, "Tips for getting started")).toBe(1);
   });
 

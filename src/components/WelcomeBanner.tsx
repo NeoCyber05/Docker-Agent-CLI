@@ -78,6 +78,7 @@ export interface WelcomeBannerProps {
   version: string;
   username?: string;
   provider: string;
+  model?: string;
   compact?: boolean;
 }
 
@@ -85,31 +86,36 @@ export function WelcomeBanner({
   version,
   username,
   provider,
+  model,
   compact = false,
 }: WelcomeBannerProps): React.ReactElement {
   const user = username ?? os.userInfo().username;
   if (compact) {
     return (
-      <Box borderStyle="round" borderColor="cyan" paddingX={1}>
+      <Box borderStyle="round" borderColor="cyan" paddingX={1} overflowX="hidden">
         <Text color="cyan" bold>
-          docker agent{" "}
+          docker-agent{" "}
         </Text>
         <Text color="cyan">v{version}</Text>
-        <Text dimColor> · provider: </Text>
+        <Text dimColor> | provider: </Text>
         <Text color="yellow">{provider}</Text>
+        <Text dimColor> | model: </Text>
+        <Text color="yellow">{model ?? "default"}</Text>
       </Box>
     );
   }
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} paddingY={0}>
+    <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} paddingY={0} overflowX="hidden">
       <Box marginBottom={1}>
         <Text color="cyan" bold>
-          docker agent{" "}
+          docker-agent{" "}
         </Text>
         <Text color="cyan">v{version}</Text>
-        <Text dimColor> · provider: </Text>
+        <Text dimColor> | provider: </Text>
         <Text color="yellow">{provider}</Text>
+        <Text dimColor> | model: </Text>
+        <Text color="yellow">{model ?? "default"}</Text>
       </Box>
 
       <Box flexDirection="row">

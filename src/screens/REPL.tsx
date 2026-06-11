@@ -1,4 +1,4 @@
-import { Box, useApp, useStdout } from "ink";
+import { Box, Text, useApp, useStdout } from "ink";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PermissionResponse } from "src/types/permissions";
@@ -6,7 +6,6 @@ import type { StackDiff } from "src/types/stack";
 import { QueryEngine, type QueryEngineDeps } from "../QueryEngine";
 import { ApiKeyInputDialog } from "../components/ApiKeyInputDialog";
 import { Footer } from "../components/Footer";
-import { Header } from "../components/Header";
 import { MessageList, type UIMessage } from "../components/MessageList";
 import { ModelPickerDialog } from "../components/ModelPickerDialog";
 import { PermissionDialog } from "../components/PermissionDialog";
@@ -15,6 +14,7 @@ import { PromptInput } from "../components/PromptInput";
 import { SecretsInputDialog } from "../components/SecretsInputDialog";
 import { ThinkingIndicator } from "../components/ThinkingIndicator";
 import { TypedConfirmDialog } from "../components/TypedConfirmDialog";
+import { WelcomeBanner } from "../components/WelcomeBanner";
 import { isValidProvider } from "../config";
 import {
   type ApiKeyProviderName,
@@ -44,6 +44,9 @@ type Pending =
 
 const DESTRUCTIVE_TOOLS = new Set(["apply_stack", "destroy_stack", "destroy_all_stacks"]);
 
+const COMPACT_WELCOME_MAX_ROWS = 16;
+const COMPACT_WELCOME_MAX_COLUMNS = 84;
+
 function safeFrameWidth(stdout: NodeJS.WriteStream): number {
   return Math.max(1, (stdout.columns || 80) - 1);
 }
@@ -67,10 +70,12 @@ export function REPL({
   deps,
   version,
   resumedRecord,
+  showBanner = true,
 }: {
   deps: QueryEngineDeps & { providerName: string; yes?: boolean; apiKeyStore?: ApiKeyStore };
   version: string;
   resumedRecord?: import("../state/SessionStore").SessionRecord;
+  showBanner?: boolean;
 }): React.ReactElement {
   const engine = useMemo(() => new QueryEngine(deps), [deps]);
   const apiKeyStore = useMemo(() => deps.apiKeyStore ?? createApiKeyStore(), [deps.apiKeyStore]);
@@ -99,6 +104,8 @@ export function REPL({
   const [activeModel, setActiveModel] = useState<string | undefined>(deps.model);
   const { exit } = useApp();
   const frameWidth = useSafeFrameWidth();
+  const { stdout } = useStdout();
+  const compact = (stdout.rows || 24) <= COMPACT_WELCOME_MAX_ROWS || frameWidth < COMPACT_WELCOME_MAX_COLUMNS;
   const nextKey = useRef(0);
   const mk = (): number => nextKey.current++;
 
@@ -464,8 +471,24 @@ export function REPL({
   };
 
   return (
-    <Box flexDirection="column" width={frameWidth}>
-      <Header provider={activeProviderName} {...(activeModel ? { model: activeModel } : {})} />
+    <Box flexDirection="column" width={frameWidth} overflowX="hidden">
+      {showBanner && (
+        <WelcomeBanner
+          version={version}
+          provider={activeProviderName}
+          model={activeModel}
+          compact={compact}
+        />
+      )}
+      {!showBanner && (
+        <Box paddingX={1} overflowX="hidden">
+          <Text>
+            docker-agent | provider: <Text color="yellow">{activeProviderName}</Text>
+            {" | "}
+            model: <Text color="yellow">{activeModel ?? "default"}</Text>
+          </Text>
+        </Box>
+      )}
       <MessageList messages={messages} />
       {pending?.kind === "permission" && (
         <PermissionDialog tool={pending.tool} input={pending.input} onAnswer={onAnswer} />

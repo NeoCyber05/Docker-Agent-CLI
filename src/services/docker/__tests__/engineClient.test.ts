@@ -172,6 +172,8 @@ describe("EngineClient", () => {
     expect(result.cpu_stats.online_cpus).toBe(2);
     expect(result.precpu_stats?.cpu_usage.total_usage).toBe(100);
     expect(result.memory_stats.usage).toBe(50);
+    // .passthrough() preserves unknown fields.
+    expect((result as Record<string, unknown>).extra_field).toBe("ignored");
   });
 
   test("stats allows missing precpu_stats (first sample)", async () => {

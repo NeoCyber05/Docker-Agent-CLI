@@ -68,6 +68,11 @@ export const defaultSpawner: Spawner = {
       }
     } finally {
       opts.signal?.removeEventListener("abort", onAbort);
+      // If the consumer stopped early (e.g. `break` out of the for-await without
+      // aborting), the generator returns here and `await exitPromise` below is
+      // skipped — so kill any still-running child to avoid leaking a `logs -f`
+      // subprocess. No-op on the normal-close and abort paths (child already gone).
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
     }
     return await exitPromise;
   },

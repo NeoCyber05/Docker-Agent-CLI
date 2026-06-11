@@ -1,3 +1,6 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { ComposeRunner, type Spawner, defaultSpawner } from "src/services/docker/composeRunner";
 import { describe, expect, test, vi } from "vitest";
 
@@ -226,6 +229,27 @@ describe("ComposeRunner", () => {
         new Promise((r) => setTimeout(() => r("timeout"), 5000)),
       ]),
     ).resolves.toBe("done");
+  });
+
+  test("defaultSpawner kills the child when the consumer breaks early without aborting", async () => {
+    // A child that writes a marker file after a delay. If the generator kills the
+    // child on early `.return()` (consumer break), the marker is never written.
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "spawn-break-"));
+    const marker = path.join(tmpDir, "marker.txt");
+    const script = `setTimeout(() => require("fs").writeFileSync(${JSON.stringify(marker)}, "x"), 1000); console.log("ready");`;
+
+    const gen = defaultSpawner.spawn(process.execPath, ["-e", script], { cwd: process.cwd() });
+
+    // Consume the first line, then break WITHOUT aborting any signal.
+    for await (const _ of gen) {
+      break;
+    }
+
+    // Wait past the child's 1s marker timer; if it survived, the marker appears.
+    await new Promise<void>((r) => setTimeout(r, 1500));
+    expect(fs.existsSync(marker)).toBe(false);
+
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
   test("non-zero exit code propagates from up", async () => {

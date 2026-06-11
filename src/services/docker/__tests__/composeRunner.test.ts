@@ -1,19 +1,41 @@
-import { ComposeRunner, type Spawner } from "src/services/docker/composeRunner";
+import { ComposeRunner, type Spawner, defaultSpawner } from "src/services/docker/composeRunner";
 import { describe, expect, test, vi } from "vitest";
 
 class StubSpawner implements Spawner {
-  calls: Array<{ cmd: string; args: string[]; cwd: string }> = [];
+  // `signal: AbortSignal | undefined` (not `signal?:`) so pushing `opts.signal`
+  // when it is undefined is legal under `exactOptionalPropertyTypes`.
+  calls: Array<{ cmd: string; args: string[]; cwd: string; signal: AbortSignal | undefined }> = [];
   stdout = ["fake stdout line\n"];
   exit = 0;
+  /** When true, spawn yields stdout then waits for abort before ending. */
+  waitForAbort = false;
+  killed = false;
   spawn = vi.fn(
     async function* (
       this: StubSpawner,
       cmd: string,
       args: string[],
-      opts: { cwd: string },
+      opts: { cwd: string; signal?: AbortSignal },
     ): AsyncGenerator<string, number> {
-      this.calls.push({ cmd, args, cwd: opts.cwd });
+      this.calls.push({ cmd, args, cwd: opts.cwd, signal: opts.signal });
       for (const line of this.stdout) yield line;
+      if (this.waitForAbort) {
+        await new Promise<void>((resolve) => {
+          if (opts.signal?.aborted) {
+            this.killed = true;
+            resolve();
+            return;
+          }
+          opts.signal?.addEventListener(
+            "abort",
+            () => {
+              this.killed = true;
+              resolve();
+            },
+            { once: true },
+          );
+        });
+      }
       return this.exit;
     }.bind(this),
   );
@@ -128,6 +150,82 @@ describe("ComposeRunner", () => {
     expect(spawner.calls[0]?.args).toContain("--tail");
     expect(spawner.calls[0]?.args).toContain("50");
     expect(spawner.calls[0]?.args).toContain("api");
+  });
+
+  test("logs follow adds -f and since adds --since", async () => {
+    const spawner = new StubSpawner();
+    const runner = new ComposeRunner("/cwd", spawner);
+    const bound = runner.forStack("svc", "/y.yaml");
+    for await (const _ of bound.logs({ follow: true, since: "10m", tailLines: 50 })) {
+      /* drain */
+    }
+    const args = spawner.calls[0]?.args ?? [];
+    expect(args).toContain("-f");
+    expect(args).toContain("--since");
+    expect(args).toContain("10m");
+    expect(args).toContain("--tail");
+    expect(args).toContain("50");
+  });
+
+  test("logs threads the abort signal to the spawner", async () => {
+    const spawner = new StubSpawner();
+    const controller = new AbortController();
+    const runner = new ComposeRunner("/cwd", spawner);
+    const bound = runner.forStack("svc", "/y.yaml");
+    for await (const _ of bound.logs({ signal: controller.signal })) {
+      /* drain */
+    }
+    expect(spawner.calls[0]?.signal).toBe(controller.signal);
+  });
+
+  test("aborting the signal ends the logs generator cleanly", async () => {
+    const spawner = new StubSpawner();
+    spawner.waitForAbort = true;
+    const controller = new AbortController();
+    const runner = new ComposeRunner("/cwd", spawner);
+    const bound = runner.forStack("svc", "/y.yaml");
+
+    const collected: string[] = [];
+    const iterate = (async () => {
+      for await (const line of bound.logs({ follow: true, signal: controller.signal })) {
+        collected.push(line);
+      }
+    })();
+
+    // Let the generator emit its buffered line, then abort.
+    await new Promise<void>((r) => setTimeout(r, 10));
+    controller.abort();
+    await iterate; // resolves only if the generator ended
+
+    expect(collected.join("")).toContain("fake stdout line");
+    expect(spawner.killed).toBe(true);
+  });
+
+  test("defaultSpawner does not hang when the signal is already aborted", async () => {
+    // Regression: the close listener must be registered before the pre-aborted
+    // signal is handled, otherwise `return await exitPromise` would hang forever.
+    const controller = new AbortController();
+    controller.abort(); // aborted BEFORE spawn is called
+
+    // A short-lived real process; `process.execPath` keeps this cross-platform.
+    const gen = defaultSpawner.spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"], {
+      cwd: process.cwd(),
+      signal: controller.signal,
+    });
+
+    const done = (async () => {
+      for await (const _ of gen) {
+        /* drain */
+      }
+    })();
+
+    // If the close listener were missing, this would never resolve.
+    await expect(
+      Promise.race([
+        done.then(() => "done"),
+        new Promise((r) => setTimeout(() => r("timeout"), 5000)),
+      ]),
+    ).resolves.toBe("done");
   });
 
   test("non-zero exit code propagates from up", async () => {

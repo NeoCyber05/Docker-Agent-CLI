@@ -1,10 +1,15 @@
 import { spawn as realSpawn } from "node:child_process";
 
 export interface Spawner {
-  spawn(cmd: string, args: string[], opts: { cwd: string }): AsyncGenerator<string, number>;
+  spawn(
+    cmd: string,
+    args: string[],
+    opts: { cwd: string; signal?: AbortSignal },
+  ): AsyncGenerator<string, number>;
 }
 
-const defaultSpawner: Spawner = {
+// Exported so the abort-ordering behavior can be unit-tested directly.
+export const defaultSpawner: Spawner = {
   spawn: async function* spawn(cmd, args, opts) {
     const child = realSpawn(cmd, args, { cwd: opts.cwd, stdio: ["ignore", "pipe", "pipe"] });
     const out = child.stdout;
@@ -22,6 +27,8 @@ const defaultSpawner: Spawner = {
         chunkQueue.push(chunk);
       }
     };
+    // Register stream + close listeners FIRST so an already-aborted signal
+    // (handled below) cannot kill the child before `close` is observable.
     out.on("data", (chunk: string) => pushChunk(chunk));
     err.on("data", (chunk: string) => pushChunk(chunk));
     const exitPromise = new Promise<number>((res) =>
@@ -30,25 +37,37 @@ const defaultSpawner: Spawner = {
         res(code ?? 0);
       }),
     );
-    while (true) {
-      let chunk: string | null;
-      if (chunkQueue.length > 0) {
-        chunk = chunkQueue.shift() ?? null;
-      } else {
-        chunk = await new Promise<string | null>((res) => {
-          resolveChunk = res;
-        });
+    const onAbort = () => {
+      child.kill("SIGTERM");
+      pushChunk(null);
+    };
+    if (opts.signal) {
+      if (opts.signal.aborted) onAbort();
+      else opts.signal.addEventListener("abort", onAbort, { once: true });
+    }
+    try {
+      while (true) {
+        let chunk: string | null;
+        if (chunkQueue.length > 0) {
+          chunk = chunkQueue.shift() ?? null;
+        } else {
+          chunk = await new Promise<string | null>((res) => {
+            resolveChunk = res;
+          });
+        }
+        if (chunk === null) {
+          if (lineBuffer.length > 0) yield lineBuffer;
+          break;
+        }
+        lineBuffer += chunk;
+        const lines = lineBuffer.split("\n");
+        lineBuffer = lines.pop() ?? "";
+        for (const line of lines) {
+          yield `${line}\n`;
+        }
       }
-      if (chunk === null) {
-        if (lineBuffer.length > 0) yield lineBuffer;
-        break;
-      }
-      lineBuffer += chunk;
-      const lines = lineBuffer.split("\n");
-      lineBuffer = lines.pop() ?? "";
-      for (const line of lines) {
-        yield `${line}\n`;
-      }
+    } finally {
+      opts.signal?.removeEventListener("abort", onAbort);
     }
     return await exitPromise;
   },
@@ -67,6 +86,9 @@ export interface PsOpts {
 export interface LogsOpts {
   service?: string;
   tailLines?: number;
+  follow?: boolean;
+  since?: string;
+  signal?: AbortSignal;
 }
 export interface ComposePsRow {
   Name: string;
@@ -129,9 +151,14 @@ export class BoundComposeRunner {
   async *logs(opts: LogsOpts = {}): AsyncGenerator<string, number> {
     const args = this.baseArgs();
     args.push("logs");
+    if (opts.follow) args.push("-f");
     if (opts.tailLines !== undefined) args.push("--tail", String(opts.tailLines));
+    if (opts.since !== undefined) args.push("--since", opts.since);
     if (opts.service) args.push(opts.service);
-    return yield* this.spawner.spawn("docker", args, { cwd: this.cwd });
+    return yield* this.spawner.spawn("docker", args, {
+      cwd: this.cwd,
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    });
   }
 }
 

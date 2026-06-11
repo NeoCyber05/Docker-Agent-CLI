@@ -79,4 +79,28 @@ describe("computeStats", () => {
     expect(result.memLimitMb).toBeNull();
     expect(result.memPercent).toBeNull();
   });
+
+  test("mem fields null when limit is 0 (avoids div-by-zero)", () => {
+    const raw = {
+      cpu_stats: { cpu_usage: { total_usage: 200 }, system_cpu_usage: 2000, online_cpus: 1 },
+      precpu_stats: { cpu_usage: { total_usage: 100 }, system_cpu_usage: 1000 },
+      memory_stats: { usage: MB, limit: 0 },
+    } as unknown as ContainerStats;
+
+    const result = computeStats(raw);
+    expect(result.memUsedMb).toBeNull();
+    expect(result.memLimitMb).toBeNull();
+    expect(result.memPercent).toBeNull();
+  });
+
+  test("numCpus falls back to 1 when online_cpus and percpu_usage are both absent", () => {
+    const raw = {
+      cpu_stats: { cpu_usage: { total_usage: 200 }, system_cpu_usage: 2000 },
+      precpu_stats: { cpu_usage: { total_usage: 100 }, system_cpu_usage: 1000 },
+      memory_stats: {},
+    } as unknown as ContainerStats;
+
+    // cpuDelta=100, systemDelta=1000, numCpus=1 -> (100/1000)*1*100 = 10
+    expect(computeStats(raw).cpuPercent).toBeCloseTo(10);
+  });
 });

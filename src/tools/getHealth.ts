@@ -28,15 +28,14 @@ function computeCpuPercent(raw: ContainerStats): number | null {
   const systemDelta = sysNow - sysPre;
   if (systemDelta <= 0) return null;
   const cpuDelta = raw.cpu_stats.cpu_usage.total_usage - pre.cpu_usage.total_usage;
+  // `??` (not `||`): a daemon-reported `online_cpus: 0` is preserved rather than
+  // falling back to percpu length. Modern daemons report a positive count or omit
+  // the field, so the realistic input is null/undefined, which does fall through.
   const numCpus = raw.cpu_stats.online_cpus ?? raw.cpu_stats.cpu_usage.percpu_usage?.length ?? 1;
   return (cpuDelta / systemDelta) * numCpus * 100;
 }
 
-function computeMem(raw: ContainerStats): {
-  memUsedMb: number | null;
-  memLimitMb: number | null;
-  memPercent: number | null;
-} {
+function computeMem(raw: ContainerStats): Omit<ComputedStats, "cpuPercent"> {
   const usage = raw.memory_stats.usage;
   const limit = raw.memory_stats.limit;
   if (usage === undefined || limit === undefined || limit === 0) {

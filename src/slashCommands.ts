@@ -31,6 +31,11 @@ export const SLASH_COMMANDS: readonly SlashCommandSuggestion[] = [
     insertText: "/status ",
   },
   {
+    usage: "/logs <stack> [service]",
+    description: "Live-tail a stack's logs (Esc to stop)",
+    insertText: "/logs ",
+  },
+  {
     usage: "/destroy <stack>",
     description: "Destroy one stack",
     insertText: "/destroy ",

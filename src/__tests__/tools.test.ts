@@ -2,8 +2,8 @@ import { getAllTools, getToolsForMode } from "src/tools";
 import { describe, expect, test } from "vitest";
 
 describe("tool registry", () => {
-  test("getAllTools returns 10 tools", () => {
-    expect(getAllTools()).toHaveLength(10);
+  test("getAllTools returns 12 tools", () => {
+    expect(getAllTools()).toHaveLength(12);
   });
 
   test("plan-once mode exposes only plan_stack", () => {

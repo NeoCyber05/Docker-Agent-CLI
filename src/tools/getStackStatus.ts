@@ -2,7 +2,9 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Tool, ToolProgress } from "src/Tool";
 import type { ComposePsRow } from "src/services/docker/composeRunner";
+import { scrubLine } from "src/state/secretRedactor";
 import { z } from "zod";
+import { collectSecretKeys } from "./shared/secretKeys";
 
 export const GetStackStatusInputSchema = z.object({
   stackName: z.string(),
@@ -29,6 +31,7 @@ export const getStackStatus: Tool<GetStackStatusInput, GetStackStatusResult> = {
     }
 
     yield { type: "progress", msg: `Compose ps + logs for ${input.stackName}...` };
+    const secretKeys = collectSecretKeys(input.stackName, ctx);
     const bound = ctx.composeRunner.forStack(input.stackName, yamlPath);
     const rows = await bound.ps({ json: true });
     const logs = bound.logs({ tailLines: input.tailLines ?? 50 });
@@ -37,7 +40,7 @@ export const getStackStatus: Tool<GetStackStatusInput, GetStackStatusResult> = {
     while (true) {
       const r = await logs.next();
       if (r.done) break;
-      logTail += r.value;
+      logTail += scrubLine(r.value, secretKeys);
     }
 
     return { rows, logTail };

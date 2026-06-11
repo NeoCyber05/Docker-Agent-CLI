@@ -3,6 +3,8 @@ import { applyStack } from "./tools/applyStack";
 import { destroyAllStacks } from "./tools/destroyAllStacks";
 import { destroyStack } from "./tools/destroyStack";
 import { execDocker } from "./tools/execDocker";
+import { getHealth } from "./tools/getHealth";
+import { getLogs } from "./tools/getLogs";
 import { getStackStatus } from "./tools/getStackStatus";
 import { inspectDrift } from "./tools/inspectDrift";
 import { listStacks } from "./tools/listStacks";
@@ -22,6 +24,8 @@ export function getAllTools(): Tool[] {
     inspectDrift as Tool,
     remediateDrift as Tool,
     getStackStatus as Tool,
+    getLogs as Tool,
+    getHealth as Tool,
     pullImage as Tool,
     execDocker as Tool,
   ];
@@ -37,6 +41,8 @@ export function getToolsForMode(mode: QueryMode): Tool[] {
     inspectDrift as Tool,
     remediateDrift as Tool,
     getStackStatus as Tool,
+    getLogs as Tool,
+    getHealth as Tool,
     pullImage as Tool,
     execDocker as Tool,
   ];

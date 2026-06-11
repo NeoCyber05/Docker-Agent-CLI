@@ -8,6 +8,7 @@ export interface EngineClient {
     filters?: { label?: string[] };
   }): Promise<Array<ContainerSummary>>;
   inspect(id: string): Promise<ContainerInspect>;
+  stats(id: string): Promise<ContainerStats>;
   inspectImage?(nameOrId: string): Promise<ImageInspect | null>;
   listImages?(opts?: { filters?: Record<string, string[]> }): Promise<ImageSummary[]>;
   pullImage?(image: string, opts?: { signal?: AbortSignal }): AsyncGenerator<string, void>;
@@ -27,6 +28,7 @@ export interface ContainerInspect {
   Config: { Image: string; Env: string[]; Cmd: string[] | null; Labels: Record<string, string> };
   HostConfig: { Binds: string[] | null; PortBindings: Record<string, unknown> };
   NetworkSettings: { Ports: Record<string, Array<{ HostIp: string; HostPort: string }> | null> };
+  RestartCount: number;
 }
 
 export interface ImageSummary {
@@ -81,7 +83,33 @@ const containerInspectSchema = z.object({
   NetworkSettings: z.object({
     Ports: z.record(z.array(portBindingSchema).nullable()),
   }),
+  RestartCount: z.number().default(0),
 });
+
+const containerStatsSchema = z
+  .object({
+    cpu_stats: z.object({
+      cpu_usage: z.object({
+        total_usage: z.number(),
+        percpu_usage: z.array(z.number()).optional(),
+      }),
+      system_cpu_usage: z.number().optional(),
+      online_cpus: z.number().optional(),
+    }),
+    precpu_stats: z
+      .object({
+        cpu_usage: z.object({ total_usage: z.number() }),
+        system_cpu_usage: z.number().optional(),
+      })
+      .optional(),
+    memory_stats: z.object({
+      usage: z.number().optional(),
+      limit: z.number().optional(),
+    }),
+  })
+  .passthrough();
+
+export type ContainerStats = z.infer<typeof containerStatsSchema>;
 
 const repoTagsSchema = z.preprocess((value) => value ?? [], z.array(z.string()));
 
@@ -171,6 +199,8 @@ export function createEngineClient(): EngineClient {
       return containers.map((container) => containerSummarySchema.parse(container));
     },
     inspect: async (id) => containerInspectSchema.parse(await docker.getContainer(id).inspect()),
+    stats: async (id) =>
+      containerStatsSchema.parse(await docker.getContainer(id).stats({ stream: false })),
     inspectImage: async (nameOrId) => {
       try {
         return imageInspectSchema.parse(await docker.getImage(nameOrId).inspect());

@@ -43,8 +43,13 @@ function makeEngine(
         },
         HostConfig: { Binds: null, PortBindings: {} },
         NetworkSettings: { Ports: {} },
+        RestartCount: 0,
       };
     },
+    stats: async () => ({
+      cpu_stats: { cpu_usage: { total_usage: 0 } },
+      memory_stats: {},
+    }),
   };
 }
 

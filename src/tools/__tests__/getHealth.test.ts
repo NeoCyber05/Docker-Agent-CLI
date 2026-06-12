@@ -1,6 +1,6 @@
 import type { ToolContext } from "src/Tool";
 import type { EngineClient } from "src/services/docker/engineClient";
-import { getHealth } from "src/tools/getHealth";
+import { type HealthRow, getHealth } from "src/tools/getHealth";
 import { describe, expect, test, vi } from "vitest";
 
 const MB = 1024 * 1024;
@@ -69,7 +69,7 @@ describe("get_health", () => {
 
     const result = await drain(getHealth.call({ stackName: "web" }, ctxWith(engine)));
     expect(result.containers).toHaveLength(1);
-    const row = result.containers[0]!;
+    const row = result.containers[0] as HealthRow;
     expect(row.service).toBe("web");
     expect(row.status).toBe("running");
     expect(row.health).toBe("healthy");
@@ -102,10 +102,10 @@ describe("get_health", () => {
     });
 
     const two = await drain(getHealth.call({ stackName: "s" }, ctxWith(makeEngine(2))));
-    expect(two.containers[0]!.crashLoop).toBe(false);
+    expect((two.containers[0] as HealthRow).crashLoop).toBe(false);
 
     const three = await drain(getHealth.call({ stackName: "s" }, ctxWith(makeEngine(3))));
-    expect(three.containers[0]!.crashLoop).toBe(true);
+    expect((three.containers[0] as HealthRow).crashLoop).toBe(true);
     expect(three.crashLoops).toEqual(["/db-1"]);
   });
 
@@ -131,7 +131,7 @@ describe("get_health", () => {
       stats: async () => goodStats as never,
     };
     const result = await drain(getHealth.call({ stackName: "s" }, ctxWith(engine)));
-    expect(result.containers[0]!.crashLoop).toBe(true);
+    expect((result.containers[0] as HealthRow).crashLoop).toBe(true);
   });
 
   test("returns an exited container (relies on all:true) with null cpu/mem", async () => {
@@ -159,7 +159,7 @@ describe("get_health", () => {
       },
     };
     const result = await drain(getHealth.call({ stackName: "s" }, ctxWith(engine)));
-    const row = result.containers[0]!;
+    const row = result.containers[0] as HealthRow;
     expect(row.status).toBe("exited");
     expect(row.cpuPercent).toBeNull();
     expect(row.error).toBeTruthy();
@@ -196,8 +196,8 @@ describe("get_health", () => {
       stats: async () => goodStats as never,
     };
     const result = await drain(getHealth.call({ stackName: "s" }, ctxWith(engine)));
-    const bad = result.containers.find((r) => r.name === "/bad-1")!;
-    const ok = result.containers.find((r) => r.name === "/ok-1")!;
+    const bad = result.containers.find((r) => r.name === "/bad-1") as HealthRow;
+    const ok = result.containers.find((r) => r.name === "/ok-1") as HealthRow;
     expect(bad.error).toBeTruthy();
     expect(bad.status).toBe("running"); // from list summary
     expect(bad.restartCount).toBe(0);
@@ -229,7 +229,7 @@ describe("get_health", () => {
       },
     };
     const result = await drain(getHealth.call({ stackName: "s" }, ctxWith(engine)));
-    const row = result.containers[0]!;
+    const row = result.containers[0] as HealthRow;
     expect(row.cpuPercent).toBeNull();
     expect(row.memUsedMb).toBeNull();
     expect(row.health).toBe("healthy"); // preserved from inspect
@@ -264,8 +264,8 @@ describe("get_health", () => {
         }) as never,
     };
     const result = await drain(getHealth.call({ stackName: "s" }, ctxWith(engine)));
-    expect(result.containers[0]!.cpuPercent).toBeNull();
-    expect(result.containers[0]!.memUsedMb).toBeCloseTo(1);
+    expect((result.containers[0] as HealthRow).cpuPercent).toBeNull();
+    expect((result.containers[0] as HealthRow).memUsedMb).toBeCloseTo(1);
   });
 
   test("top-level engine failure returns an error result, not a throw", async () => {

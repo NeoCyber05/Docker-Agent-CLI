@@ -35,7 +35,14 @@ export function TypedConfirmDialog({
   });
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="red" paddingX={1} marginY={1} overflowX="hidden">
+    <Box
+      flexDirection="column"
+      borderStyle="round"
+      borderColor="red"
+      paddingX={1}
+      marginY={1}
+      overflowX="hidden"
+    >
       <Text bold color="red">
         Type "{phrase}" to confirm
       </Text>

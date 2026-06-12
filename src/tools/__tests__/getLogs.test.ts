@@ -120,8 +120,10 @@ describe("get_logs", () => {
     expect(result.logTail).not.toContain("log line number 0\n");
     // Chronological order is preserved even when truncated (regression for capNewest reverse).
     const keptLines = result.logTail.split("\n").filter(Boolean);
-    const firstKept = Number(keptLines[0]!.replace("log line number ", ""));
-    const lastKept = Number(keptLines[keptLines.length - 1]!.replace("log line number ", ""));
+    const firstKept = Number((keptLines[0] as string).replace("log line number ", ""));
+    const lastKept = Number(
+      (keptLines[keptLines.length - 1] as string).replace("log line number ", ""),
+    );
     expect(firstKept).toBeLessThan(lastKept);
     expect(lastKept).toBe(3999);
   });

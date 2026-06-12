@@ -23,7 +23,10 @@ export class MockDockerEngine {
   listContainers = vi.fn(
     async (_opts: { all?: boolean; filters?: unknown } = {}) => this.containers,
   );
+  // Maps container Id -> raw stats object returned by stats().
+  statsById = new Map<string, unknown>();
   inspect = vi.fn(async (id: string) => this.containers.find((c) => c.Id === id) ?? {});
+  stats = vi.fn(async (id: string) => this.statsById.get(id) ?? {});
   getContainer = vi.fn((id: string) => ({
     inspect: vi.fn(async () => this.containers.find((c) => c.Id === id) ?? {}),
   }));

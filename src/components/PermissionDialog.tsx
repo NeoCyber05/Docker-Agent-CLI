@@ -37,7 +37,14 @@ export function PermissionDialog({
   });
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="magenta" paddingX={1} marginY={1} overflowX="hidden">
+    <Box
+      flexDirection="column"
+      borderStyle="round"
+      borderColor="magenta"
+      paddingX={1}
+      marginY={1}
+      overflowX="hidden"
+    >
       <Text bold color="magenta">
         Permission required
       </Text>

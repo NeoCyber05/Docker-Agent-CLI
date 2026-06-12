@@ -42,7 +42,14 @@ export function ModelPickerDialog({
   const visible = models.slice(start, start + PAGE_SIZE);
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} marginY={1} overflowX="hidden">
+    <Box
+      flexDirection="column"
+      borderStyle="round"
+      borderColor="cyan"
+      paddingX={1}
+      marginY={1}
+      overflowX="hidden"
+    >
       <Text bold color="cyan">
         Select a model ({models.length} available)
       </Text>

@@ -63,7 +63,14 @@ export function PlanPreview(props: PlanPreviewProps): React.ReactElement {
   });
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="yellow" paddingX={1} marginY={1} overflowX="hidden">
+    <Box
+      flexDirection="column"
+      borderStyle="round"
+      borderColor="yellow"
+      paddingX={1}
+      marginY={1}
+      overflowX="hidden"
+    >
       <Text bold color="yellow">
         Plan: {props.diff.stackName}
       </Text>

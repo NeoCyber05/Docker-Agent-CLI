@@ -12,7 +12,13 @@ export class MockBoundRunner {
   upCalls: Array<{ detach?: boolean; scale?: Record<string, number> }> = [];
   downCalls: Array<{ volumes?: boolean }> = [];
   psCalls: Array<{ json?: boolean }> = [];
-  logsCalls: Array<{ service?: string; tailLines?: number }> = [];
+  logsCalls: Array<{
+    service?: string;
+    tailLines?: number;
+    follow?: boolean;
+    since?: string;
+    signal?: AbortSignal;
+  }> = [];
   lastExitCode = 0;
   /**
    * Rows returned by ps(). When null (default), ps() returns an empty array.
@@ -52,7 +58,13 @@ export class MockBoundRunner {
   logs = vi.fn(
     async function* (
       this: MockBoundRunner,
-      opts: { service?: string; tailLines?: number } = {},
+      opts: {
+        service?: string;
+        tailLines?: number;
+        follow?: boolean;
+        since?: string;
+        signal?: AbortSignal;
+      } = {},
     ): AsyncGenerator<string, number> {
       this.logsCalls.push(opts);
       yield "";

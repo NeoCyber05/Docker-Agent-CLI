@@ -106,7 +106,14 @@ export function WelcomeBanner({
   }
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} paddingY={0} overflowX="hidden">
+    <Box
+      flexDirection="column"
+      borderStyle="round"
+      borderColor="cyan"
+      paddingX={1}
+      paddingY={0}
+      overflowX="hidden"
+    >
       <Box marginBottom={1}>
         <Text color="cyan" bold>
           docker-agent{" "}

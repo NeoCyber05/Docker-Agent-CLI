@@ -93,19 +93,19 @@ function renderTerminal(raw: string): string {
     if (raw.startsWith("\u001b[", i)) {
       i += 2;
       let seq = "";
-      while (i < raw.length && !/[a-zA-Z]/.test(raw[i]!)) {
+      while (i < raw.length && !/[a-zA-Z]/.test(raw[i] as string)) {
         seq += raw[i];
         i++;
       }
       const cmd = raw[i];
       i++;
       if (cmd === "A") {
-        y = Math.max(0, y - (seq ? parseInt(seq, 10) : 1));
+        y = Math.max(0, y - (seq ? Number.parseInt(seq, 10) : 1));
       } else if (cmd === "H" || cmd === "f") {
         if (seq) {
           const parts = seq.split(";");
-          y = Math.max(0, (parts[0] ? parseInt(parts[0], 10) - 1 : 0));
-          x = Math.max(0, (parts[1] ? parseInt(parts[1], 10) - 1 : 0));
+          y = Math.max(0, parts[0] ? Number.parseInt(parts[0], 10) - 1 : 0);
+          x = Math.max(0, parts[1] ? Number.parseInt(parts[1], 10) - 1 : 0);
         } else {
           y = 0;
           x = 0;
@@ -124,7 +124,7 @@ function renderTerminal(raw: string): string {
       i++;
     } else {
       if (!lines[y]) lines[y] = "";
-      const line = lines[y]!;
+      const line = lines[y] as string;
       if (x > line.length) {
         lines[y] = line + " ".repeat(x - line.length) + raw[i];
       } else {

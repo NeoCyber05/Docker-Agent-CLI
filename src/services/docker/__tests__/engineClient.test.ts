@@ -128,7 +128,66 @@ describe("EngineClient", () => {
       NetworkSettings: {
         Ports: { "80/tcp": [{ HostIp: "0.0.0.0", HostPort: "8080" }] },
       },
+      RestartCount: 0,
     });
+  });
+
+  test("inspect includes RestartCount", async () => {
+    const inspect = vi.fn().mockResolvedValue({
+      Id: "abc123",
+      Name: "/api",
+      State: { Status: "running", Health: { Status: "healthy" } },
+      Config: { Image: "nginx:alpine", Env: [], Cmd: null, Labels: {} },
+      HostConfig: { Binds: null, PortBindings: {} },
+      NetworkSettings: { Ports: {} },
+      RestartCount: 4,
+    });
+    dockerMock.docker.getContainer.mockReturnValue({ inspect });
+
+    const client = createEngineClient();
+    const result = await client.inspect("abc123");
+
+    expect(result.RestartCount).toBe(4);
+  });
+
+  test("stats parses cpu/mem fields and passes through extras", async () => {
+    const stats = vi.fn().mockResolvedValue({
+      cpu_stats: {
+        cpu_usage: { total_usage: 200, percpu_usage: [1, 2] },
+        system_cpu_usage: 2000,
+        online_cpus: 2,
+      },
+      precpu_stats: { cpu_usage: { total_usage: 100 }, system_cpu_usage: 1000 },
+      memory_stats: { usage: 50, limit: 100 },
+      extra_field: "ignored",
+    });
+    dockerMock.docker.getContainer.mockReturnValue({ stats });
+
+    const client = createEngineClient();
+    const result = await client.stats("abc123");
+
+    expect(dockerMock.docker.getContainer).toHaveBeenCalledWith("abc123");
+    expect(stats).toHaveBeenCalledWith({ stream: false });
+    expect(result.cpu_stats.cpu_usage.total_usage).toBe(200);
+    expect(result.cpu_stats.online_cpus).toBe(2);
+    expect(result.precpu_stats?.cpu_usage.total_usage).toBe(100);
+    expect(result.memory_stats.usage).toBe(50);
+    // .passthrough() preserves unknown fields.
+    expect((result as Record<string, unknown>).extra_field).toBe("ignored");
+  });
+
+  test("stats allows missing precpu_stats (first sample)", async () => {
+    const stats = vi.fn().mockResolvedValue({
+      cpu_stats: { cpu_usage: { total_usage: 200 } },
+      memory_stats: {},
+    });
+    dockerMock.docker.getContainer.mockReturnValue({ stats });
+
+    const client = createEngineClient();
+    const result = await client.stats("abc123");
+
+    expect(result.precpu_stats).toBeUndefined();
+    expect(result.memory_stats.usage).toBeUndefined();
   });
 
   test("returns null for missing images", async () => {

@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { Box, Text, useApp, useStdout } from "ink";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -6,6 +8,7 @@ import type { StackDiff } from "src/types/stack";
 import { QueryEngine, type QueryEngineDeps } from "../QueryEngine";
 import { ApiKeyInputDialog } from "../components/ApiKeyInputDialog";
 import { Footer } from "../components/Footer";
+import { LogPane } from "../components/LogPane";
 import { MessageList, type UIMessage } from "../components/MessageList";
 import { ModelPickerDialog } from "../components/ModelPickerDialog";
 import { PermissionDialog } from "../components/PermissionDialog";
@@ -27,6 +30,8 @@ import {
 import { resolveProviderForRequest } from "../services/api";
 import { formatSlashHelp } from "../slashCommands";
 import type { SessionStore } from "../state/SessionStore";
+import { scrubLine } from "../state/secretRedactor";
+import { collectSecretKeys } from "../tools/shared/secretKeys";
 
 type Pending =
   | { kind: "permission"; id: string; tool: string; input: unknown }
@@ -100,14 +105,82 @@ export function REPL({
   });
   const [pending, setPending] = useState<Pending | null>(null);
   const [streaming, setStreaming] = useState(false);
+  const [activeLogPane, setActiveLogPane] = useState<{
+    stackName: string;
+    service?: string;
+    controller: AbortController;
+  } | null>(null);
+  const [logLines, setLogLines] = useState<string[]>([]);
+  const logControllerRef = useRef<AbortController | null>(null);
+
+  const LOG_RING_MAX = 200;
+
+  const stopLogPane = () => {
+    logControllerRef.current?.abort();
+    logControllerRef.current = null;
+    setActiveLogPane(null);
+    setLogLines([]);
+  };
+
+  const startLogPane = (stackName: string, service?: string) => {
+    const yamlPath = path.join(deps.cwd, ".docker-agent", "stacks", `${stackName}.yaml`);
+    if (!fs.existsSync(yamlPath)) {
+      setMessages((m) => [
+        ...m,
+        { key: mk(), role: "user", text: `/logs ${stackName}${service ? ` ${service}` : ""}` },
+        { key: mk(), role: "error", text: `stack ${stackName} not found` },
+      ]);
+      return;
+    }
+    // Abort any prior pane first.
+    logControllerRef.current?.abort();
+    const controller = new AbortController();
+    logControllerRef.current = controller;
+    setLogLines([]);
+    setActiveLogPane({ stackName, controller, ...(service ? { service } : {}) });
+
+    const secretKeys = collectSecretKeys(stackName, {
+      cwd: deps.cwd,
+      stateStore: deps.stateStore,
+    });
+    const bound = deps.composeRunner.forStack(stackName, yamlPath);
+    void (async () => {
+      try {
+        for await (const chunk of bound.logs({
+          follow: true,
+          tailLines: 50,
+          signal: controller.signal,
+          ...(service ? { service } : {}),
+        })) {
+          if (controller.signal.aborted) break;
+          const scrubbed = scrubLine(chunk, secretKeys);
+          setLogLines((prev) => {
+            const next = [...prev, scrubbed];
+            return next.length > LOG_RING_MAX ? next.slice(-LOG_RING_MAX) : next;
+          });
+        }
+      } catch {
+        /* generator ended or aborted — pane lifecycle handles cleanup */
+      }
+    })();
+  };
+
   const [activeProviderName, setActiveProviderName] = useState(deps.providerName);
   const [activeModel, setActiveModel] = useState<string | undefined>(deps.model);
   const { exit } = useApp();
   const frameWidth = useSafeFrameWidth();
   const { stdout } = useStdout();
-  const compact = (stdout.rows || 24) <= COMPACT_WELCOME_MAX_ROWS || frameWidth < COMPACT_WELCOME_MAX_COLUMNS;
+  const compact =
+    (stdout.rows || 24) <= COMPACT_WELCOME_MAX_ROWS || frameWidth < COMPACT_WELCOME_MAX_COLUMNS;
   const nextKey = useRef(0);
   const mk = (): number => nextKey.current++;
+
+  useEffect(() => {
+    return () => {
+      logControllerRef.current?.abort();
+      logControllerRef.current = null;
+    };
+  }, []);
 
   const handleSubmit = async (input: string) => {
     let targetPrompt = input.trim();
@@ -126,10 +199,12 @@ export function REPL({
       const arg = parts.slice(1).join(" ");
 
       if (cmd === "/quit" || cmd === "/exit") {
+        stopLogPane();
         exit();
         return;
       }
       if (cmd === "/clear") {
+        stopLogPane();
         engine.reset();
         setMessages([]);
         nextKey.current = 0;
@@ -319,6 +394,22 @@ export function REPL({
         });
         nextKey.current = repainted.length;
         setMessages(repainted);
+        return;
+      }
+
+      if (cmd === "/logs") {
+        const logParts = arg.split(/\s+/).filter(Boolean);
+        const stackName = logParts[0];
+        const service = logParts[1];
+        if (!stackName) {
+          setMessages((m) => [
+            ...m,
+            { key: mk(), role: "user", text: input },
+            { key: mk(), role: "error", text: "Usage: /logs <stack> [service]" },
+          ]);
+          return;
+        }
+        startLogPane(stackName, service);
         return;
       }
 
@@ -542,12 +633,20 @@ export function REPL({
           }}
         />
       )}
-      {!pending && streaming && (
+      {activeLogPane && (
+        <LogPane
+          stackName={activeLogPane.stackName}
+          {...(activeLogPane.service ? { service: activeLogPane.service } : {})}
+          lines={logLines}
+          onClose={stopLogPane}
+        />
+      )}
+      {!pending && streaming && !activeLogPane && (
         <Box paddingLeft={1} marginY={1}>
           <ThinkingIndicator />
         </Box>
       )}
-      {!pending && !streaming && <PromptInput onSubmit={handleSubmit} />}
+      {!pending && !streaming && !activeLogPane && <PromptInput onSubmit={handleSubmit} />}
       <Footer usage={engine.totalUsage} />
     </Box>
   );

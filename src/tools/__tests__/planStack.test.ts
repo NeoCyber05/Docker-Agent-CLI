@@ -188,4 +188,66 @@ describe("plan_stack", () => {
     ).rejects.toThrow("Invalid Docker images detected");
     expect(fs.existsSync(path.join(tmpRoot, ".docker-agent/secrets/bad-db.env"))).toBe(false);
   });
+
+  test("stages provided config file content", async () => {
+    const ctx = makeCtx(tmpRoot);
+    const result = await drain(
+      planStack.call(
+        {
+          stackName: "web",
+          intent: "nginx proxy",
+          services: {
+            nginx: { image: "nginx:1.27", volumes: ["./nginx.conf:/etc/nginx/nginx.conf"] },
+          },
+          configFiles: { "./nginx.conf": "events {}\n" },
+        },
+        ctx,
+      ),
+    );
+    if (result.blocked) throw new Error("plan should not be blocked");
+    expect(result.configFiles).toEqual([{ path: "nginx.conf", content: "events {}\n", bytes: 10 }]);
+    // staging must not write to disk yet
+    expect(fs.existsSync(path.join(tmpRoot, "nginx.conf"))).toBe(false);
+  });
+
+  test("blocks a file bind with no content and no host file", async () => {
+    const ctx = makeCtx(tmpRoot);
+    const result = await drain(
+      planStack.call(
+        {
+          stackName: "web",
+          intent: "nginx proxy",
+          services: {
+            nginx: { image: "nginx:1.27", volumes: ["./nginx.conf:/etc/nginx/nginx.conf"] },
+          },
+        },
+        ctx,
+      ),
+    );
+    expect(result.blocked).toBe(true);
+    if (!result.blocked) throw new Error("expected blocked");
+    expect(result.reason).toBe("missing_config_file");
+    if (result.reason === "missing_config_file") {
+      expect(result.missingFiles).toEqual([{ service: "nginx", path: "./nginx.conf" }]);
+    }
+  });
+
+  test("throws on an unsafe config file path", async () => {
+    const ctx = makeCtx(tmpRoot);
+    await expect(
+      drain(
+        planStack.call(
+          {
+            stackName: "web",
+            intent: "x",
+            services: {
+              nginx: { image: "nginx:1.27", volumes: ["./nginx.conf:/etc/nginx/nginx.conf"] },
+            },
+            configFiles: { "../evil.conf": "x" },
+          },
+          ctx,
+        ),
+      ),
+    ).rejects.toThrow("unsafe config file path");
+  });
 });

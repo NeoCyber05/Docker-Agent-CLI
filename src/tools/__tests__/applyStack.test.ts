@@ -5,7 +5,7 @@ import * as path from "node:path";
 import type { ToolContext } from "src/Tool";
 import type { ImageValidator } from "src/services/docker/imageValidator";
 import { StateStore } from "src/state/StateStore";
-import { applyStack } from "src/tools/applyStack";
+import { applyStack, verifyHealth } from "src/tools/applyStack";
 import { beforeEach, describe, expect, test } from "vitest";
 import { MockComposeRunner } from "../../../tests/mocks/mockComposeRunner";
 import { MockDockerEngine } from "../../../tests/mocks/mockDockerEngine";
@@ -160,5 +160,56 @@ describe("apply_stack", () => {
     });
     expect(runner.forStackCalls).toEqual([]);
     expect(ctx.stateStore.read("bad")).toBeNull();
+  });
+});
+
+describe("verifyHealth", () => {
+  const noAbort = new AbortController().signal;
+  type Row = { Name: string; Service: string; State: string; Health?: string };
+  function boundWith(rows: Row[]) {
+    return { ps: async () => rows } as never;
+  }
+
+  test("healthy once every service is running", async () => {
+    const r = await verifyHealth(
+      boundWith([{ Name: "s-web-1", Service: "web", State: "running" }]),
+      ["web"],
+      10_000,
+      noAbort,
+    );
+    expect(r).toEqual({ healthy: true, unhealthy: [] });
+  });
+
+  test("fails fast on a crashed (exited) container without waiting the deadline", async () => {
+    const start = Date.now();
+    const r = await verifyHealth(
+      boundWith([
+        { Name: "s-web-1", Service: "web", State: "running" },
+        { Name: "s-db-1", Service: "db", State: "exited" },
+      ]),
+      ["web", "db"],
+      60_000,
+      noAbort,
+    );
+    expect(r.healthy).toBe(false);
+    expect(r.unhealthy).toEqual([{ service: "db", status: "exited" }]);
+    expect(Date.now() - start).toBeLessThan(1_000);
+  });
+
+  test("reports a not-created service with a status", async () => {
+    const r = await verifyHealth(boundWith([]), ["web"], 0, noAbort);
+    expect(r.healthy).toBe(false);
+    expect(r.unhealthy).toEqual([{ service: "web", status: "not created" }]);
+  });
+
+  test("uses the health field when a healthcheck is present", async () => {
+    const r = await verifyHealth(
+      boundWith([{ Name: "s-db-1", Service: "db", State: "running", Health: "unhealthy" }]),
+      ["db"],
+      0,
+      noAbort,
+    );
+    expect(r.healthy).toBe(false);
+    expect(r.unhealthy).toEqual([{ service: "db", status: "health: unhealthy" }]);
   });
 });

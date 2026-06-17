@@ -9,6 +9,7 @@ import { scrubLine, shouldRedact } from "src/state/secretRedactor";
 import type { StackDefinition } from "src/types/stack";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
+import { findInvalidFileBinds } from "./shared/configFiles";
 import { validateImagesForTool } from "./shared/imageValidation";
 
 export const ApplyStackInputSchema = z.object({
@@ -35,32 +36,91 @@ function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
 }
 
+export interface UnhealthyService {
+  service: string;
+  /** e.g. "exited", "created", "restarting", "health: starting", "not created" */
+  status: string;
+}
+
+// Container states a long-running service won't recover from on its own. Seeing
+// one means the apply has already failed — stop waiting out the deadline.
+const TERMINAL_STATES = new Set(["exited", "dead"]);
+
+/** Describe a service's unhealthy status, or null when it is healthy/running. */
+function unhealthyStatus(row: ComposePsRow | undefined): string | null {
+  if (!row) return "not created";
+  if (row.Health) return row.Health === "healthy" ? null : `health: ${row.Health}`;
+  return row.State === "running" ? null : row.State;
+}
+
 export async function verifyHealth(
   bound: BoundComposeRunner,
   expectedServices: string[],
   deadlineMs: number, // clamped 10_000..600_000
   abort: AbortSignal,
-): Promise<{ healthy: boolean; unhealthy: string[] }> {
+): Promise<{ healthy: boolean; unhealthy: UnhealthyService[] }> {
   const POLL_INTERVAL_MS = POLL_INTERVAL_MS_DEFAULT; // 2s
   const deadline = Date.now() + deadlineMs;
   while (true) {
-    if (abort.aborted) return { healthy: false, unhealthy: expectedServices };
+    if (abort.aborted) {
+      return {
+        healthy: false,
+        unhealthy: expectedServices.map((service) => ({ service, status: "aborted" })),
+      };
+    }
     let rows: ComposePsRow[] = [];
     try {
       rows = await bound.ps({ json: true });
     } catch {
       // treat as unhealthy, keep polling
     }
-    const unhealthy = expectedServices.filter((svc) => {
-      const row = rows.find((r) => r.Service === svc);
-      if (!row) return true;
-      if (row.Health) return row.Health !== "healthy";
-      return row.State !== "running";
-    });
+    const unhealthy: UnhealthyService[] = [];
+    let crashed = false;
+    for (const service of expectedServices) {
+      const row = rows.find((r) => r.Service === service);
+      const status = unhealthyStatus(row);
+      if (status === null) continue;
+      unhealthy.push({ service, status });
+      if (row && TERMINAL_STATES.has(row.State.toLowerCase())) crashed = true;
+    }
     if (unhealthy.length === 0) return { healthy: true, unhealthy: [] };
+    // Fail-fast: a crashed container won't recover — don't wait out the deadline.
+    if (crashed) return { healthy: false, unhealthy };
     if (Date.now() >= deadline) return { healthy: false, unhealthy };
     await new Promise<void>((r) => setTimeout(r, POLL_INTERVAL_MS));
   }
+}
+
+const FAILURE_LOG_TAIL = 15;
+
+/** Best-effort: tail recent logs of failed services to attach to the apply error. */
+async function collectFailureLogs(
+  bound: BoundComposeRunner,
+  services: string[],
+  secretKeys: Set<string>,
+): Promise<string> {
+  const sections: string[] = [];
+  for (const svc of services) {
+    let buf = "";
+    try {
+      const gen = bound.logs({ service: svc, tailLines: FAILURE_LOG_TAIL });
+      while (true) {
+        const r = await gen.next();
+        if (r.done) break;
+        buf += r.value;
+      }
+    } catch {
+      // logs are diagnostic-only; ignore failures (e.g. a mocked runner)
+    }
+    const lines = buf.split("\n").filter((l) => l.trim());
+    if (lines.length === 0) continue;
+    const scrubbed = lines
+      .slice(-FAILURE_LOG_TAIL)
+      .map((l) => scrubLine(l, secretKeys).trimEnd())
+      .join("\n");
+    sections.push(`--- ${svc} ---\n${scrubbed}`);
+  }
+  return sections.join("\n\n");
 }
 
 function resolveEnvFile(cwd: string, envFilePath: string): string {
@@ -139,6 +199,26 @@ export const applyStack: Tool<ApplyStackInput, ApplyStackResult> = {
 
     const secretKeys = stackSecretKeys(def, ctx.cwd);
 
+    // Refuse before `compose up` if any file-like bind source is missing or is a
+    // directory. Docker would otherwise silently auto-create an empty directory
+    // at the source and then fail mounting it onto the image's file. Config
+    // files authored by the agent are written before this tool runs, so a hit
+    // here means the LLM emitted a file bind without providing its content (or a
+    // stale Docker-created dir was left behind).
+    const invalidBinds = findInvalidFileBinds(def.services, ctx.cwd);
+    if (invalidBinds.length > 0) {
+      return {
+        ok: false,
+        exitCode: 1,
+        yamlPath,
+        errorOutput:
+          "Refusing to start: every file bind-mount source must be a real file before " +
+          "'compose up' (Docker auto-creates a directory otherwise). Provide the file " +
+          "content via configFiles, or create the files on disk:\n" +
+          invalidBinds.map((b) => `  - ${b.path} (${b.service}): ${b.reason}`).join("\n"),
+      };
+    }
+
     yield { type: "progress", msg: `Writing stack YAML for ${input.stackName}...` };
 
     const stacksDir = path.join(ctx.cwd, ".docker-agent", "stacks");
@@ -189,12 +269,15 @@ export const applyStack: Tool<ApplyStackInput, ApplyStackResult> = {
           );
 
           if (!healthResult.healthy) {
+            const failedNames = healthResult.unhealthy.map((u) => u.service);
+            const logs = await collectFailureLogs(bound, failedNames, secretKeys);
             return {
               ok: false,
               exitCode: 0,
               yamlPath,
               healthy: false,
-              unhealthyServices: healthResult.unhealthy,
+              unhealthyServices: healthResult.unhealthy.map((u) => `${u.service} (${u.status})`),
+              ...(logs ? { errorOutput: logs } : {}),
             };
           }
 

@@ -76,6 +76,34 @@ export function detectMissingConfigFiles(
   return missing;
 }
 
+/**
+ * File-like bind sources that would make `compose up` misbehave: the source is
+ * absent (Docker silently auto-creates an empty *directory* there) or already
+ * squats as a directory (mounting a dir onto an image file fails with "are you
+ * trying to mount a directory onto a file"). Call this right before `up` so we
+ * refuse loudly instead of letting Docker create a stray folder.
+ */
+export function findInvalidFileBinds(
+  services: Record<string, ServiceSpec>,
+  cwd: string,
+): Array<{ service: string; path: string; reason: "missing" | "directory" }> {
+  const bad: Array<{ service: string; path: string; reason: "missing" | "directory" }> = [];
+  for (const [service, spec] of Object.entries(services)) {
+    for (const vol of spec.volumes ?? []) {
+      const bind = parseBindMount(vol);
+      if (!bind || !isFileLikeBind(bind.source)) continue;
+      const safe = resolveSafe(cwd, bind.source);
+      if (!safe.ok) continue; // unsafe paths are rejected during staging
+      if (!fs.existsSync(safe.abs)) {
+        bad.push({ service, path: bind.source, reason: "missing" });
+      } else if (fs.statSync(safe.abs).isDirectory()) {
+        bad.push({ service, path: bind.source, reason: "directory" });
+      }
+    }
+  }
+  return bad;
+}
+
 const MAX_FILE_BYTES = 64 * 1024;
 const MAX_TOTAL_BYTES = 256 * 1024;
 
@@ -133,6 +161,13 @@ export function writeConfigFiles(cwd: string, files: StagedConfigFile[]): void {
   for (const f of files) {
     const safe = resolveSafe(cwd, f.path);
     if (!safe.ok) throw new Error(`refusing to write "${f.path}": ${safe.error}`);
+    // Docker auto-creates an empty *directory* at a bind-mount source when the
+    // file is missing at `compose up` time. If such a stale dir squats at our
+    // target, remove it so writeFileSync lands a real file instead of throwing
+    // EISDIR — and so the next mount sees a file, not a directory.
+    if (fs.existsSync(safe.abs) && fs.statSync(safe.abs).isDirectory()) {
+      fs.rmSync(safe.abs, { recursive: true, force: true });
+    }
     fs.mkdirSync(path.dirname(safe.abs), { recursive: true });
     fs.writeFileSync(safe.abs, f.content, "utf8");
   }
@@ -143,7 +178,8 @@ export function restoreConfigFiles(snapshots: ConfigFileSnapshot[]): void {
     if (s.existed) {
       fs.writeFileSync(s.abs, s.previousContent ?? "", "utf8");
     } else if (fs.existsSync(s.abs)) {
-      fs.rmSync(s.abs, { force: true });
+      // recursive covers a Docker-auto-created directory squatting at the path
+      fs.rmSync(s.abs, { recursive: true, force: true });
     }
   }
 }

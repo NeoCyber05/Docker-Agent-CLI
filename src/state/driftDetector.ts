@@ -17,6 +17,53 @@ const RUNTIME_ALLOWLIST = new Set([
   "_",
 ]);
 
+/**
+ * Parse ports from a container's NetworkSettings.Ports map into the short
+ * Compose syntax "HOST:CONTAINER[/proto]" (e.g. "3406:3306", "8080:80/tcp").
+ * Only entries that have at least one HostPort binding are included.
+ */
+function parseActualPorts(
+  networkPorts: Record<string, Array<{ HostIp: string; HostPort: string }> | null>,
+): string[] {
+  const result: string[] = [];
+  for (const [containerPortProto, bindings] of Object.entries(networkPorts)) {
+    if (!bindings || bindings.length === 0) continue;
+    // containerPortProto is e.g. "3306/tcp" or "80/tcp"
+    const slashIdx = containerPortProto.indexOf("/");
+    const containerPort =
+      slashIdx >= 0 ? containerPortProto.slice(0, slashIdx) : containerPortProto;
+    const proto = slashIdx >= 0 ? containerPortProto.slice(slashIdx + 1) : "tcp";
+    for (const b of bindings) {
+      if (!b.HostPort) continue;
+      // Omit /tcp suffix (most common) to match Compose YAML convention
+      const portStr =
+        proto === "tcp" ? `${b.HostPort}:${containerPort}` : `${b.HostPort}:${containerPort}/${proto}`;
+      result.push(portStr);
+    }
+  }
+  // Sort for stable comparison
+  return result.sort();
+}
+
+/**
+ * Normalize a volume binding for comparison.
+ * Docker Compose prefixes named volumes with "<stackName>_" and always appends
+ * ":rw" or ":ro" to the actual mount. Strip both so we compare apples-to-apples
+ * against the user's declared spec (e.g. "db_data:/var/lib/mysql").
+ */
+function normalizeVolume(vol: string, stackName: string): string {
+  const parts = vol.split(":");
+  if (parts.length < 2) return vol;
+  let source = parts[0] as string;
+  const target = parts[1] as string;
+  // Strip mode suffix (:rw / :ro) added by Docker
+  const rest = parts.slice(2).filter((p) => p !== "rw" && p !== "ro");
+  // Strip stack-name prefix added by Compose for named volumes (not bind mounts)
+  const prefix = `${stackName}_`;
+  if (source.startsWith(prefix)) source = source.slice(prefix.length);
+  return rest.length > 0 ? `${source}:${target}:${rest.join(":")}` : `${source}:${target}`;
+}
+
 function envArrayToMap(env: string[]): Record<string, string> {
   const m: Record<string, string> = {};
   for (const line of env) {
@@ -61,33 +108,48 @@ function snapshot(
 function diffSnapshots(
   desired: ServiceSnapshot,
   actual: ServiceSnapshot,
+  declaredEnvKeys: Set<string>,
 ): Array<{ field: string; from: unknown; to: unknown }> {
   const changes: Array<{ field: string; from: unknown; to: unknown }> = [];
-  const scalarFields: Array<keyof ServiceSnapshot> = ["image", "command", "replicaCount"];
-  for (const f of scalarFields) {
+
+  // image + replicaCount: always compare
+  for (const f of ["image", "replicaCount"] as const) {
     if (JSON.stringify(desired[f]) !== JSON.stringify(actual[f])) {
-      changes.push({ field: f as string, from: desired[f], to: actual[f] });
+      changes.push({ field: f, from: desired[f], to: actual[f] });
     }
   }
-  if (JSON.stringify(desired.ports) !== JSON.stringify(actual.ports)) {
-    changes.push({ field: "ports", from: desired.ports, to: actual.ports });
+
+  // command: only diff when the user explicitly set one in the spec.
+  // If desired.command is null the image's own entrypoint/CMD is authoritative.
+  if (desired.command !== null) {
+    if (JSON.stringify(desired.command) !== JSON.stringify(actual.command)) {
+      changes.push({ field: "command", from: desired.command, to: actual.command });
+    }
   }
-  if (JSON.stringify(desired.volumes) !== JSON.stringify(actual.volumes)) {
-    changes.push({ field: "volumes", from: desired.volumes, to: actual.volumes });
+
+  // ports: compare sorted lists
+  const dp = [...desired.ports].sort();
+  const ap = [...actual.ports].sort();
+  if (JSON.stringify(dp) !== JSON.stringify(ap)) {
+    changes.push({ field: "ports", from: dp, to: ap });
   }
-  // env: visible diff by value
-  const allVisibleKeys = new Set([
-    ...Object.keys(desired.env.visible),
-    ...Object.keys(actual.env.visible),
-  ]);
-  for (const k of allVisibleKeys) {
+
+  // volumes: compare sorted, normalized lists
+  const dv = [...desired.volumes].sort();
+  const av = [...actual.volumes].sort();
+  if (JSON.stringify(dv) !== JSON.stringify(av)) {
+    changes.push({ field: "volumes", from: dv, to: av });
+  }
+
+  // env: only compare keys the user explicitly declared (visible)
+  for (const k of declaredEnvKeys) {
+    if (desired.env.secretKeys.includes(k) || actual.env.secretKeys.includes(k)) continue;
     const a = desired.env.visible[k];
     const b = actual.env.visible[k];
     if (a !== b) changes.push({ field: `env.${k}`, from: a, to: b });
   }
-  // env: secret keys by presence + hash mismatch (values redacted)
-  const allSecretKeys = new Set([...desired.env.secretKeys, ...actual.env.secretKeys]);
-  for (const k of allSecretKeys) {
+  // env: secret keys by presence + hash mismatch (values redacted) — only declared keys
+  for (const k of desired.env.secretKeys) {
     const dh = desired.env.secretHashesByKey[k];
     const ah = actual.env.secretHashesByKey[k];
     if (dh !== ah) changes.push({ field: `env.${k}`, from: "***", to: "***" });
@@ -131,13 +193,17 @@ export async function detectDrift(
     const spec = def.services[svc];
     const containers = byService.get(svc) ?? [];
 
+    // Collect the env keys the user explicitly declared so we only diff those.
+    const declaredEnvMap = spec ? desiredEnv(spec, cwd) : {};
+    const declaredEnvKeys = new Set(Object.keys(declaredEnvMap));
+
     const desiredSnap = spec
       ? snapshot(
           spec.image,
           spec.command ?? null,
-          spec.ports ?? [],
-          desiredEnv(spec, cwd),
-          spec.volumes ?? [],
+          [...(spec.ports ?? [])].sort(),
+          declaredEnvMap,
+          [...(spec.volumes ?? [])].sort(),
           spec.scale ?? 1,
           stackName,
         )
@@ -147,12 +213,16 @@ export async function detectDrift(
     const first = containers[0];
     if (first !== undefined) {
       const mergedEnvMap = envArrayToMap(first.Config.Env ?? []);
+      const actualPorts = parseActualPorts(first.NetworkSettings.Ports);
+      const actualVolumes = (first.HostConfig.Binds ?? [])
+        .map((v) => normalizeVolume(v, stackName))
+        .sort();
       actualSnap = snapshot(
         first.Config.Image,
         first.Config.Cmd,
-        [],
+        actualPorts,
         mergedEnvMap,
-        first.HostConfig.Binds ?? [],
+        actualVolumes,
         containers.length,
         stackName,
         first.State.Status,
@@ -161,7 +231,7 @@ export async function detectDrift(
 
     const changes =
       desiredSnap && actualSnap
-        ? diffSnapshots(desiredSnap, actualSnap)
+        ? diffSnapshots(desiredSnap, actualSnap, declaredEnvKeys)
         : desiredSnap
           ? [{ field: "service", from: "desired", to: "missing" }]
           : [{ field: "service", from: "missing", to: "extra" }];

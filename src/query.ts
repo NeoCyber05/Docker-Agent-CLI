@@ -157,9 +157,10 @@ async function* applyWithRollback(
 
   // Determine failure reason
   const reason = applyResult.healthy === false ? "unhealthy" : "apply_failed";
+  const logsTail = applyResult.errorOutput ? `\nRecent logs:\n${applyResult.errorOutput}` : "";
   const detail =
     reason === "unhealthy"
-      ? `unhealthy: ${(applyResult.unhealthyServices ?? []).join(", ")}`
+      ? `unhealthy: ${(applyResult.unhealthyServices ?? []).join(", ")}${logsTail}`
       : `exit ${applyResult.exitCode}: ${applyResult.errorOutput ?? "unknown"}`;
 
   yield { type: "rollback_started", stackName, reason, detail };
@@ -386,7 +387,8 @@ export async function* query(params: QueryParams): AsyncGenerator<LoopEvent, voi
     .reverse()
     .find((m): m is { role: "user"; content: string } => m.role === "user");
   const mode = lastUser ? classifyIntent(lastUser.content) : "react";
-  const maxIterations = mode === "plan-once" ? 1 : 8;
+  // react needs headroom for multi-service trial-and-error (apply → diagnose → fix).
+  const maxIterations = mode === "plan-once" ? 1 : 12;
 
   for (let iter = 0; iter < maxIterations; iter++) {
     yield { type: "iteration_start", n: iter + 1 };

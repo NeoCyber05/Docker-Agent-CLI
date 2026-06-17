@@ -230,13 +230,14 @@ describe("query core loop", () => {
       { type: "message_stop", stopReason: "end_turn" as const },
     ];
     const manyIterations: ProviderEvent[][] = [];
-    for (let i = 0; i < 9; i++) manyIterations.push([...iteration]);
+    // Push 13 tool-use iterations (> maxIterations=12) so the loop hits the cap
+    for (let i = 0; i < 13; i++) manyIterations.push([...iteration]);
     manyIterations.push([
       { type: "text_delta", text: "done" },
       { type: "message_stop", stopReason: "end_turn" as const },
     ]);
     const responses: PermissionResponse[] = [];
-    for (let i = 0; i < 9; i++) responses.push({ kind: "approve" });
+    for (let i = 0; i < 13; i++) responses.push({ kind: "approve" });
     const events = await collectEvents("list stacks", { perCall: manyIterations }, responses);
     const errorEv = events.find((e) => e.type === "error");
     expect(errorEv).toBeDefined();

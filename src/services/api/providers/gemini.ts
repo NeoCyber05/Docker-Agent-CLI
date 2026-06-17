@@ -11,6 +11,24 @@ export class GeminiProvider implements Provider {
     private apiKeyStore?: ApiKeyStore,
   ) {}
 
+  async listModels(): Promise<string[]> {
+    const apiKey = await resolveStoredApiKey("gemini", this.env, this.apiKeyStore);
+    if (!apiKey) throw new Error("GEMINI_API_KEY not set");
+
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+    );
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as any;
+      throw new Error(`Failed to fetch models: ${err.error?.message || res.statusText}`);
+    }
+    const data = (await res.json()) as { models: { name: string }[] };
+    return data.models
+      .map((m) => m.name.replace(/^models\//, ""))
+      .filter((id) => id.includes("gemini"))
+      .sort((a, b) => a.localeCompare(b));
+  }
+
   async *stream(params: CallModelParams): AsyncGenerator<ProviderEvent> {
     const apiKey = await resolveStoredApiKey("gemini", this.env, this.apiKeyStore);
     if (!apiKey) {
@@ -71,13 +89,41 @@ export class GeminiProvider implements Provider {
       let inputTokens = 0;
       let outputTokens = 0;
       let toolCallIdx = 0;
+      let hasOutput = false;
+      let lastFinishReason: string | undefined;
       for await (const chunk of result.stream) {
+        // Check for safety blocks on the prompt itself
+        const pf = (chunk as any).promptFeedback;
+        if (pf?.blockReason) {
+          yield {
+            type: "error",
+            error: new Error(`Prompt blocked by Gemini safety filter: ${pf.blockReason}`),
+          };
+          return;
+        }
+
         for (const cand of chunk.candidates ?? []) {
-          for (const part of cand.content.parts ?? []) {
+          // Track finish reason (e.g. SAFETY, RECITATION, MAX_TOKENS)
+          if (cand.finishReason) {
+            lastFinishReason = cand.finishReason;
+          }
+
+          // Guard against undefined content (common during thinking phase)
+          const parts = cand.content?.parts ?? [];
+
+          for (const part of parts) {
+            // Skip thinking-only parts (Gemini 2.5 thinking models)
+            if ((part as any).thought === true && !part.functionCall) {
+              // Thinking part — don't emit as visible text
+              continue;
+            }
+
             if (part.text) {
+              hasOutput = true;
               yield { type: "text_delta", text: part.text };
             }
             if (part.functionCall) {
+              hasOutput = true;
               const id = `gemini-${toolCallIdx++}`;
               yield { type: "tool_use_start", id, name: part.functionCall.name };
               yield {
@@ -95,6 +141,36 @@ export class GeminiProvider implements Provider {
           outputTokens = usage.candidatesTokenCount ?? outputTokens;
         }
       }
+
+      // Check for non-success finish reasons
+      if (
+        lastFinishReason &&
+        lastFinishReason !== "STOP" &&
+        lastFinishReason !== "MAX_TOKENS" &&
+        !hasOutput
+      ) {
+        yield {
+          type: "error",
+          error: new Error(
+            `Gemini response ended with reason: ${lastFinishReason}. The model may have blocked the response.`,
+          ),
+        };
+        return;
+      }
+
+      // If the stream completed without producing any content, report it
+      if (!hasOutput) {
+        yield {
+          type: "error",
+          error: new Error(
+            `Gemini returned an empty response for model "${modelId}". ` +
+              "This may happen if the model is unsupported by the current SDK version, " +
+              "or if a safety filter silently blocked the output.",
+          ),
+        };
+        return;
+      }
+
       yield { type: "usage", inputTokens, outputTokens };
       yield { type: "message_stop", stopReason: "end_turn" };
     } catch (err) {

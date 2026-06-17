@@ -12,6 +12,10 @@ function makeEngine(
     Image: string;
     Env: string[];
     State: string;
+    /** Optional: Docker NetworkSettings.Ports map */
+    Ports?: Record<string, Array<{ HostIp: string; HostPort: string }> | null>;
+    /** Optional: HostConfig.Binds (actual volume bindings from Docker) */
+    Binds?: string[] | null;
   }>,
 ) {
   return {
@@ -41,8 +45,8 @@ function makeEngine(
             "com.docker.compose.service": c.Service,
           },
         },
-        HostConfig: { Binds: null, PortBindings: {} },
-        NetworkSettings: { Ports: {} },
+        HostConfig: { Binds: c.Binds ?? null, PortBindings: {} },
+        NetworkSettings: { Ports: c.Ports ?? {} },
         RestartCount: 0,
       };
     },
@@ -175,6 +179,114 @@ describe("detectDrift", () => {
     const report = await detectDrift("test", store, engine);
     const change = report.serviceDiffs[0]?.changes.find((c) => c.field === "replicaCount");
     expect(change).toMatchObject({ from: 3, to: 2 });
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  });
+
+  // ── Regression: false-positive drift fixes ────────────────────────────────
+
+  test("in_sync when ports match (3406:3306 YAML vs Docker NetworkSettings)", async () => {
+    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "drift-"));
+    store = new StateStore(tmpRoot);
+    store.write("test", {
+      "x-docker-agent": {
+        name: "test",
+        createdAt: "x",
+        lastApplied: "x",
+        intent: "x",
+        provider: "x",
+        generatedBy: "x",
+        envFileSources: {},
+      },
+      services: {
+        db: { image: "mariadb:10.5", ports: ["3406:3306"] },
+      },
+    });
+    const engine = makeEngine([
+      {
+        Id: "c1",
+        Service: "db",
+        Image: "mariadb:10.5",
+        Env: [],
+        State: "running",
+        // Docker reports as NetworkSettings.Ports
+        Ports: { "3306/tcp": [{ HostIp: "0.0.0.0", HostPort: "3406" }] },
+      },
+    ]);
+    const report = await detectDrift("test", store, engine);
+    expect(report.status).toBe("in_sync");
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  });
+
+  test("in_sync when compose-prefixed + :rw volume matches declared named volume", async () => {
+    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "drift-"));
+    store = new StateStore(tmpRoot);
+    store.write("test", {
+      "x-docker-agent": {
+        name: "test",
+        createdAt: "x",
+        lastApplied: "x",
+        intent: "x",
+        provider: "x",
+        generatedBy: "x",
+        envFileSources: {},
+      },
+      services: {
+        db: { image: "mariadb:10.5", volumes: ["db_data:/var/lib/mysql"] },
+      },
+    });
+    const engine = makeEngine([
+      {
+        Id: "c1",
+        Service: "db",
+        Image: "mariadb:10.5",
+        Env: [],
+        State: "running",
+        // Docker Compose prefixes the stack name ("test_") and appends ":rw"
+        Binds: ["test_db_data:/var/lib/mysql:rw"],
+      },
+    ]);
+    const report = await detectDrift("test", store, engine);
+    expect(report.status).toBe("in_sync");
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+  });
+
+  test("in_sync when image-baked env vars are present in container but not in spec", async () => {
+    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "drift-"));
+    store = new StateStore(tmpRoot);
+    store.write("test", {
+      "x-docker-agent": {
+        name: "test",
+        createdAt: "x",
+        lastApplied: "x",
+        intent: "x",
+        provider: "x",
+        generatedBy: "x",
+        envFileSources: {},
+      },
+      // User only declares one env var; image bakes in many more
+      services: {
+        db: { image: "mariadb:10.5", environment: { MARIADB_ROOT_PASSWORD: "secret" } },
+      },
+    });
+    const engine = makeEngine([
+      {
+        Id: "c1",
+        Service: "db",
+        Image: "mariadb:10.5",
+        Env: [
+          "MARIADB_ROOT_PASSWORD=secret",
+          // Image-baked — should NOT trigger drift
+          "GOSU_VERSION=1.17",
+          "MARIADB_VERSION=1:10.5.29+maria-ubu2004",
+          "MARIADB_MAJOR=10.5",
+        ],
+        State: "running",
+      },
+    ]);
+    const report = await detectDrift("test", store, engine);
+    // Only MARIADB_ROOT_PASSWORD was declared; it is a secret so hash comparison applies.
+    // The image-baked variables must NOT cause drift.
+    expect(report.status).toBe("in_sync");
     fs.rmSync(tmpRoot, { recursive: true, force: true });
   });
 });

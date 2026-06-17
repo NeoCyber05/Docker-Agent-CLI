@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import {
   detectMissingConfigFiles,
+  findInvalidFileBinds,
   isFileLikeBind,
   parseBindMount,
   resolveSafe,
@@ -87,6 +88,54 @@ describe("detectMissingConfigFiles", () => {
     fs.writeFileSync(path.join(cwd, "nginx.conf"), "x");
     const services = { nginx: { image: "nginx", volumes: ["./nginx.conf:/etc/nginx/nginx.conf"] } };
     expect(detectMissingConfigFiles(services, new Set(), cwd)).toEqual([]);
+  });
+});
+
+describe("findInvalidFileBinds", () => {
+  let cwd: string;
+  beforeEach(() => {
+    cwd = fs.mkdtempSync(path.join(os.tmpdir(), "cfg-invalid-"));
+  });
+  const services = {
+    nginx: { image: "nginx", volumes: ["./nginx.conf:/etc/nginx/nginx.conf:ro"] },
+  };
+
+  test("flags a missing file-bind source (Docker would auto-create a dir)", () => {
+    expect(findInvalidFileBinds(services, cwd)).toEqual([
+      { service: "nginx", path: "./nginx.conf", reason: "missing" },
+    ]);
+  });
+  test("flags a directory squatting at the source", () => {
+    fs.mkdirSync(path.join(cwd, "nginx.conf"));
+    expect(findInvalidFileBinds(services, cwd)).toEqual([
+      { service: "nginx", path: "./nginx.conf", reason: "directory" },
+    ]);
+  });
+  test("accepts a real file at the source", () => {
+    fs.writeFileSync(path.join(cwd, "nginx.conf"), "events {}");
+    expect(findInvalidFileBinds(services, cwd)).toEqual([]);
+  });
+  test("ignores directory mounts and named volumes", () => {
+    const svc = {
+      web: { image: "nginx", volumes: ["./html:/usr/share/nginx/html", "pgdata:/var/lib/x"] },
+    };
+    expect(findInvalidFileBinds(svc, cwd)).toEqual([]);
+  });
+});
+
+describe("writeConfigFiles dir recovery", () => {
+  let cwd: string;
+  beforeEach(() => {
+    cwd = fs.mkdtempSync(path.join(os.tmpdir(), "cfg-dirheal-"));
+  });
+
+  test("replaces a Docker-auto-created directory with the real file", () => {
+    // simulate Docker leaving an empty directory at the bind source
+    fs.mkdirSync(path.join(cwd, "nginx.conf"));
+    writeConfigFiles(cwd, [{ path: "nginx.conf", content: "events {}", bytes: 9 }]);
+    const stat = fs.statSync(path.join(cwd, "nginx.conf"));
+    expect(stat.isFile()).toBe(true);
+    expect(fs.readFileSync(path.join(cwd, "nginx.conf"), "utf8")).toBe("events {}");
   });
 });
 

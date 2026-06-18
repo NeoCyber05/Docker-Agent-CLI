@@ -17,7 +17,10 @@ const VERSION = "0.1.0";
 const COMPACT_WELCOME_MAX_ROWS = 16;
 const COMPACT_WELCOME_MAX_COLUMNS = 84;
 
-type ChatRender = (node: React.ReactElement) => {
+type ChatRender = (
+  node: React.ReactElement,
+  options?: { exitOnCtrlC?: boolean },
+) => {
   waitUntilExit(): Promise<void>;
 };
 
@@ -215,14 +218,24 @@ export async function renderChatSession(
   },
   options: { renderImpl?: ChatRender; version?: string; showBanner?: boolean } = {},
 ): Promise<void> {
+  const showBanner = options.showBanner ?? true;
+  if (showBanner) {
+    process.stdout.write(
+      renderWelcomeBannerForTerminal({
+        provider: deps.providerName,
+        version: options.version ?? VERSION,
+      }),
+    );
+  }
   const renderImpl = options.renderImpl ?? render;
   const { waitUntilExit } = renderImpl(
     React.createElement(REPL, {
       version: options.version ?? VERSION,
       deps,
-      showBanner: options.showBanner ?? true,
+      showBanner: false,
       ...(deps.resumedRecord ? { resumedRecord: deps.resumedRecord } : {}),
     }),
+    { exitOnCtrlC: false },
   );
   await waitUntilExit();
 }

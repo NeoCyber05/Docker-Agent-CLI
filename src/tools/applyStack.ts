@@ -211,11 +211,7 @@ export const applyStack: Tool<ApplyStackInput, ApplyStackResult> = {
         ok: false,
         exitCode: 1,
         yamlPath,
-        errorOutput:
-          "Refusing to start: every file bind-mount source must be a real file before " +
-          "'compose up' (Docker auto-creates a directory otherwise). Provide the file " +
-          "content via configFiles, or create the files on disk:\n" +
-          invalidBinds.map((b) => `  - ${b.path} (${b.service}): ${b.reason}`).join("\n"),
+        errorOutput: `Refusing to start: every file bind-mount source must be a real file before 'compose up' (Docker auto-creates a directory otherwise). Provide the file content via configFiles, or create the files on disk:\n${invalidBinds.map((b) => `  - ${b.path} (${b.service}): ${b.reason}`).join("\n")}`,
       };
     }
 

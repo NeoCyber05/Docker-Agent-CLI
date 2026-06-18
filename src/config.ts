@@ -4,7 +4,7 @@ import * as path from "node:path";
 
 export type ProviderName = "gemini" | "openai" | "ollama";
 
-const PROVIDER_NAMES: readonly ProviderName[] = ["gemini", "openai", "ollama"];
+export const PROVIDER_NAMES: readonly ProviderName[] = ["gemini", "openai", "ollama"];
 
 export function isValidProvider(value: unknown): value is ProviderName {
   return typeof value === "string" && (PROVIDER_NAMES as readonly string[]).includes(value);

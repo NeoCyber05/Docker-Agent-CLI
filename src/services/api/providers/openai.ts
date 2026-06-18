@@ -68,18 +68,22 @@ export class OpenAIProvider implements Provider {
     ];
 
     try {
-      const stream = await client.chat.completions.create({
-        model,
-        messages,
-        ...(toolDefs.length ? { tools: toolDefs as unknown as OpenAI.ChatCompletionTool[] } : {}),
-        stream: true,
-        stream_options: { include_usage: true },
-      });
+      const stream = await client.chat.completions.create(
+        {
+          model,
+          messages,
+          ...(toolDefs.length ? { tools: toolDefs as unknown as OpenAI.ChatCompletionTool[] } : {}),
+          stream: true,
+          stream_options: { include_usage: true },
+        },
+        { signal: params.signal },
+      );
       const toolBuffers = new Map<number, { id: string; name: string; args: string }>();
       let inputTokens = 0;
       let outputTokens = 0;
       let stopReason: "end_turn" | "tool_use" | "max_tokens" = "end_turn";
       for await (const chunk of stream) {
+        if (params.signal?.aborted) return;
         const delta = chunk.choices[0]?.delta;
         if (!delta) continue;
         if (delta.content) yield { type: "text_delta", text: delta.content };
@@ -116,6 +120,7 @@ export class OpenAIProvider implements Provider {
       yield { type: "usage", inputTokens, outputTokens };
       yield { type: "message_stop", stopReason };
     } catch (err) {
+      if (params.signal?.aborted) return;
       yield { type: "error", error: err as Error };
     }
   }

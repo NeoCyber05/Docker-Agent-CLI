@@ -40,7 +40,7 @@ export class QueryEngine {
   private messages: Message[] = [];
   private pending = new Map<string, (v: PermissionResponse) => void>();
   private sessionAllowSet = new Set<string>();
-  private abortController = new AbortController();
+  private activeController: AbortController | null = null;
   private _sessionId: string = nanoid();
   private resumedId: string | null = null;
   public provider: Provider;
@@ -72,6 +72,8 @@ export class QueryEngine {
   }
 
   async *query(userInput: string): AsyncGenerator<LoopEvent, void> {
+    const controller = new AbortController();
+    this.activeController = controller;
     this.messages.push({ role: "user", content: userInput });
     const eventQueue = new AsyncQueue<LoopEvent>();
 
@@ -80,7 +82,7 @@ export class QueryEngine {
       stateStore: this.deps.stateStore,
       dockerEngine: this.deps.dockerEngine,
       composeRunner: this.deps.composeRunner,
-      abortSignal: this.abortController.signal,
+      abortSignal: controller.signal,
       sessionId: this._sessionId,
       ...(this.deps.healthCheckDeadlineMs !== undefined
         ? { healthCheckDeadlineMs: this.deps.healthCheckDeadlineMs }
@@ -118,7 +120,9 @@ export class QueryEngine {
           eventQueue.push(ev);
         }
       } catch (err) {
-        eventQueue.push({ type: "error", error: err as Error });
+        if (!controller.signal.aborted) {
+          eventQueue.push({ type: "error", error: err as Error });
+        }
       } finally {
         eventQueue.close();
         for (const [, resolve] of this.pending) resolve({ kind: "deny" });
@@ -135,7 +139,7 @@ export class QueryEngine {
         yield ev;
       }
     } finally {
-      this.abortController.abort();
+      this.activeController = null;
       await loopPromise.catch(() => {});
       // Persist transcript after turn ends
       if (this.deps.sessionStore) {
@@ -168,15 +172,17 @@ export class QueryEngine {
   }
 
   abort(): void {
-    this.abortController.abort();
-    this.abortController = new AbortController();
+    this.activeController?.abort();
+    for (const [, resolve] of this.pending) resolve({ kind: "deny" });
+    this.pending.clear();
   }
 
   reset(): void {
+    this.abort();
     this.messages = [];
     this.pending.clear();
     this.sessionAllowSet.clear();
-    this.abortController = new AbortController();
+    this.activeController = null;
   }
 
   private deferUserResponse(

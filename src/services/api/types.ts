@@ -28,6 +28,7 @@ export interface CallModelParams {
   tools: ToolSchema[];
   system: string;
   model?: string;
+  signal?: AbortSignal;
 }
 
 export interface Provider {

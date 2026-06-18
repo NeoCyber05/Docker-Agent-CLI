@@ -52,10 +52,12 @@ async function* runProvider(
     })),
     system,
     ...(model ? { model } : {}),
+    signal: ctx.abortSignal,
   });
   let text = "";
   const toolUses: CollectedToolUse[] = [];
   for await (const ev of provEvents) {
+    if (ctx.abortSignal.aborted) return { text, toolUses };
     switch (ev.type) {
       case "text_delta":
         text += ev.text;
@@ -391,10 +393,12 @@ export async function* query(params: QueryParams): AsyncGenerator<LoopEvent, voi
   const maxIterations = mode === "plan-once" ? 1 : 12;
 
   for (let iter = 0; iter < maxIterations; iter++) {
+    if (ctx.abortSignal.aborted) return;
     yield { type: "iteration_start", n: iter + 1 };
     const stream = runProvider(provider, messages, mode, ctx, model);
     let collected: { text: string; toolUses: CollectedToolUse[] } = { text: "", toolUses: [] };
     while (true) {
+      if (ctx.abortSignal.aborted) return;
       const r = await stream.next();
       if (r.done) {
         collected = r.value;
@@ -409,6 +413,7 @@ export async function* query(params: QueryParams): AsyncGenerator<LoopEvent, voi
     if (collected.toolUses.length === 0) return;
 
     for (const tu of collected.toolUses) {
+      if (ctx.abortSignal.aborted) return;
       if (tu.name === "plan_stack") {
         const r = yield* handlePlanStackToolUse(tu, ctx);
         messages.push({

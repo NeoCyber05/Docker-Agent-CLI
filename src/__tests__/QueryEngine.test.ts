@@ -130,6 +130,109 @@ describe("QueryEngine", () => {
     expect(calls[0]?.model).toBe("gpt-4.1-mini");
   });
 
+  test("abort marks the active controller as aborted", async () => {
+    const engine = new QueryEngine({
+      stateStore: new StateStore(tmp),
+      dockerEngine: new MockDockerEngine() as never,
+      composeRunner: new MockComposeRunner(tmp) as never,
+      cwd: tmp,
+      provider: fakeProvider([
+        { type: "text_delta", text: "hello" },
+        { type: "message_stop", stopReason: "end_turn" },
+      ]),
+    });
+
+    const iter = engine.query("test");
+    const first = await iter.next();
+    expect(first.done).toBe(false);
+    const ctrl = (engine as unknown as { activeController: AbortController | null })
+      .activeController;
+    expect(ctrl).not.toBeNull();
+    engine.abort();
+    expect(ctrl?.signal.aborted).toBe(true);
+    // drain
+    for await (const _ of iter) {
+      // noop
+    }
+  });
+
+  test("passes the active abort signal to the provider", async () => {
+    const calls: CallModelParams[] = [];
+    const engine = new QueryEngine({
+      stateStore: new StateStore(tmp),
+      dockerEngine: new MockDockerEngine() as never,
+      composeRunner: new MockComposeRunner(tmp) as never,
+      cwd: tmp,
+      provider: recordingProvider([{ type: "message_stop", stopReason: "end_turn" }], calls),
+    });
+
+    for await (const _ of engine.query("hello")) {
+      // drain
+    }
+
+    expect(calls[0]?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  test("abort resolves a pending permission request and ends the turn", async () => {
+    const engine = new QueryEngine({
+      stateStore: new StateStore(tmp),
+      dockerEngine: new MockDockerEngine() as never,
+      composeRunner: new MockComposeRunner(tmp) as never,
+      cwd: tmp,
+      provider: fakeProvider([
+        { type: "tool_use_start", id: "t1", name: "pull_image" },
+        { type: "tool_use_delta", id: "t1", argsPartialJson: '{"image":"nginx"}' },
+        { type: "tool_use_stop", id: "t1" },
+        { type: "message_stop", stopReason: "tool_use" },
+      ]),
+    });
+
+    const seen: string[] = [];
+    const done = (async () => {
+      for await (const event of engine.query("pull nginx")) {
+        seen.push(event.type);
+        if (event.type === "permission_request") engine.abort();
+      }
+    })();
+
+    await expect(
+      Promise.race([
+        done.then(() => "done"),
+        new Promise<string>((resolve) => setTimeout(() => resolve("timeout"), 100)),
+      ]),
+    ).resolves.toBe("done");
+    expect(seen).toContain("permission_request");
+  });
+
+  test("each query gets a fresh abort controller", async () => {
+    const engine = new QueryEngine({
+      stateStore: new StateStore(tmp),
+      dockerEngine: new MockDockerEngine() as never,
+      composeRunner: new MockComposeRunner(tmp) as never,
+      cwd: tmp,
+      provider: fakeProvider([
+        { type: "text_delta", text: "first" },
+        { type: "message_stop", stopReason: "end_turn" },
+      ]),
+    });
+
+    for await (const _ of engine.query("turn1")) {
+      // drain
+    }
+    // After first query ends, activeController should be null
+    expect((engine as unknown as { activeController: unknown }).activeController).toBeNull();
+
+    engine.provider = fakeProvider([
+      { type: "text_delta", text: "second" },
+      { type: "message_stop", stopReason: "end_turn" },
+    ]);
+    const events: string[] = [];
+    for await (const ev of engine.query("turn2")) {
+      if (ev.type === "assistant_text") events.push(ev.delta);
+    }
+    expect(events.join("")).toBe("second");
+  });
+
   test("reset clears messages and allow set", async () => {
     const engine = new QueryEngine({
       stateStore: new StateStore(tmp),

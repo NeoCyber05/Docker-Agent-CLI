@@ -41,11 +41,11 @@ function stripAnsi(value: string): string {
   return value.replace(ansiPattern, "");
 }
 
-function renderPrompt(): { app: Instance; stdin: TestStdin; stdout: TestStdout } {
+function renderPrompt(onSubmit = vi.fn()): { app: Instance; stdin: TestStdin; stdout: TestStdout } {
   const stdin = new TestStdin();
   const stdout = new TestStdout();
   const stderr = new TestStdout();
-  const app = render(React.createElement(PromptInput, { onSubmit: vi.fn() }), {
+  const app = render(React.createElement(PromptInput, { onSubmit }), {
     stdin: stdin as unknown as NodeJS.ReadStream,
     stdout: stdout as unknown as NodeJS.WriteStream,
     stderr: stderr as unknown as NodeJS.WriteStream,
@@ -78,7 +78,9 @@ describe("PromptInput slash suggestions", () => {
 
     const output = stripAnsi(rendered.stdout.output());
     expect(output).toContain("/help");
-    expect(output).toContain("/provider");
+    expect(output).toContain("/connect");
+    expect(output).not.toContain("/provider");
+    expect(output).not.toContain("/apikey");
     expect(output).toContain("Tab to complete");
   });
 
@@ -87,7 +89,7 @@ describe("PromptInput slash suggestions", () => {
     apps.push(rendered.app);
     await new Promise((resolve) => setImmediate(resolve));
 
-    rendered.stdin.push("/p");
+    rendered.stdin.push("/c");
     rendered.stdin.emit("readable");
     await new Promise((resolve) => setImmediate(resolve));
     rendered.stdin.push("\t");
@@ -95,6 +97,33 @@ describe("PromptInput slash suggestions", () => {
     await new Promise((resolve) => setImmediate(resolve));
 
     const output = stripAnsi(rendered.stdout.output());
-    expect(output).toContain("/provider ");
+    expect(output).toContain("/connect");
+  });
+
+  test("submits ordinary text with Enter", async () => {
+    const onSubmit = vi.fn();
+    const rendered = renderPrompt(onSubmit);
+    apps.push(rendered.app);
+    await new Promise((resolve) => setImmediate(resolve));
+    rendered.stdin.push("wait");
+    rendered.stdin.emit("readable");
+    await new Promise((resolve) => setImmediate(resolve));
+    rendered.stdin.push("\r");
+    rendered.stdin.emit("readable");
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(onSubmit).toHaveBeenCalledWith("wait");
+  });
+
+  test("submits a paste followed immediately by Enter", async () => {
+    const onSubmit = vi.fn();
+    const rendered = renderPrompt(onSubmit);
+    apps.push(rendered.app);
+    await new Promise((resolve) => setImmediate(resolve));
+    rendered.stdin.push("wait");
+    rendered.stdin.emit("readable");
+    rendered.stdin.push("\r");
+    rendered.stdin.emit("readable");
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(onSubmit).toHaveBeenCalledWith("wait");
   });
 });

@@ -82,4 +82,36 @@ describe("PlanPreview config files", () => {
     await new Promise((r) => setImmediate(r));
     expect(stripAnsi(stdout.output())).toContain("events {}");
   });
+
+  test("masks secrets in expanded YAML and config content", async () => {
+    const stdin = new TestStdin();
+    const stdout = new TestStdout();
+    const app = render(
+      React.createElement(PlanPreview, {
+        composeYaml: "services:\n  app:\n    password: yaml-secret",
+        diff,
+        configFiles: [{ path: "app.env", content: "apiKey=config-secret", bytes: 20 }],
+        onAnswer: () => {},
+      }),
+      {
+        stdout: stdout as unknown as NodeJS.WriteStream,
+        stdin: stdin as unknown as NodeJS.ReadStream,
+        debug: true,
+        patchConsole: false,
+        exitOnCtrlC: false,
+      },
+    );
+    apps.push(app);
+    await new Promise((resolve) => setImmediate(resolve));
+    stdin.push("c");
+    stdin.emit("readable");
+    await new Promise((resolve) => setImmediate(resolve));
+    stdin.push("x");
+    stdin.emit("readable");
+    await new Promise((resolve) => setImmediate(resolve));
+    const output = stripAnsi(stdout.output());
+    expect(output).not.toContain("yaml-secret");
+    expect(output).not.toContain("config-secret");
+    expect(output).toContain("***");
+  });
 });

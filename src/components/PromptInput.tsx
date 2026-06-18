@@ -1,7 +1,8 @@
 import { Box, Text, useInput } from "ink";
 import type React from "react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type SlashCommandSuggestion, getSlashCommandSuggestions } from "src/slashCommands";
+import type { InteractionPhase } from "src/ui/interactionState";
 
 function shouldCompleteSuggestion(text: string, suggestion: SlashCommandSuggestion): boolean {
   return text.trimEnd().toLowerCase() !== suggestion.insertText.trimEnd().toLowerCase();
@@ -68,14 +69,19 @@ function applyInlineEdits(current: string, input: string): string {
 
 export function PromptInput({
   onSubmit,
+  phase = "idle",
+  prefill,
 }: {
   onSubmit: (text: string) => void;
+  phase?: InteractionPhase;
+  prefill?: { requestId: number; text: string };
 }): React.ReactElement {
   const [text, setText] = useState("");
   const [history, setHistory] = useState<string[]>([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
   const [draft, setDraft] = useState("");
   const [suggestionIdx, setSuggestionIdx] = useState(0);
+  const textRef = useRef("");
   const suggestions = getSlashCommandSuggestions(text);
   const selectedSuggestion = suggestions[Math.min(suggestionIdx, suggestions.length - 1)];
 
@@ -85,33 +91,47 @@ export function PromptInput({
   const pastedIndexRef = useRef(0);
   const lastPasteTimeRef = useRef(0);
 
+  useEffect(() => {
+    if (!prefill) return;
+    textRef.current = prefill.text;
+    setText(prefill.text);
+    setSuggestionIdx(0);
+  }, [prefill]);
+
   useInput((input, key) => {
     const acceptSuggestion = (suggestion: SlashCommandSuggestion) => {
       setHistoryIdx(-1);
       setDraft("");
       setSuggestionIdx(0);
-      setText(suggestion.insertText);
+      textRef.current = suggestion.insertText;
+      setText(textRef.current);
     };
 
     // Multi-line support: Alt+Enter (key.meta && key.return)
     if (key.return) {
       if (key.meta || key.ctrl) {
         setSuggestionIdx(0);
-        setText((s) => `${s}\n`);
+        textRef.current += "\n";
+        setText(textRef.current);
         return;
       }
-      if (selectedSuggestion && shouldCompleteSuggestion(text, selectedSuggestion)) {
-        acceptSuggestion(selectedSuggestion);
+      const currentText = textRef.current;
+      const currentSuggestions = getSlashCommandSuggestions(currentText);
+      const currentSuggestion =
+        currentSuggestions[Math.min(suggestionIdx, currentSuggestions.length - 1)];
+      if (currentSuggestion && shouldCompleteSuggestion(currentText, currentSuggestion)) {
+        acceptSuggestion(currentSuggestion);
         return;
       }
-      const t = text.trim();
+      const t = currentText.trim();
       if (t) {
-        setHistory((prev) => [...prev, text]);
+        setHistory((prev) => [...prev, currentText]);
         setHistoryIdx(-1);
         setDraft("");
         onSubmit(t);
       }
       setSuggestionIdx(0);
+      textRef.current = "";
       setText("");
       return;
     }
@@ -125,7 +145,7 @@ export function PromptInput({
       if (history.length === 0) return;
       let nextIdx = historyIdx;
       if (historyIdx === -1) {
-        setDraft(text);
+        setDraft(textRef.current);
         nextIdx = history.length - 1;
       } else if (historyIdx > 0) {
         nextIdx = historyIdx - 1;
@@ -134,7 +154,8 @@ export function PromptInput({
       }
       setHistoryIdx(nextIdx);
       setSuggestionIdx(0);
-      setText(history[nextIdx] ?? "");
+      textRef.current = history[nextIdx] ?? "";
+      setText(textRef.current);
       return;
     }
 
@@ -149,11 +170,13 @@ export function PromptInput({
       if (nextIdx >= history.length) {
         setHistoryIdx(-1);
         setSuggestionIdx(0);
-        setText(draft);
+        textRef.current = draft;
+        setText(textRef.current);
       } else {
         setHistoryIdx(nextIdx);
         setSuggestionIdx(0);
-        setText(history[nextIdx] ?? "");
+        textRef.current = history[nextIdx] ?? "";
+        setText(textRef.current);
       }
       return;
     }
@@ -165,7 +188,8 @@ export function PromptInput({
 
     if (key.backspace || key.delete) {
       setSuggestionIdx(0);
-      setText((s) => s.slice(0, -1));
+      textRef.current = textRef.current.slice(0, -1);
+      setText(textRef.current);
       return;
     }
 
@@ -181,7 +205,8 @@ export function PromptInput({
       // them as backspaces so Telex character conversion works correctly.
       if (hasEditingControl(normalized)) {
         justPastedRef.current = false;
-        setText((s) => applyInlineEdits(s, normalized));
+        textRef.current = applyInlineEdits(textRef.current, normalized);
+        setText(textRef.current);
         return;
       }
 
@@ -189,7 +214,8 @@ export function PromptInput({
       // Single typed graphemes fall through to the normal append path even if
       // they span multiple code points (combining diacritics).
       if (isPasteChunk(normalized)) {
-        setText((s) => s + normalized);
+        textRef.current += normalized;
+        setText(textRef.current);
         justPastedRef.current = true;
         pastedCharsRef.current = splitGraphemes(normalized);
         pastedIndexRef.current = 0;
@@ -217,7 +243,8 @@ export function PromptInput({
         }
       }
 
-      setText((s) => s + normalized);
+      textRef.current += normalized;
+      setText(textRef.current);
     }
   });
 
@@ -233,7 +260,15 @@ export function PromptInput({
         </Text>
       </Box>
       <Box marginTop={0}>
-        <Text dimColor>(Alt+Enter for newline, Up/Down for history)</Text>
+        <Text dimColor>
+          {phase === "running" || phase === "cancelling"
+            ? "(Processing… Ctrl+C to cancel)"
+            : phase === "awaiting_input"
+              ? "(Awaiting your response…)"
+              : phase === "queue_paused"
+                ? "(Queue paused — /queue resume to continue)"
+                : "(Alt+Enter for newline, Up/Down for history)"}
+        </Text>
       </Box>
       {suggestions.length > 0 && (
         <Box flexDirection="column" marginTop={1} paddingLeft={2}>

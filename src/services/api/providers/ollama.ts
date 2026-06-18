@@ -73,32 +73,40 @@ export class OllamaProvider implements Provider {
         stream: true,
         ...(toolDefs.length ? { tools: toolDefs } : {}),
       });
+      const abortStream = () => stream.abort();
+      params.signal?.addEventListener("abort", abortStream, { once: true });
       let outputTokens = 0;
       let toolCallIdx = 0;
-      for await (const part of stream) {
-        if (part.message?.content) yield { type: "text_delta", text: part.message.content };
-        const calls = (
-          part.message as {
-            tool_calls?: Array<{ function: { name: string; arguments: unknown } }>;
+      try {
+        for await (const part of stream) {
+          if (params.signal?.aborted) return;
+          if (part.message?.content) yield { type: "text_delta", text: part.message.content };
+          const calls = (
+            part.message as {
+              tool_calls?: Array<{ function: { name: string; arguments: unknown } }>;
+            }
+          ).tool_calls;
+          if (calls) {
+            for (const c of calls) {
+              const id = `ollama-${toolCallIdx++}`;
+              yield { type: "tool_use_start", id, name: c.function.name };
+              yield {
+                type: "tool_use_delta",
+                id,
+                argsPartialJson: JSON.stringify(c.function.arguments),
+              };
+              yield { type: "tool_use_stop", id };
+            }
           }
-        ).tool_calls;
-        if (calls) {
-          for (const c of calls) {
-            const id = `ollama-${toolCallIdx++}`;
-            yield { type: "tool_use_start", id, name: c.function.name };
-            yield {
-              type: "tool_use_delta",
-              id,
-              argsPartialJson: JSON.stringify(c.function.arguments),
-            };
-            yield { type: "tool_use_stop", id };
-          }
+          if (part.eval_count) outputTokens = part.eval_count;
         }
-        if (part.eval_count) outputTokens = part.eval_count;
+      } finally {
+        params.signal?.removeEventListener("abort", abortStream);
       }
       yield { type: "usage", inputTokens: 0, outputTokens };
       yield { type: "message_stop", stopReason: "end_turn" };
     } catch (err) {
+      if (params.signal?.aborted) return;
       yield { type: "error", error: err as Error };
     }
   }

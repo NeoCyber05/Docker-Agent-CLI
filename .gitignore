@@ -16,4 +16,7 @@ AGENTS.md
 docker_agent_cli_report_template.md
 .claude
 .cursor
-report/
+report
+API DOCS.md
+opencode
+.codegraph

@@ -369,7 +369,7 @@ describe("REQ 3.1 — PromptInput rendered when not streaming and no pending", (
     const stateDescriptions = [
       "idle at startup",
       "after /clear resets messages",
-      "after provider switch",
+      "after model switch",
     ];
 
     for (const desc of stateDescriptions) {
@@ -414,7 +414,10 @@ describe("REQ 3.2 — pending dialog shown; no thinking indicator / no prompt in
     await new Promise((resolve) => setImmediate(resolve));
 
     // Trigger apiKey pending dialog
-    await typeLine(rendered.stdin, "/apikey set openai");
+    await typeLine(rendered.stdin, "/connect");
+    rendered.stdin.push("\r");
+    rendered.stdin.emit("readable");
+    await new Promise((resolve) => setImmediate(resolve));
 
     const output = stripAnsi(rendered.stdout.output());
     // Dialog should appear
@@ -441,7 +444,10 @@ describe("REQ 3.2 — pending dialog shown; no thinking indicator / no prompt in
       tmpDirs.push(rendered.tmp);
       await new Promise((resolve) => setImmediate(resolve));
 
-      await typeLine(rendered.stdin, "/apikey set openai");
+      await typeLine(rendered.stdin, "/connect");
+      rendered.stdin.push("\r");
+      rendered.stdin.emit("readable");
+      await new Promise((resolve) => setImmediate(resolve));
 
       const output = stripAnsi(rendered.stdout.output());
       expect(output).toContain("API key");
@@ -455,7 +461,10 @@ describe("REQ 3.2 — pending dialog shown; no thinking indicator / no prompt in
       tmpDirs.push(rendered.tmp);
       await new Promise((resolve) => setImmediate(resolve));
 
-      await typeLine(rendered.stdin, "/apikey set gemini");
+      await typeLine(rendered.stdin, "/connect");
+      rendered.stdin.push("\r");
+      rendered.stdin.emit("readable");
+      await new Promise((resolve) => setImmediate(resolve));
 
       const output = stripAnsi(rendered.stdout.output());
       expect(output).toContain("API key");
@@ -657,61 +666,30 @@ describe("REQ 3.4 — slash commands route correctly (not sent to LLM)", () => {
     expect(queriedWith).toHaveLength(0);
   });
 
-  test("/provider openai updates the header provider display", async () => {
+  test("/model with provider prefix updates the header provider and model display", async () => {
     const rendered = renderRepl();
     apps.push(rendered.app);
     tmpDirs.push(rendered.tmp);
     await new Promise((resolve) => setImmediate(resolve));
 
-    await typeLine(rendered.stdin, "/provider openai");
+    await typeLine(rendered.stdin, "/model openai/gpt-4.1-mini");
 
     const output = stripAnsi(rendered.stdout.output());
     expect(output).toContain("provider: openai");
-  });
-
-  test("/model updates the header model display", async () => {
-    const rendered = renderRepl();
-    apps.push(rendered.app);
-    tmpDirs.push(rendered.tmp);
-    await new Promise((resolve) => setImmediate(resolve));
-
-    await typeLine(rendered.stdin, "/model gpt-4.1-mini");
-
-    const output = stripAnsi(rendered.stdout.output());
     expect(output).toContain("model: gpt-4.1-mini");
-  });
-
-  test("/provider with unknown provider shows error, no LLM query", async () => {
-    const { provider, queriedWith } = trackingProvider();
-    const rendered = renderRepl({ provider });
-    apps.push(rendered.app);
-    tmpDirs.push(rendered.tmp);
-    await new Promise((resolve) => setImmediate(resolve));
-
-    await typeLine(rendered.stdin, "/provider unknown-provider");
-
-    const output = stripAnsi(rendered.stdout.output());
-    expect(output).toContain("Unknown provider");
-    expect(queriedWith).toHaveLength(0);
   });
 
   test("PBT: all REPL-internal slash commands do not query LLM", async () => {
     /**
      * Validates: Requirements 3.4
      *
-     * Property: For all cmd ∈ {/quit, /exit, /clear, /help, /provider, /model,
-     * /apikey, /resume} — the REPL handles them internally WITHOUT calling LLM.
+     * Property: For all cmd ∈ {/quit, /exit, /clear, /help, /connect, /model,
+     * /models, /resume} — the REPL handles them internally WITHOUT calling LLM.
      *
      * For commands that exit or require external state (models, resume) we test
      * the non-destructive ones that leave the REPL running.
      */
-    const internalCommands = [
-      "/help",
-      "/provider gemini",
-      "/model llama3",
-      "/apikey set openai", // opens dialog, doesn't query LLM
-      "/apikey status",
-    ];
+    const internalCommands = ["/help", "/connect", "/models", "/model openai/llama3"];
 
     for (const cmd of internalCommands) {
       const { provider, queriedWith } = trackingProvider();

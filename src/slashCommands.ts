@@ -56,33 +56,18 @@ export const SLASH_COMMANDS: readonly SlashCommandSuggestion[] = [
     insertText: "/secrets rotate ",
   },
   {
-    usage: "/provider <gemini|openai|ollama>",
-    description: "Switch provider for this session",
-    insertText: "/provider ",
-  },
-  {
-    usage: "/apikey set openai",
-    description: "Save OpenAI API key",
-    insertText: "/apikey set openai",
-  },
-  {
-    usage: "/apikey set gemini",
-    description: "Save Gemini API key",
-    insertText: "/apikey set gemini",
-  },
-  {
-    usage: "/apikey status",
-    description: "Show API key status per provider",
-    insertText: "/apikey status",
+    usage: "/connect",
+    description: "Connect a provider (API key or Ollama)",
+    insertText: "/connect",
   },
   {
     usage: "/models",
-    description: "List available models and pick one quickly",
+    description: "Browse and select a model",
     insertText: "/models",
   },
   {
     usage: "/model <id>",
-    description: "Set model override for this session",
+    description: "Set model override (or provider/model)",
     insertText: "/model ",
   },
   {
@@ -99,6 +84,31 @@ export const SLASH_COMMANDS: readonly SlashCommandSuggestion[] = [
     usage: "/resume <id>",
     description: "Resume a specific session by id",
     insertText: "/resume ",
+  },
+  {
+    usage: "/cancel",
+    description: "Cancel the current turn",
+    insertText: "/cancel",
+  },
+  {
+    usage: "/details",
+    description: "Open details for the latest tool",
+    insertText: "/details",
+  },
+  {
+    usage: "/queue resume",
+    description: "Resume processing the queue",
+    insertText: "/queue resume",
+  },
+  {
+    usage: "/queue clear",
+    description: "Clear the queued turns",
+    insertText: "/queue clear",
+  },
+  {
+    usage: "/queue remove <index>",
+    description: "Remove a queued turn by index",
+    insertText: "/queue remove ",
   },
 ];
 

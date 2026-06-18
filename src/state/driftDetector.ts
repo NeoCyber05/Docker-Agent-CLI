@@ -37,7 +37,9 @@ function parseActualPorts(
       if (!b.HostPort) continue;
       // Omit /tcp suffix (most common) to match Compose YAML convention
       const portStr =
-        proto === "tcp" ? `${b.HostPort}:${containerPort}` : `${b.HostPort}:${containerPort}/${proto}`;
+        proto === "tcp"
+          ? `${b.HostPort}:${containerPort}`
+          : `${b.HostPort}:${containerPort}/${proto}`;
       result.push(portStr);
     }
   }

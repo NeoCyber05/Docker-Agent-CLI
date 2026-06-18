@@ -2,6 +2,7 @@ import { Box, Text, useInput } from "ink";
 import type React from "react";
 import { useRef } from "react";
 import type { PermissionResponse } from "src/types/permissions";
+import { presentTool } from "src/ui/toolPresentation";
 
 export function PermissionDialog({
   tool,
@@ -13,6 +14,7 @@ export function PermissionDialog({
   onAnswer: (r: PermissionResponse) => void;
 }): React.ReactElement {
   const answeredRef = useRef(false);
+  const presentation = presentTool(tool, input);
 
   useInput((char) => {
     const k = char.toLowerCase();
@@ -48,15 +50,15 @@ export function PermissionDialog({
       <Text bold color="magenta">
         Permission required
       </Text>
-      <Text>
-        Tool:{" "}
-        <Text color="cyan" bold>
-          {tool}
+      <Text color="cyan" bold>
+        {presentation.title}
+      </Text>
+      <Text dimColor>{presentation.summary}</Text>
+      {presentation.detailLines.slice(0, 8).map((line, index) => (
+        <Text key={`${index}-${line}`} dimColor>
+          {line}
         </Text>
-      </Text>
-      <Text>
-        Input: <Text dimColor>{JSON.stringify(input)}</Text>
-      </Text>
+      ))}
       <Box marginTop={1}>
         <Text bold>[y] approve [n] deny [a] always for this session</Text>
       </Box>

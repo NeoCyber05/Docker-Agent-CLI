@@ -7,7 +7,10 @@ import React from "react";
 import { renderWelcomeBannerForTerminal } from "src/main";
 import { REPL } from "src/screens/REPL";
 import { MemoryApiKeyStore } from "src/secrets/apiKeyStore";
+import * as api from "src/services/api";
 import type { ProviderEvent } from "src/services/api/types";
+import { formatSlashHelp } from "src/slashCommands";
+import type { SessionRecord } from "src/state/SessionStore";
 import { StateStore } from "src/state/StateStore";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { MockComposeRunner } from "../../../tests/mocks/mockComposeRunner";
@@ -145,11 +148,13 @@ function renderRepl(
     provider?: ReturnType<typeof fakeProvider>;
     model?: string;
     apiKeyStore?: MemoryApiKeyStore;
+    resumedRecord?: SessionRecord;
   } = {},
 ): {
   app: Instance;
   stdin: TestStdin;
   stdout: TestStdout;
+  stderr: TestStdout;
   tmp: string;
 } {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "repl-ui-"));
@@ -160,6 +165,7 @@ function renderRepl(
     React.createElement(REPL, {
       version: "0.1.0",
       showBanner: options.showBanner ?? false,
+      ...(options.resumedRecord ? { resumedRecord: options.resumedRecord } : {}),
       deps: {
         cwd: tmp,
         stateStore: new StateStore(tmp),
@@ -181,7 +187,7 @@ function renderRepl(
     },
   );
 
-  return { app, stdin, stdout, tmp };
+  return { app, stdin, stdout, stderr, tmp };
 }
 
 async function typeLine(stdin: TestStdin, value: string): Promise<void> {
@@ -191,6 +197,14 @@ async function typeLine(stdin: TestStdin, value: string): Promise<void> {
   stdin.push("\r");
   stdin.emit("readable");
   await new Promise((resolve) => setImmediate(resolve));
+}
+
+async function waitUntil(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 50; attempt++) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error("condition was not reached");
 }
 
 describe("REPL terminal rendering", () => {
@@ -306,66 +320,229 @@ describe("REPL terminal rendering", () => {
     expect(exitSpy).not.toHaveBeenCalled();
   });
 
-  test("slash provider updates the visible active provider", async () => {
+  test("formatSlashHelp does not list removed provider commands", () => {
+    expect(formatSlashHelp()).not.toContain("/provider");
+    expect(formatSlashHelp()).not.toContain("/apikey");
+    expect(formatSlashHelp()).toContain("/connect");
+  });
+
+  test("/connect opens provider connect dialog", async () => {
+    vi.spyOn(api, "resolveProviderForRequest").mockImplementation(
+      (name) =>
+        ({
+          name,
+          stream: async function* () {},
+          listModels: vi.fn().mockRejectedValue(new Error("ECONNREFUSED")),
+        }) as never,
+    );
+
     const rendered = renderRepl({ columns: 100, rows: 24 });
     apps.push(rendered.app);
     tmpDirs.push(rendered.tmp);
     await new Promise((resolve) => setImmediate(resolve));
 
-    await typeLine(rendered.stdin, "/provider openai");
+    await typeLine(rendered.stdin, "/connect");
+    await waitUntil(() => stripAnsi(rendered.stdout.output()).includes("Popular"));
+
+    const output = stripAnsi(rendered.stdout.output());
+    expect(output).toContain("Connect a provider");
+    expect(output).toContain("Popular");
+  });
+
+  test("/models shows grouped model picker for connected providers", async () => {
+    const openaiProvider = {
+      name: "openai",
+      stream: async function* () {},
+      listModels: vi.fn().mockResolvedValue(["gpt-4o-mini", "gpt-4.1-mini"]),
+    };
+    vi.spyOn(api, "resolveProviderForRequest").mockImplementation((name) => {
+      if (name === "openai") return openaiProvider as never;
+      return fakeProvider() as never;
+    });
+    process.env.OPENAI_API_KEY = "test-key";
+
+    const rendered = renderRepl({ columns: 100, rows: 24 });
+    apps.push(rendered.app);
+    tmpDirs.push(rendered.tmp);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    await typeLine(rendered.stdin, "/models");
+    await waitUntil(() => stripAnsi(rendered.stdout.output()).includes("Select model"));
+
+    const output = stripAnsi(rendered.stdout.output());
+    expect(output).toContain("Select model");
+    expect(output).toContain("OpenAI");
+    expect(output).toContain("gpt-4o-mini");
+    expect(openaiProvider.listModels).toHaveBeenCalled();
+  });
+
+  test("slash model with provider prefix updates header provider and model", async () => {
+    const rendered = renderRepl({ columns: 100, rows: 24 });
+    apps.push(rendered.app);
+    tmpDirs.push(rendered.tmp);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    await typeLine(rendered.stdin, "/model openai/gpt-4.1-mini");
 
     const output = stripAnsi(rendered.stdout.output());
     expect(output).toContain("provider: openai");
-  });
-
-  test("slash model updates the visible active model", async () => {
-    const rendered = renderRepl({ columns: 100, rows: 24 });
-    apps.push(rendered.app);
-    tmpDirs.push(rendered.tmp);
-    await new Promise((resolve) => setImmediate(resolve));
-
-    await typeLine(rendered.stdin, "/model gpt-4.1-mini");
-
-    const output = stripAnsi(rendered.stdout.output());
     expect(output).toContain("model: gpt-4.1-mini");
+    expect(output).toContain("Model set to gpt-4.1-mini (openai)");
   });
 
-  test("slash apikey status reports each provider separately", async () => {
+  test("/connect shows API key source for connected providers", async () => {
     Reflect.deleteProperty(process.env, "OPENAI_API_KEY");
     Reflect.deleteProperty(process.env, "GEMINI_API_KEY");
+    vi.spyOn(api, "resolveProviderForRequest").mockImplementation(
+      (name) =>
+        ({
+          name,
+          stream: async function* () {},
+          listModels: vi.fn().mockRejectedValue(new Error("ECONNREFUSED")),
+        }) as never,
+    );
     const apiKeyStore = new MemoryApiKeyStore({ openai: "stored-openai-key" });
     const rendered = renderRepl({ columns: 100, rows: 24 }, { apiKeyStore });
     apps.push(rendered.app);
     tmpDirs.push(rendered.tmp);
     await new Promise((resolve) => setImmediate(resolve));
 
-    await typeLine(rendered.stdin, "/apikey status");
+    await typeLine(rendered.stdin, "/connect");
+    await waitUntil(() => stripAnsi(rendered.stdout.output()).includes("Popular"));
 
     const output = stripAnsi(rendered.stdout.output());
-    expect(output).toContain("openai: set");
-    expect(output).toContain("gemini: unset");
+    expect(output).toContain("Connect a provider");
+    expect(output).toContain("saved");
     expect(output).not.toContain("stored-openai-key");
   });
 
-  test("slash apikey set saves a masked key without echoing the value", async () => {
+  test("/connect saves API key via provider dialog without echoing the value", async () => {
+    Reflect.deleteProperty(process.env, "OPENAI_API_KEY");
+    Reflect.deleteProperty(process.env, "GEMINI_API_KEY");
+    vi.spyOn(api, "resolveProviderForRequest").mockImplementation(
+      (name) =>
+        ({
+          name,
+          stream: async function* () {},
+          listModels: vi.fn().mockRejectedValue(new Error("ECONNREFUSED")),
+        }) as never,
+    );
     const apiKeyStore = new MemoryApiKeyStore();
     const rendered = renderRepl({ columns: 100, rows: 24 }, { apiKeyStore });
     apps.push(rendered.app);
     tmpDirs.push(rendered.tmp);
     await new Promise((resolve) => setImmediate(resolve));
 
-    await typeLine(rendered.stdin, "/apikey set openai");
-    rendered.stdin.push("sk-persistent-test-key");
+    await typeLine(rendered.stdin, "/connect");
+    await waitUntil(() => stripAnsi(rendered.stdout.output()).includes("Popular"));
+    rendered.stdin.push("\r");
+    rendered.stdin.emit("readable");
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+
+    rendered.stdin.push("gemini-persistent-test-key");
     rendered.stdin.emit("readable");
     await new Promise((resolve) => setImmediate(resolve));
     rendered.stdin.push("\r");
     rendered.stdin.emit("readable");
     await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
 
-    await expect(apiKeyStore.get("openai")).resolves.toBe("sk-persistent-test-key");
+    await expect(apiKeyStore.get("gemini")).resolves.toBe("gemini-persistent-test-key");
     const output = stripAnsi(rendered.stdout.output());
-    expect(output).toContain("API key saved for openai");
-    expect(output).toContain("**********************");
-    expect(output).not.toContain("sk-persistent-test-key");
+    expect(output).toContain("API key saved for gemini");
+    expect(output).toContain("************************");
+    expect(output).not.toContain("gemini-persistent-test-key");
+  });
+
+  test("hydrates resumed messages including completed tool activity", async () => {
+    const resumedRecord: SessionRecord = {
+      schemaVersion: 1,
+      id: "session-1",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:01.000Z",
+      cwd: "D:/tmp",
+      provider: "fake",
+      firstPrompt: "show stacks",
+      stackNames: [],
+      messages: [
+        { role: "user", content: "show stacks" },
+        {
+          role: "assistant",
+          content: [
+            { type: "text", text: "Checking Docker." },
+            { type: "tool_use", id: "tool-1", name: "list_stacks", input: {} },
+          ],
+        },
+        { role: "tool", toolUseId: "tool-1", content: '{"stacks":[]}', isError: false },
+      ],
+    };
+    const rendered = renderRepl({ columns: 100, rows: 24 }, { resumedRecord });
+    apps.push(rendered.app);
+    tmpDirs.push(rendered.tmp);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const output = stripAnsi(rendered.stdout.output());
+    expect(output).toContain("show stacks");
+    expect(output).toContain("Checking Docker.");
+    expect(output).toContain("List stacks");
+    expect(output).toContain("completed");
+  });
+
+  test("Ctrl+C aborts the active provider stream", async () => {
+    let capturedSignal: AbortSignal | undefined;
+    const provider = {
+      name: "waiting",
+      stream: async function* (params: { signal?: AbortSignal }) {
+        capturedSignal = params.signal;
+        await new Promise<void>((resolve) => {
+          if (params.signal?.aborted) resolve();
+          else params.signal?.addEventListener("abort", () => resolve(), { once: true });
+        });
+      },
+    };
+    const rendered = renderRepl({ columns: 100, rows: 24 }, { provider: provider as never });
+    apps.push(rendered.app);
+    tmpDirs.push(rendered.tmp);
+    await typeLine(rendered.stdin, "wait");
+    await waitUntil(() => capturedSignal !== undefined);
+    expect(capturedSignal?.aborted).toBe(false);
+
+    rendered.stdin.push("\u0003");
+    rendered.stdin.emit("readable");
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(capturedSignal?.aborted).toBe(true);
+  });
+
+  test("provider error pauses queued turns until explicit resume", async () => {
+    let releaseFirst: (() => void) | undefined;
+    let calls = 0;
+    const provider = {
+      name: "delayed-error",
+      stream: async function* () {
+        calls++;
+        if (calls === 1) {
+          await new Promise<void>((resolve) => {
+            releaseFirst = resolve;
+          });
+          yield { type: "error", error: new Error("provider failed") } as const;
+          return;
+        }
+        yield { type: "message_stop", stopReason: "end_turn" } as const;
+      },
+    };
+    const rendered = renderRepl({ columns: 100, rows: 24 }, { provider: provider as never });
+    apps.push(rendered.app);
+    tmpDirs.push(rendered.tmp);
+    await typeLine(rendered.stdin, "first");
+    await waitUntil(() => calls === 1);
+    await typeLine(rendered.stdin, "second");
+    releaseFirst?.();
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(calls).toBe(1);
+    expect(stripAnsi(rendered.stdout.output())).toContain("Queue paused");
   });
 });

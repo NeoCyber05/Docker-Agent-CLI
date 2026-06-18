@@ -15,7 +15,7 @@ describe("main interactive rendering", () => {
       stdout.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk));
       return true;
     }) as typeof process.stdout.write;
-    const renderImpl = vi.fn(() => ({
+    const renderImpl = vi.fn((_node: unknown, _options?: { exitOnCtrlC?: boolean }) => ({
       waitUntilExit: vi.fn(async () => undefined),
     }));
 
@@ -36,6 +36,10 @@ describe("main interactive rendering", () => {
 
     const output = stdout.join("");
     expect(renderImpl).toHaveBeenCalledTimes(1);
+    expect(renderImpl).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ exitOnCtrlC: false }),
+    );
     expect(output).not.toContain("\u001B[?1049h");
     expect(output).not.toContain("\u001B[?1049l");
     expect(output).not.toContain("\u001B[2J");

@@ -19,7 +19,7 @@ export class GeminiProvider implements Provider {
       `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
     );
     if (!res.ok) {
-      const err = (await res.json().catch(() => ({}))) as any;
+      const err = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
       throw new Error(`Failed to fetch models: ${err.error?.message || res.statusText}`);
     }
     const data = (await res.json()) as { models: { name: string }[] };
@@ -85,15 +85,19 @@ export class GeminiProvider implements Provider {
     });
 
     try {
-      const result = await model.generateContentStream({ contents });
+      const result = await model.generateContentStream(
+        { contents },
+        params.signal ? { signal: params.signal } : undefined,
+      );
       let inputTokens = 0;
       let outputTokens = 0;
       let toolCallIdx = 0;
       let hasOutput = false;
       let lastFinishReason: string | undefined;
       for await (const chunk of result.stream) {
+        if (params.signal?.aborted) return;
         // Check for safety blocks on the prompt itself
-        const pf = (chunk as any).promptFeedback;
+        const pf = (chunk as { promptFeedback?: { blockReason?: string } }).promptFeedback;
         if (pf?.blockReason) {
           yield {
             type: "error",
@@ -113,7 +117,7 @@ export class GeminiProvider implements Provider {
 
           for (const part of parts) {
             // Skip thinking-only parts (Gemini 2.5 thinking models)
-            if ((part as any).thought === true && !part.functionCall) {
+            if ((part as { thought?: boolean }).thought === true && !part.functionCall) {
               // Thinking part — don't emit as visible text
               continue;
             }
@@ -163,9 +167,7 @@ export class GeminiProvider implements Provider {
         yield {
           type: "error",
           error: new Error(
-            `Gemini returned an empty response for model "${modelId}". ` +
-              "This may happen if the model is unsupported by the current SDK version, " +
-              "or if a safety filter silently blocked the output.",
+            `Gemini returned an empty response for model "${modelId}". This may happen if the model is unsupported by the current SDK version, or if a safety filter silently blocked the output.`,
           ),
         };
         return;
@@ -174,6 +176,7 @@ export class GeminiProvider implements Provider {
       yield { type: "usage", inputTokens, outputTokens };
       yield { type: "message_stop", stopReason: "end_turn" };
     } catch (err) {
+      if (params.signal?.aborted) return;
       yield { type: "error", error: err as Error };
     }
   }

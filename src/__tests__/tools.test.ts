@@ -2,12 +2,17 @@ import { getAllTools, getToolsForMode } from "src/tools";
 import { describe, expect, test } from "vitest";
 
 describe("tool registry", () => {
-  test("getAllTools returns 12 tools", () => {
-    expect(getAllTools()).toHaveLength(12);
+  test("getAllTools returns 15 tools", () => {
+    expect(getAllTools()).toHaveLength(15);
   });
 
-  test("plan-once mode exposes only plan_stack", () => {
-    expect(getToolsForMode("plan-once").map((tool) => tool.name)).toEqual(["plan_stack"]);
+  test("deploy exposes preflight observations and plan_stack only", () => {
+    expect(getToolsForMode("deploy").map((tool) => tool.name)).toEqual([
+      "validate_spec",
+      "resolve_dependency",
+      "check_port_conflict",
+      "plan_stack",
+    ]);
   });
 
   test("react mode includes plan_stack but never apply_stack", () => {

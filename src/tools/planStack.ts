@@ -4,65 +4,21 @@ import { detectDrift } from "src/state/driftDetector";
 import { mergeEnv, readEnvFile, writeEnvFile } from "src/state/envFile";
 import { shouldRedact } from "src/state/secretRedactor";
 import type { EnvFileSource, ServiceSpec, StackDiff } from "src/types/stack";
-import { z } from "zod";
+import { checkPortConflicts } from "./checkPortConflict";
+import { resolveDependencies } from "./resolveDependency";
 import { buildStackDefinition, stackToYaml } from "./shared/composeBuilder";
 import {
   type StagedConfigFile,
   detectMissingConfigFiles,
   stageConfigFiles,
 } from "./shared/configFiles";
-import { validateImagesForTool } from "./shared/imageValidation";
 import { findRequiredSecrets } from "./shared/requiredSecrets";
+import { type DraftServiceSpec, type StackDraft, StackDraftSchema } from "./shared/specSchemas";
+import { type SpecIssue, validateSpecInput } from "./validateSpec";
 
-const ServiceSpecSchema = z.object({
-  image: z.string(),
-  command: z.union([z.string(), z.array(z.string())]).optional(),
-  ports: z.array(z.string()).optional(),
-  environment: z.record(z.string()).optional(),
-  env_file: z.array(z.string()).optional(),
-  volumes: z.array(z.string()).optional(),
-  depends_on: z
-    .union([
-      z.array(z.string()),
-      z.record(
-        z.object({
-          condition: z.enum([
-            "service_started",
-            "service_healthy",
-            "service_completed_successfully",
-          ]),
-        }),
-      ),
-    ])
-    .optional(),
-  healthcheck: z
-    .object({
-      test: z.union([z.string(), z.array(z.string())]),
-      interval: z.string().optional(),
-      timeout: z.string().optional(),
-      retries: z.number().optional(),
-      start_period: z.string().optional(),
-    })
-    .optional(),
-  restart: z.enum(["no", "always", "on-failure", "unless-stopped"]).optional(),
-  labels: z.record(z.string()).optional(),
-  networks: z.array(z.string()).optional(),
-  scale: z.number().int().min(1).optional(),
-});
-
-export const PlanStackInputSchema = z.object({
-  stackName: z.string().regex(/^[a-z][a-z0-9_-]{0,62}$/),
-  intent: z.string(),
-  services: z.record(ServiceSpecSchema).refine((services) => Object.keys(services).length > 0, {
-    message: "at least one service",
-  }),
-  networks: z.record(z.unknown()).optional(),
-  volumes: z.record(z.unknown()).optional(),
-  configFiles: z.record(z.string()).optional(),
-});
-
-export type PlanStackInput = z.infer<typeof PlanStackInputSchema>;
-type PlanStackServiceSpec = PlanStackInput["services"][string];
+export const PlanStackInputSchema = StackDraftSchema;
+export type PlanStackInput = StackDraft;
+export type PlanStackServiceSpec = DraftServiceSpec;
 
 export interface PlanStackResultOk {
   blocked: false;
@@ -80,6 +36,17 @@ export type PlanStackResultBlocked =
       blocked: true;
       reason: "missing_config_file";
       missingFiles: Array<{ service: string; path: string }>;
+    }
+  | { blocked: true; reason: "invalid_spec"; issues: SpecIssue[] }
+  | {
+      blocked: true;
+      reason: "invalid_dependency";
+      dependency: import("./resolveDependency").ResolveDependencyResult;
+    }
+  | {
+      blocked: true;
+      reason: "port_conflict";
+      portCheck: import("./checkPortConflict").CheckPortConflictResult;
     };
 
 export type PlanStackResult = PlanStackResultOk | PlanStackResultBlocked;
@@ -131,22 +98,50 @@ export const planStack: Tool<PlanStackInput, PlanStackResult> = {
   call: async function* (input, ctx): AsyncGenerator<ToolProgress, PlanStackResult> {
     yield { type: "progress", msg: "Validating service spec..." };
 
-    const services = structuredClone(input.services);
-    const imageValidation = await validateImagesForTool(
-      Object.values(services).map((spec) => spec.image),
+    const specCheck = await validateSpecInput(
+      {
+        services: input.services,
+        ...(input.configFiles ? { configFiles: input.configFiles } : {}),
+      },
       ctx,
     );
-    if (imageValidation.error) throw new Error(imageValidation.error);
-    for (const warning of imageValidation.warnings) {
-      yield { type: "progress", msg: warning };
+    for (const warning of specCheck.warnings) yield { type: "progress", msg: warning };
+    if (!specCheck.valid) {
+      return { blocked: true, reason: "invalid_spec", issues: specCheck.issues };
     }
 
+    const dependency = resolveDependencies(input.services);
+    if (!dependency.valid) {
+      return { blocked: true, reason: "invalid_dependency", dependency };
+    }
+
+    const portCheck = await checkPortConflicts(
+      { stackName: input.stackName, services: input.services },
+      ctx,
+    );
+    if (!portCheck.ok) {
+      return { blocked: true, reason: "port_conflict", portCheck };
+    }
+
+    const services = structuredClone(input.services);
     const stagedConfig = stageConfigFiles(
       ctx.cwd,
       services as Record<string, ServiceSpec>,
       input.configFiles,
     );
-    if (!stagedConfig.ok) throw new Error(stagedConfig.error);
+    if (!stagedConfig.ok) {
+      return {
+        blocked: true,
+        reason: "invalid_spec",
+        issues: [
+          {
+            code: "invalid_config_path",
+            path: "configFiles",
+            message: stagedConfig.error,
+          },
+        ],
+      };
+    }
 
     const autoGeneratedSecrets: Array<{ service: string; keys: string[] }> = [];
     const generatedEnvFileSources: Record<string, EnvFileSource> = {};
@@ -288,7 +283,7 @@ export const planStack: Tool<PlanStackInput, PlanStackResult> = {
       diff,
       autoGeneratedSecrets,
       configFiles: stagedConfig.staged,
-      warnings: imageValidation.warnings,
+      warnings: specCheck.warnings,
     };
   },
 };

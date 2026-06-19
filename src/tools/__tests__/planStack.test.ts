@@ -174,18 +174,20 @@ describe("plan_stack", () => {
     const ctx = makeCtx(tmpRoot);
     ctx.imageValidator = invalidImageValidator("postgres:99-alpine");
 
-    await expect(
-      drain(
-        planStack.call(
-          {
-            stackName: "bad",
-            intent: "postgres",
-            services: { db: { image: "postgres:99-alpine" } },
-          },
-          ctx,
-        ),
+    const result = await drain(
+      planStack.call(
+        {
+          stackName: "bad",
+          intent: "postgres",
+          services: { db: { image: "postgres:99-alpine" } },
+        },
+        ctx,
       ),
-    ).rejects.toThrow("Invalid Docker images detected");
+    );
+    expect(result).toMatchObject({
+      blocked: true,
+      reason: "invalid_spec",
+    });
     expect(fs.existsSync(path.join(tmpRoot, ".docker-agent/secrets/bad-db.env"))).toBe(false);
   });
 
@@ -224,30 +226,106 @@ describe("plan_stack", () => {
         ctx,
       ),
     );
-    expect(result.blocked).toBe(true);
-    if (!result.blocked) throw new Error("expected blocked");
-    expect(result.reason).toBe("missing_config_file");
-    if (result.reason === "missing_config_file") {
-      expect(result.missingFiles).toEqual([{ service: "nginx", path: "./nginx.conf" }]);
-    }
+    expect(result).toMatchObject({
+      blocked: true,
+      reason: "invalid_spec",
+    });
   });
 
-  test("throws on an unsafe config file path", async () => {
+  test("blocks on an unsafe config file path", async () => {
     const ctx = makeCtx(tmpRoot);
-    await expect(
-      drain(
-        planStack.call(
-          {
-            stackName: "web",
-            intent: "x",
-            services: {
-              nginx: { image: "nginx:1.27", volumes: ["./nginx.conf:/etc/nginx/nginx.conf"] },
-            },
-            configFiles: { "../evil.conf": "x" },
+    const result = await drain(
+      planStack.call(
+        {
+          stackName: "web",
+          intent: "x",
+          services: {
+            nginx: { image: "nginx:1.27", volumes: ["./nginx.conf:/etc/nginx/nginx.conf"] },
           },
-          ctx,
-        ),
+          configFiles: { "../evil.conf": "x" },
+        },
+        ctx,
       ),
-    ).rejects.toThrow("unsafe config file path");
+    );
+    expect(result).toMatchObject({
+      blocked: true,
+      reason: "invalid_spec",
+    });
+  });
+
+  test("blocks missing dependency before writing secrets", async () => {
+    const ctx = makeCtx(tmpRoot);
+    const result = await drain(
+      planStack.call(
+        {
+          stackName: "app",
+          intent: "api",
+          services: { api: { image: "example/api:1", depends_on: ["db"] } },
+        },
+        ctx,
+      ),
+    );
+    expect(result).toMatchObject({
+      blocked: true,
+      reason: "invalid_dependency",
+      dependency: { valid: false },
+    });
+    expect(fs.readdirSync(path.join(tmpRoot, ".docker-agent/secrets"))).toHaveLength(0);
+  });
+
+  test("blocks dependency cycle before writing secrets", async () => {
+    const ctx = makeCtx(tmpRoot);
+    const result = await drain(
+      planStack.call(
+        {
+          stackName: "app",
+          intent: "workers",
+          services: {
+            api: { image: "example/api:1", depends_on: ["worker"] },
+            worker: { image: "example/worker:1", depends_on: ["api"] },
+          },
+        },
+        ctx,
+      ),
+    );
+    expect(result).toMatchObject({
+      blocked: true,
+      reason: "invalid_dependency",
+      dependency: { valid: false },
+    });
+    expect(fs.readdirSync(path.join(tmpRoot, ".docker-agent/secrets"))).toHaveLength(0);
+  });
+
+  test("blocks running-container port collision before writing secrets", async () => {
+    const engine = new MockDockerEngine();
+    engine.containers.push({
+      Id: "existing",
+      Names: ["/existing"],
+      State: "running",
+      Labels: {},
+    });
+    engine.inspectById.set("existing", {
+      NetworkSettings: {
+        Ports: { "80/tcp": [{ HostIp: "0.0.0.0", HostPort: "8080" }] },
+      },
+    });
+    const ctx = makeCtx(tmpRoot);
+    ctx.dockerEngine = engine as never;
+
+    const result = await drain(
+      planStack.call(
+        {
+          stackName: "app",
+          intent: "api",
+          services: { api: { image: "example/api:1", ports: ["8080:80"] } },
+        },
+        ctx,
+      ),
+    );
+    expect(result).toMatchObject({
+      blocked: true,
+      reason: "port_conflict",
+    });
+    expect(fs.readdirSync(path.join(tmpRoot, ".docker-agent/secrets"))).toHaveLength(0);
   });
 });

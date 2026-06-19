@@ -14,8 +14,8 @@ describe("tool registry", () => {
     expect(names).toContain("get_health");
   });
 
-  test("plan-once mode does not expose the observability tools", () => {
-    const names = getToolsForMode("plan-once").map((t) => t.name);
+  test("deploy mode does not expose the observability tools", () => {
+    const names = getToolsForMode("deploy").map((t) => t.name);
     expect(names).not.toContain("get_logs");
     expect(names).not.toContain("get_health");
   });

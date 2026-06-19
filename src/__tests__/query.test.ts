@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { LoopContext } from "src/loopContext";
 import { query } from "src/query";
-import type { ProviderEvent } from "src/services/api/types";
+import type { CallModelParams, Provider, ProviderEvent } from "src/services/api/types";
 import { StateStore } from "src/state/StateStore";
 import type { PermissionResponse } from "src/types/permissions";
 import { describe, expect, test } from "vitest";
@@ -26,9 +26,33 @@ function fakeProvider(events: ProviderEvent[]) {
   return multiCallProvider([events]);
 }
 
-async function collectEvents(
+function recordingProvider(perCall: ProviderEvent[][]): {
+  provider: Provider;
+  calls: CallModelParams[];
+} {
+  const calls: CallModelParams[] = [];
+  let index = 0;
+  return {
+    calls,
+    provider: {
+      name: "recording",
+      stream: async function* (params) {
+        calls.push({
+          messages: structuredClone(params.messages),
+          system: params.system,
+          ...(params.model ? { model: params.model } : {}),
+          tools: params.tools,
+          ...(params.signal ? { signal: params.signal } : {}),
+        } as CallModelParams);
+        for (const event of perCall[index++] ?? []) yield event;
+      },
+    },
+  };
+}
+
+async function collectEventsWithProvider(
   userInput: string,
-  providerParam: { events?: ProviderEvent[]; perCall?: ProviderEvent[][] },
+  provider: Provider,
   responses: PermissionResponse[],
 ) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "loop-"));
@@ -43,7 +67,7 @@ async function collectEvents(
     dockerEngine: new MockDockerEngine() as never,
     composeRunner: new MockComposeRunner(tmp) as never,
     abortSignal: new AbortController().signal,
-    healthCheckDeadlineMs: 0, // avoid health-gate polling in unit tests
+    healthCheckDeadlineMs: 0,
     requestPermission: responder,
     requestConfirm: responder,
     requestTypedConfirm: responder,
@@ -51,15 +75,11 @@ async function collectEvents(
     allowSet: new Set(),
   };
 
-  const provider = providerParam.perCall
-    ? multiCallProvider(providerParam.perCall)
-    : fakeProvider(providerParam.events as ProviderEvent[]);
-
   const collected = [];
   for await (const ev of query({
     messages: [{ role: "user", content: userInput }],
     ctx,
-    provider: provider as never,
+    provider,
   })) {
     collected.push(ev);
   }
@@ -67,17 +87,128 @@ async function collectEvents(
   return collected;
 }
 
-function makePlanStackToolEvents(id: string, input: object): ProviderEvent[] {
+async function collectEvents(
+  userInput: string,
+  providerParam: { events?: ProviderEvent[]; perCall?: ProviderEvent[][] },
+  responses: PermissionResponse[],
+) {
+  const provider = providerParam.perCall
+    ? multiCallProvider(providerParam.perCall)
+    : fakeProvider(providerParam.events as ProviderEvent[]);
+  return collectEventsWithProvider(userInput, provider as Provider, responses);
+}
+
+function makeToolEvents(id: string, name: string, input: object): ProviderEvent[] {
   return [
-    { type: "tool_use_start", id, name: "plan_stack" },
+    { type: "tool_use_start", id, name },
     { type: "tool_use_delta", id, argsPartialJson: JSON.stringify(input) },
     { type: "tool_use_stop", id },
     { type: "message_stop", stopReason: "tool_use" as const },
   ];
 }
 
+function makePlanStackToolEvents(id: string, input: object): ProviderEvent[] {
+  return makeToolEvents(id, "plan_stack", input);
+}
+
 describe("query core loop", () => {
-  test("plan-once: provider emits plan_stack tool_use → tool_result for plan_stack + apply_stack on approve", async () => {
+  test("react appends an action and observation before the next reason step", async () => {
+    const scripted = recordingProvider([
+      [
+        { type: "tool_use_start", id: "list-1", name: "list_stacks" },
+        { type: "tool_use_delta", id: "list-1", argsPartialJson: "{}" },
+        { type: "tool_use_stop", id: "list-1" },
+        { type: "message_stop", stopReason: "tool_use" },
+      ],
+      [
+        { type: "text_delta", text: "No stacks are defined." },
+        { type: "message_stop", stopReason: "end_turn" },
+      ],
+    ]);
+
+    await collectEventsWithProvider("list stacks", scripted.provider, []);
+
+    expect(scripted.calls).toHaveLength(2);
+    expect(scripted.calls[1]?.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ role: "assistant" }),
+        expect.objectContaining({ role: "tool", toolUseId: "list-1" }),
+      ]),
+    );
+  });
+
+  test("deploy observes plan_stack result before producing its final answer", async () => {
+    const scripted = recordingProvider([
+      makePlanStackToolEvents("plan-1", {
+        stackName: "web",
+        intent: "create nginx",
+        services: { web: { image: "nginx:1.27-alpine" } },
+      }),
+      [
+        { type: "text_delta", text: "Deployment completed." },
+        { type: "message_stop", stopReason: "end_turn" },
+      ],
+    ]);
+
+    const events = await collectEventsWithProvider("create nginx", scripted.provider, [
+      { kind: "approve" },
+    ]);
+
+    expect(scripted.calls).toHaveLength(2);
+    expect(scripted.calls[1]?.messages.at(-1)).toMatchObject({
+      role: "tool",
+      toolUseId: "plan-1",
+    });
+    expect(events).toContainEqual({ type: "assistant_text", delta: "Deployment completed." });
+  });
+
+  test("max_tokens stops the loop with an explicit error", async () => {
+    const events = await collectEvents(
+      "list stacks",
+      { events: [{ type: "message_stop", stopReason: "max_tokens" }] },
+      [],
+    );
+    expect(events.find((event) => event.type === "error")).toMatchObject({
+      error: expect.objectContaining({ message: expect.stringContaining("max tokens") }),
+    });
+  });
+
+  test("deploy performs preflight actions, observes each result, plans, then summarizes", async () => {
+    const draft = {
+      services: {
+        api: { image: "example/api:1", ports: ["8080:80"], depends_on: ["db"] },
+        db: { image: "postgres:16-alpine" },
+      },
+    };
+    const scripted = recordingProvider([
+      makeToolEvents("validate-1", "validate_spec", draft),
+      makeToolEvents("dependency-1", "resolve_dependency", draft),
+      makeToolEvents("port-1", "check_port_conflict", { stackName: "app", ...draft }),
+      makePlanStackToolEvents("plan-1", {
+        stackName: "app",
+        intent: "deploy app",
+        ...draft,
+      }),
+      [
+        { type: "text_delta", text: "Stack app was applied." },
+        { type: "message_stop", stopReason: "end_turn" },
+      ],
+    ]);
+
+    const events = await collectEventsWithProvider("deploy app", scripted.provider, [
+      { kind: "approve" },
+    ]);
+
+    expect(scripted.calls).toHaveLength(5);
+    for (const id of ["validate-1", "dependency-1", "port-1", "plan-1"]) {
+      expect(scripted.calls.at(-1)?.messages).toEqual(
+        expect.arrayContaining([expect.objectContaining({ role: "tool", toolUseId: id })]),
+      );
+    }
+    expect(events.at(-1)).toEqual({ type: "assistant_text", delta: "Stack app was applied." });
+  });
+
+  test("deploy: provider emits plan_stack tool_use → tool_result for plan_stack + apply_stack on approve", async () => {
     const events = await collectEvents(
       "tạo nginx",
       {
@@ -93,7 +224,7 @@ describe("query core loop", () => {
     expect(events.some((e) => e.type === "tool_result" && e.name === "apply_stack")).toBe(true);
   });
 
-  test("plan-once: user declines plan → no apply_stack tool_result", async () => {
+  test("deploy: user declines plan → no apply_stack tool_result", async () => {
     const events = await collectEvents(
       "create app",
       {
@@ -241,6 +372,8 @@ describe("query core loop", () => {
     const events = await collectEvents("list stacks", { perCall: manyIterations }, responses);
     const errorEv = events.find((e) => e.type === "error");
     expect(errorEv).toBeDefined();
-    expect((errorEv as { error: Error }).error.message).toContain("max iterations");
+    expect((errorEv as { error: Error }).error.message).toContain(
+      "agent loop reached max iterations",
+    );
   });
 });

@@ -55,19 +55,17 @@ describe("config resolution", () => {
       provider: "gemini",
       model: undefined,
       defaults: { autoApproveNonDestructive: false },
-      theme: "dark",
     });
   });
 
   test("loadUserConfig loads valid config and merges with defaults", () => {
     const configPath = path.join(tmpDir, "config.json");
-    fs.writeFileSync(configPath, JSON.stringify({ provider: "openai", theme: "light" }));
+    fs.writeFileSync(configPath, JSON.stringify({ provider: "openai", model: "gpt-4o-mini" }));
     process.env.DOCKER_AGENT_CONFIG = configPath;
     expect(loadUserConfig()).toEqual({
       provider: "openai",
-      model: undefined,
+      model: "gpt-4o-mini",
       defaults: { autoApproveNonDestructive: false },
-      theme: "light",
     });
   });
 
@@ -79,7 +77,6 @@ describe("config resolution", () => {
       provider: "gemini",
       model: undefined,
       defaults: { autoApproveNonDestructive: false },
-      theme: "dark",
     });
   });
 

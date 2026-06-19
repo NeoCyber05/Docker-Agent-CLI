@@ -1,5 +1,6 @@
 import type { Tool } from "./Tool";
 import { applyStack } from "./tools/applyStack";
+import { checkPortConflict } from "./tools/checkPortConflict";
 import { destroyAllStacks } from "./tools/destroyAllStacks";
 import { destroyStack } from "./tools/destroyStack";
 import { execDocker } from "./tools/execDocker";
@@ -11,11 +12,20 @@ import { listStacks } from "./tools/listStacks";
 import { planStack } from "./tools/planStack";
 import { pullImage } from "./tools/pullImage";
 import { remediateDrift } from "./tools/remediateDrift";
+import { resolveDependency } from "./tools/resolveDependency";
+import { validateSpec } from "./tools/validateSpec";
 
-export type QueryMode = "plan-once" | "react";
+export type QueryMode = "deploy" | "react";
+
+const preflightTools: Tool[] = [
+  validateSpec as Tool,
+  resolveDependency as Tool,
+  checkPortConflict as Tool,
+];
 
 export function getAllTools(): Tool[] {
   return [
+    ...preflightTools,
     planStack as Tool,
     applyStack as Tool,
     destroyStack as Tool,
@@ -32,8 +42,9 @@ export function getAllTools(): Tool[] {
 }
 
 export function getToolsForMode(mode: QueryMode): Tool[] {
-  if (mode === "plan-once") return [planStack as Tool];
+  if (mode === "deploy") return [...preflightTools, planStack as Tool];
   return [
+    ...preflightTools,
     planStack as Tool,
     destroyStack as Tool,
     destroyAllStacks as Tool,

@@ -10,7 +10,7 @@ import { type QueryMode, getToolsForMode } from "./tools";
 import { applyStack } from "./tools/applyStack";
 import { destroyAllStacks } from "./tools/destroyAllStacks";
 import { destroyStack } from "./tools/destroyStack";
-import { planStack } from "./tools/planStack";
+import { type PlanStackResultBlocked, planStack } from "./tools/planStack";
 import { remediateDrift } from "./tools/remediateDrift";
 import {
   type ConfigFileSnapshot,
@@ -34,13 +34,24 @@ interface CollectedToolUse {
   argsPartial: string;
 }
 
+interface ProviderTurnResult {
+  text: string;
+  toolUses: CollectedToolUse[];
+  stopReason: "end_turn" | "tool_use" | "max_tokens";
+}
+
+const LOOP_LIMITS: Record<QueryMode, number> = {
+  deploy: 8,
+  react: 12,
+};
+
 async function* runProvider(
   provider: Provider,
   messages: Message[],
   mode: QueryMode,
   ctx: LoopContext,
   model: string | undefined,
-): AsyncGenerator<LoopEvent, { text: string; toolUses: CollectedToolUse[] }> {
+): AsyncGenerator<LoopEvent, ProviderTurnResult> {
   const tools = getToolsForMode(mode);
   const system = buildSystemPrompt(mode, ctx.stateStore.summary());
   const provEvents = provider.stream({
@@ -57,7 +68,7 @@ async function* runProvider(
   let text = "";
   const toolUses: CollectedToolUse[] = [];
   for await (const ev of provEvents) {
-    if (ctx.abortSignal.aborted) return { text, toolUses };
+    if (ctx.abortSignal.aborted) return { text, toolUses, stopReason: "end_turn" };
     switch (ev.type) {
       case "text_delta":
         text += ev.text;
@@ -75,14 +86,19 @@ async function* runProvider(
         break;
       case "error":
         yield { type: "error", error: ev.error };
-        return { text, toolUses };
+        return { text, toolUses, stopReason: "end_turn" };
       case "message_stop":
-        return { text, toolUses };
+        return { text, toolUses, stopReason: ev.stopReason };
       case "usage":
+        yield {
+          type: "usage",
+          inputTokens: ev.inputTokens,
+          outputTokens: ev.outputTokens,
+        };
         break;
     }
   }
-  return { text, toolUses };
+  return { text, toolUses, stopReason: "end_turn" };
 }
 
 async function* runTool<TIn, TOut>(
@@ -215,6 +231,21 @@ async function* applyWithRollback(
   };
 }
 
+function formatPlanBlocker(result: PlanStackResultBlocked): string {
+  switch (result.reason) {
+    case "invalid_spec":
+      return `plan_stack blocked: ${JSON.stringify(result.issues)}`;
+    case "invalid_dependency":
+      return `plan_stack blocked: ${JSON.stringify(result.dependency)}`;
+    case "port_conflict":
+      return `plan_stack blocked: ${JSON.stringify(result.portCheck)}`;
+    case "missing_config_file":
+      return `plan_stack blocked: ${JSON.stringify(result.missingFiles)}`;
+    case "missing_required_env":
+      return `plan_stack blocked: ${JSON.stringify(result.missingByService)}`;
+  }
+}
+
 async function* handlePlanStackToolUse(
   tu: CollectedToolUse,
   ctx: LoopContext,
@@ -237,6 +268,13 @@ async function* handlePlanStackToolUse(
     const reParsed = planStack.inputSchema.parse(parsed);
     const planResult = yield* runTool(planStack, reParsed, ctx);
     if (planResult.blocked) {
+      if (
+        planResult.reason === "invalid_spec" ||
+        planResult.reason === "invalid_dependency" ||
+        planResult.reason === "port_conflict"
+      ) {
+        return { isError: true, resultMessage: formatPlanBlocker(planResult) };
+      }
       if (planResult.reason === "missing_config_file") {
         const paths = planResult.missingFiles.map((f) => f.path).join(", ");
         return {
@@ -389,14 +427,13 @@ export async function* query(params: QueryParams): AsyncGenerator<LoopEvent, voi
     .reverse()
     .find((m): m is { role: "user"; content: string } => m.role === "user");
   const mode = lastUser ? classifyIntent(lastUser.content) : "react";
-  // react needs headroom for multi-service trial-and-error (apply → diagnose → fix).
-  const maxIterations = mode === "plan-once" ? 1 : 12;
+  const maxIterations = LOOP_LIMITS[mode];
 
   for (let iter = 0; iter < maxIterations; iter++) {
     if (ctx.abortSignal.aborted) return;
     yield { type: "iteration_start", n: iter + 1 };
     const stream = runProvider(provider, messages, mode, ctx, model);
-    let collected: { text: string; toolUses: CollectedToolUse[] } = { text: "", toolUses: [] };
+    let collected: ProviderTurnResult = { text: "", toolUses: [], stopReason: "end_turn" };
     while (true) {
       if (ctx.abortSignal.aborted) return;
       const r = await stream.next();
@@ -405,6 +442,13 @@ export async function* query(params: QueryParams): AsyncGenerator<LoopEvent, voi
         break;
       }
       yield r.value;
+    }
+    if (collected.stopReason === "max_tokens") {
+      yield {
+        type: "error",
+        error: new Error("provider response stopped: max tokens reached"),
+      };
+      return;
     }
     messages.push({
       role: "assistant",
@@ -422,7 +466,6 @@ export async function* query(params: QueryParams): AsyncGenerator<LoopEvent, voi
           content: r.resultMessage,
           isError: r.isError,
         });
-        if (mode === "plan-once") return;
         continue;
       }
       if (tu.name === "destroy_all_stacks") {
@@ -515,8 +558,9 @@ export async function* query(params: QueryParams): AsyncGenerator<LoopEvent, voi
         isError: false,
       });
     }
-
-    if (mode === "plan-once") return;
   }
-  yield { type: "error", error: new Error("max iterations reached") };
+  yield {
+    type: "error",
+    error: new Error(`agent loop reached max iterations (${maxIterations})`),
+  };
 }

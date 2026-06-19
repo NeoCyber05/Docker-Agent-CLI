@@ -14,7 +14,6 @@ export interface UserConfig {
   provider: ProviderName;
   model: string | undefined;
   defaults: { autoApproveNonDestructive: boolean };
-  theme: "dark" | "light";
 }
 
 export function userConfigPath(): string {
@@ -29,7 +28,6 @@ const DEFAULTS: UserConfig = {
   provider: "gemini",
   model: undefined,
   defaults: { autoApproveNonDestructive: false },
-  theme: "dark",
 };
 
 export function loadUserConfig(): UserConfig {
@@ -41,7 +39,6 @@ export function loadUserConfig(): UserConfig {
       provider: isValidProvider(raw.provider) ? raw.provider : DEFAULTS.provider,
       model: raw.model,
       defaults: { ...DEFAULTS.defaults, ...(raw.defaults ?? {}) },
-      theme: raw.theme ?? DEFAULTS.theme,
     };
   } catch (err) {
     // eslint-disable-next-line no-console

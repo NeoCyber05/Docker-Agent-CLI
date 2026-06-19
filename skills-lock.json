@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "docker-compose-orchestration": {
+      "source": "manutej/luxor-claude-marketplace",
+      "sourceType": "github",
+      "skillPath": "plugins/luxor-devops-suite/skills/docker-compose-orchestration/SKILL.md",
+      "computedHash": "01831d0723a2ac491e233bd9bfdffdac8c0ae5500f140a3ca0382ac5f4a26159"
+    },
     "docker-expert": {
       "source": "sickn33/antigravity-awesome-skills",
       "sourceType": "github",
@@ -8,10 +14,10 @@
       "computedHash": "7be30b1c18b91628dcd8437a89e7e20acce76bae4349533e4ebdeb376a660bcb"
     },
     "docker-patterns": {
-      "source": "affaan-m/everything-claude-code",
+      "source": "affaan-m/ecc",
       "sourceType": "github",
       "skillPath": "skills/docker-patterns/SKILL.md",
-      "computedHash": "a028783213034aee06d0aa0487c7e6096ae755d24bdd05de9475425306057fcd"
+      "computedHash": "0579a0764562eadc968a6f7733313ae7b50a46ea0fb8de7bf4bc9d3d283075e8"
     },
     "find-skills": {
       "source": "vercel-labs/skills",

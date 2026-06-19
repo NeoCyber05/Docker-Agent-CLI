@@ -3,6 +3,7 @@ import {
   toJsonSchema,
   toOpenAIFunction,
 } from "src/services/api/toolSchema";
+import { getToolsForMode } from "src/tools";
 import { describe, expect, test } from "vitest";
 import { z } from "zod";
 
@@ -41,5 +42,17 @@ describe("toolSchema", () => {
       type: "function",
       function: { name: "demo", description: "do thing" },
     });
+  });
+
+  test("all deploy ReAct tools convert for OpenAI and Gemini", () => {
+    for (const tool of getToolsForMode("deploy")) {
+      const toolSchema = {
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema,
+      };
+      expect(toOpenAIFunction(toolSchema).function.parameters).toMatchObject({ type: "object" });
+      expect(toGeminiFunctionDeclaration(toolSchema).parameters).toMatchObject({ type: "object" });
+    }
   });
 });

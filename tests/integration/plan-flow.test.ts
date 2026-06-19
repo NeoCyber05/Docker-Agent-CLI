@@ -65,7 +65,7 @@ function seedStack(store: StateStore, name: string) {
   });
 }
 
-describe("plan-once flow", () => {
+describe("deploy flow", () => {
   let tmp: string;
   let stateStore: StateStore;
   let composeRunner: MockComposeRunner;

@@ -672,7 +672,14 @@ describe("REQ 3.4 — slash commands route correctly (not sent to LLM)", () => {
      * For commands that exit or require external state (models, resume) we test
      * the non-destructive ones that leave the REPL running.
      */
-    const internalCommands = ["/help", "/connect", "/models", "/model openai/llama3"];
+    const internalCommands = [
+      "/help",
+      "/connect",
+      "/models",
+      "/model openai/llama3",
+      "/stacks",
+      "/destroy webapp",
+    ];
 
     for (const cmd of internalCommands) {
       const { provider, queriedWith } = trackingProvider();

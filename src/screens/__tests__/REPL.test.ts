@@ -63,6 +63,28 @@ function fakeProvider(events: ProviderEvent[] = []) {
   };
 }
 
+function trackingProvider(): {
+  provider: { name: string; stream: (params: unknown) => AsyncGenerator<ProviderEvent> };
+  queriedWith: string[];
+} {
+  const queriedWith: string[] = [];
+  const provider = {
+    name: "fake",
+    stream: async function* (params: unknown) {
+      const msgs =
+        typeof params === "object" && params !== null && "messages" in params
+          ? ((params as { messages: Array<{ role: string; content: unknown }> }).messages ?? [])
+          : [];
+      const last = msgs[msgs.length - 1];
+      if (last?.role === "user" && typeof last.content === "string") {
+        queriedWith.push(last.content);
+      }
+      yield { type: "message_stop" as const, stopReason: "end_turn" as const };
+    },
+  };
+  return { provider, queriedWith };
+}
+
 function stripAnsi(value: string): string {
   const ansiPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-9;?]*[ -/]*[@-~]`, "g");
   return value.replace(ansiPattern, "");
@@ -545,5 +567,113 @@ describe("REPL terminal rendering", () => {
 
     expect(calls).toBe(1);
     expect(stripAnsi(rendered.stdout.output())).toContain("Queue paused");
+  });
+});
+
+describe("REPL slash command direct dispatch", () => {
+  const apps: Instance[] = [];
+  const tmpDirs: string[] = [];
+
+  afterEach(() => {
+    for (const app of apps.splice(0)) {
+      app.unmount();
+      app.cleanup();
+    }
+    for (const tmp of tmpDirs.splice(0)) {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+    vi.restoreAllMocks();
+  });
+
+  test("/stacks does not query the LLM and shows a table", async () => {
+    const { provider, queriedWith } = trackingProvider();
+    const rendered = renderRepl({ columns: 100, rows: 24 }, { provider: provider as never });
+    apps.push(rendered.app);
+    tmpDirs.push(rendered.tmp);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    await typeLine(rendered.stdin, "/stacks");
+
+    const output = stripAnsi(rendered.stdout.output());
+    expect(output).toContain("Managed stacks");
+    expect(output).toContain("No stacks defined");
+    expect(queriedWith).toHaveLength(0);
+  });
+
+  test("/yaml does not query the LLM and shows redacted stack YAML", async () => {
+    const { provider, queriedWith } = trackingProvider();
+    const rendered = renderRepl({ columns: 100, rows: 24 }, { provider: provider as never });
+    apps.push(rendered.app);
+    tmpDirs.push(rendered.tmp);
+
+    fs.mkdirSync(path.join(rendered.tmp, "stacks"), { recursive: true });
+    fs.writeFileSync(
+      path.join(rendered.tmp, "stacks", "webapp.yaml"),
+      `x-docker-agent:\n  name: webapp\n  createdAt: "2026-05-26T00:00:00Z"\n  lastApplied: null\n  intent: test\n  provider: gemini\n  generatedBy: test\n  envFileSources: {}\nservices:\n  web:\n    image: nginx:1.27-alpine\n    environment:\n      POSTGRES_PASSWORD: hidden\n      PORT: "8080"\n`,
+    );
+
+    await new Promise((resolve) => setImmediate(resolve));
+    await typeLine(rendered.stdin, "/yaml webapp");
+
+    const output = stripAnsi(rendered.stdout.output());
+    expect(output).toContain("POSTGRES_PASSWORD");
+    expect(output).toContain("***");
+    expect(output).not.toContain("hidden");
+    expect(queriedWith).toHaveLength(0);
+  });
+
+  test("missing slash args return usage errors without querying the LLM", async () => {
+    const cases = ["/yaml", "/status", "/destroy", "/secrets list", "/secrets rotate mystack"];
+    for (const cmd of cases) {
+      const { provider, queriedWith } = trackingProvider();
+      const rendered = renderRepl({ columns: 100, rows: 24 }, { provider: provider as never });
+      apps.push(rendered.app);
+      tmpDirs.push(rendered.tmp);
+      await new Promise((resolve) => setImmediate(resolve));
+
+      await typeLine(rendered.stdin, cmd);
+
+      expect(queriedWith, `Command "${cmd}" should not query the LLM`).toHaveLength(0);
+      expect(stripAnsi(rendered.stdout.output())).toMatch(/Usage:/);
+    }
+  });
+
+  test("/destroy all is case-insensitive for the all keyword", async () => {
+    const { provider, queriedWith } = trackingProvider();
+    const rendered = renderRepl({ columns: 100, rows: 24 }, { provider: provider as never });
+    apps.push(rendered.app);
+    tmpDirs.push(rendered.tmp);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    await typeLine(rendered.stdin, "/destroy ALL");
+
+    expect(queriedWith).toHaveLength(0);
+    expect(stripAnsi(rendered.stdout.output())).toContain("DESTROY ALL");
+  });
+
+  test("/destroy <stack> does not query the LLM and requests permission", async () => {
+    const { provider, queriedWith } = trackingProvider();
+    const rendered = renderRepl({ columns: 100, rows: 24 }, { provider: provider as never });
+    apps.push(rendered.app);
+    tmpDirs.push(rendered.tmp);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    await typeLine(rendered.stdin, "/destroy webapp");
+
+    expect(queriedWith).toHaveLength(0);
+    expect(stripAnsi(rendered.stdout.output())).toContain("Destroy stack: webapp");
+  });
+
+  test("unknown slash command does not query the LLM", async () => {
+    const { provider, queriedWith } = trackingProvider();
+    const rendered = renderRepl({ columns: 100, rows: 24 }, { provider: provider as never });
+    apps.push(rendered.app);
+    tmpDirs.push(rendered.tmp);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    await typeLine(rendered.stdin, "/not-a-command");
+
+    expect(queriedWith).toHaveLength(0);
+    expect(stripAnsi(rendered.stdout.output())).toContain("Unknown slash command");
   });
 });

@@ -284,6 +284,45 @@ describe("query core loop", () => {
     );
   });
 
+  test("direct destroy-stack command bypasses provider planning", async () => {
+    const recorded = recordingProvider([
+      [
+        { type: "text_delta", text: "I will destroy the stack." },
+        { type: "message_stop", stopReason: "end_turn" as const },
+      ],
+    ]);
+
+    const events = await collectEventsWithProvider("Destroy stack webapp", recorded.provider, [
+      { kind: "approve" },
+    ]);
+
+    expect(recorded.calls).toHaveLength(0);
+    expect(
+      events.some((event) => event.type === "tool_call" && event.name === "destroy_stack"),
+    ).toBe(true);
+    expect(
+      events.some((event) => event.type === "tool_result" && event.name === "destroy_stack"),
+    ).toBe(true);
+  });
+
+  test("direct destroy-stack permission denied → no tool_result", async () => {
+    const recorded = recordingProvider([]);
+
+    const events = await collectEventsWithProvider("Destroy stack webapp", recorded.provider, [
+      { kind: "deny" },
+    ]);
+
+    expect(recorded.calls).toHaveLength(0);
+    expect(
+      events.some((event) => event.type === "tool_result" && event.name === "destroy_stack"),
+    ).toBe(false);
+    const texts = events
+      .filter((e): e is { type: "assistant_text"; delta: string } => e.type === "assistant_text")
+      .map((e) => e.delta)
+      .join("");
+    expect(texts).toContain("permission denied");
+  });
+
   test("direct destroy-all command bypasses provider planning", async () => {
     const recorded = recordingProvider([
       [
@@ -303,6 +342,19 @@ describe("query core loop", () => {
     expect(events.some((event) => event.type === "tool_call" && event.name === "plan_stack")).toBe(
       false,
     );
+  });
+
+  test("direct destroy-all command is case-insensitive", async () => {
+    const recorded = recordingProvider([]);
+
+    const events = await collectEventsWithProvider("destroy all stacks", recorded.provider, [
+      { kind: "typed_confirm_value", value: "DESTROY ALL" },
+    ]);
+
+    expect(recorded.calls).toHaveLength(0);
+    expect(
+      events.some((event) => event.type === "tool_call" && event.name === "destroy_all_stacks"),
+    ).toBe(true);
   });
 
   test("react: tool that needs permission → denied → no tool_result", async () => {

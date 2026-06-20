@@ -6,6 +6,7 @@ import type { LoopEvent } from "src/types/events";
 import type { AssistantBlock, Message } from "src/types/message";
 import { type Tool, findToolByName } from "./Tool";
 import { buildSystemPrompt, classifyIntent } from "./context";
+import { isDestroyAllPrompt, parseDirectDestroyStack } from "./slashDispatch";
 import { type QueryMode, getToolsForMode } from "./tools";
 import { applyStack } from "./tools/applyStack";
 import { destroyAllStacks } from "./tools/destroyAllStacks";
@@ -441,6 +442,26 @@ async function* requestSecretsAndPatch(
   return { patchedInput: input };
 }
 
+async function* runDirectDestroyStack(
+  stackName: string,
+  removeVolumes: boolean,
+  ctx: LoopContext,
+): AsyncGenerator<LoopEvent, void> {
+  const input = destroyStack.inputSchema.parse({
+    stackName,
+    ...(removeVolumes ? { removeVolumes: true } : {}),
+  });
+  if (!ctx.allowSet.has("destroy_stack")) {
+    const resp = await ctx.requestPermission("destroy_stack", input);
+    if (resp.kind === "deny") {
+      yield { type: "assistant_text", delta: "destroy_stack aborted: permission denied" };
+      return;
+    }
+    if (resp.kind === "always_allow_in_session") ctx.allowSet.add("destroy_stack");
+  }
+  yield* runTool(destroyStack, input, ctx);
+}
+
 export async function* query(params: QueryParams): AsyncGenerator<LoopEvent, void> {
   const { ctx, provider, model } = params;
   const messages = [...params.messages];
@@ -448,7 +469,7 @@ export async function* query(params: QueryParams): AsyncGenerator<LoopEvent, voi
     .reverse()
     .find((m): m is { role: "user"; content: string } => m.role === "user");
 
-  if (lastUser?.content.trim() === "Destroy all stacks") {
+  if (lastUser && isDestroyAllPrompt(lastUser.content)) {
     const typed = await ctx.requestTypedConfirm(
       "DESTROY ALL",
       `This will destroy ${ctx.stateStore.list().length} stacks.`,
@@ -462,6 +483,12 @@ export async function* query(params: QueryParams): AsyncGenerator<LoopEvent, voi
     }
     const parsed = destroyAllStacks.inputSchema.parse({});
     yield* runTool(destroyAllStacks, parsed, ctx);
+    return;
+  }
+
+  const directDestroy = lastUser ? parseDirectDestroyStack(lastUser.content) : null;
+  if (directDestroy) {
+    yield* runDirectDestroyStack(directDestroy.stackName, directDestroy.removeVolumes, ctx);
     return;
   }
 

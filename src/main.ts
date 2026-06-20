@@ -273,13 +273,16 @@ export async function main(argv: string[]): Promise<number> {
         process.stderr.write('destroy --all requires --confirm "DESTROY ALL"\n');
         return 1;
       }
-      return await runHeadless("destroy all stacks", args);
+      return await runHeadless("Destroy all stacks", args);
     }
     if (!args.stack) {
       process.stderr.write("destroy requires a stack name or --all\n");
       return 1;
     }
-    return await runHeadless(`destroy ${args.stack}${args.volumes ? " with volumes" : ""}`, args);
+    return await runHeadless(
+      `Destroy stack ${args.stack}${args.volumes ? " with volumes" : ""}`,
+      args,
+    );
   }
 
   if (args.command === "plan") {

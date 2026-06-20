@@ -5,6 +5,29 @@ import type { PermissionResponse } from "src/types/permissions";
 import type { StackDiff } from "src/types/stack";
 import { sanitizeToolText } from "src/ui/toolPresentation";
 
+function YamlLine({ line }: { line: string }): React.ReactElement {
+  const trimmed = line.trim();
+  if (trimmed.startsWith("#")) {
+    return <Text dimColor>{line}</Text>;
+  }
+  if (trimmed === "---" || trimmed === "...") {
+    return <Text color="green">{line}</Text>;
+  }
+  // Only split on colon when followed by space or end-of-string (YAML key separator)
+  const colonIdx = line.search(/:\s|:$/);
+  if (colonIdx !== -1) {
+    const key = line.slice(0, colonIdx + 1);
+    const rest = line.slice(colonIdx + 1);
+    return (
+      <Box flexDirection="row">
+        <Text color="cyan">{key}</Text>
+        <Text>{rest}</Text>
+      </Box>
+    );
+  }
+  return <Text>{line}</Text>;
+}
+
 export interface PlanPreviewProps {
   composeYaml: string;
   diff: StackDiff;
@@ -48,7 +71,7 @@ export function PlanPreview(props: PlanPreviewProps): React.ReactElement {
     <Box
       flexDirection="column"
       borderStyle="round"
-      borderColor="yellow"
+      borderColor="blue"
       paddingX={1}
       marginY={1}
       overflowX="hidden"
@@ -173,8 +196,20 @@ export function PlanPreview(props: PlanPreviewProps): React.ReactElement {
       <Box flexDirection="column" marginTop={1}>
         <Text bold>YAML Configuration (Press 'x' to {showYaml ? "collapse" : "expand"}):</Text>
         {showYaml ? (
-          <Box borderStyle="classic" borderColor="gray" paddingX={1} marginY={1} overflowX="hidden">
-            <Text dimColor>{sanitizeToolText(props.composeYaml)}</Text>
+          <Box
+            flexDirection="column"
+            borderStyle="classic"
+            borderColor="gray"
+            paddingX={1}
+            marginY={1}
+            overflowX="hidden"
+          >
+            {sanitizeToolText(props.composeYaml)
+              .split("\n")
+              .map((line, i) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: yaml lines are stable
+                <YamlLine key={i} line={line} />
+              ))}
           </Box>
         ) : (
           <Text dimColor> [YAML collapsed - {props.composeYaml.split("\n").length} lines]</Text>

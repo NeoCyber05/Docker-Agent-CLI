@@ -173,7 +173,7 @@ Shortcut commands available inside the interactive shell:
 | `/queue clear` | Clear the prompt queue |
 | `/queue remove <index>` | Remove a queued prompt (1-based index) |
 | `/clear` | Reset conversation context and clear the screen |
-| `/quit` or `/exit` | Exit the REPL (`exit` / `quit` without slash also works) |
+| `/exit` | Exit the REPL (`exit` without slash also works) |
 
 ---
 

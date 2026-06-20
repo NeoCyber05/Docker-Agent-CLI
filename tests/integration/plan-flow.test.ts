@@ -94,7 +94,7 @@ describe("deploy flow", () => {
         planStackEvents({
           stackName: "nginx",
           intent: "tao nginx",
-          services: { web: { image: "nginx:1.27-alpine", ports: ["80:80"] } },
+          services: { web: { image: "nginx:1.27-alpine", ports: ["8080:80"] } },
         }),
       ],
     });
@@ -177,5 +177,48 @@ describe("deploy flow", () => {
     expect(typedConfirmRequested).toBe(true);
     expect(composeRunner.forStackCalls).toHaveLength(0);
     expect(fs.existsSync(stackPath)).toBe(true);
+  });
+
+  test("rollback_started includes runningServices on partial failure", async () => {
+    composeRunner.onBoundRunnerCreated = (runner) => {
+      runner.up = async function* () {
+        yield "partial failure\n";
+        return 1;
+      } as never;
+      runner.psRows = [{ Name: "partial-web-1", Service: "web", State: "running" }];
+    };
+
+    const engine = makeEngine({
+      tmp,
+      stateStore,
+      composeRunner,
+      providerEvents: [
+        planStackEvents({
+          stackName: "partial",
+          intent: "deploy partial",
+          services: {
+            web: { image: "nginx:1.27", ports: ["8080:80"] },
+            db: { image: "postgres:16-alpine" },
+          },
+        }),
+        [{ type: "message_stop", stopReason: "end_turn" }],
+      ],
+    });
+
+    const rollbackEvents: Array<{ type: string; runningServices?: string[] }> = [];
+
+    for await (const ev of engine.query("deploy partial")) {
+      if (ev.type === "plan_ready") {
+        engine.respondTo(ev.id, { kind: "approve" });
+      }
+      if (ev.type === "rollback_started") {
+        rollbackEvents.push(ev);
+      }
+    }
+
+    expect(rollbackEvents).toHaveLength(1);
+    const rb = rollbackEvents[0];
+    expect(rb).toBeDefined();
+    expect(rb?.runningServices).toEqual(["web"]);
   });
 });

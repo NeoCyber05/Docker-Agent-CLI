@@ -79,6 +79,8 @@ describe("PromptInput slash suggestions", () => {
     const output = stripAnsi(rendered.stdout.output());
     expect(output).toContain("/help");
     expect(output).toContain("/connect");
+    expect(output).toContain("/exit");
+    expect(output).not.toContain("/quit");
     expect(output).not.toContain("/provider");
     expect(output).not.toContain("/apikey");
     expect(output).toContain("Tab to complete");

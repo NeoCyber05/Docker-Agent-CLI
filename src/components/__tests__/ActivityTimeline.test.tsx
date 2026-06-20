@@ -185,6 +185,16 @@ describe("ActivityTimeline", () => {
     expect(text).toMatch(/\d+\.?\d*s/);
   });
 
+  it("user message renders with green prefix and text", async () => {
+    const items: ActivityItem[] = [{ id: "1", type: "text", role: "user", text: "Hello" }];
+    const { stdout, app } = renderTimeline(items, null);
+    apps.push(app);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const text = stripAnsi(stdout.output());
+    expect(text).toContain("Hello");
+    expect(text).toContain("▶");
+  });
+
   it("renders user and assistant text", async () => {
     const items: ActivityItem[] = [
       { id: "u1", type: "text", role: "user", text: "deploy" },

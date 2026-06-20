@@ -41,8 +41,8 @@ interface ProviderTurnResult {
 }
 
 const LOOP_LIMITS: Record<QueryMode, number> = {
-  deploy: 8,
-  react: 12,
+  deploy: 16,
+  react: 24,
 };
 
 async function* runProvider(
@@ -181,7 +181,13 @@ async function* applyWithRollback(
       ? `unhealthy: ${(applyResult.unhealthyServices ?? []).join(", ")}${logsTail}`
       : `exit ${applyResult.exitCode}: ${applyResult.errorOutput ?? "unknown"}`;
 
-  yield { type: "rollback_started", stackName, reason, detail };
+  yield {
+    type: "rollback_started",
+    stackName,
+    reason,
+    detail,
+    ...(applyResult.runningServices ? { runningServices: applyResult.runningServices } : {}),
+  };
 
   const plan = planRollback(known, stackName);
   let restored: "previous" | "removed" | "none" = "none";
@@ -243,13 +249,23 @@ function formatPlanBlocker(result: PlanStackResultBlocked): string {
       return `plan_stack blocked: ${JSON.stringify(result.missingFiles)}`;
     case "missing_required_env":
       return `plan_stack blocked: ${JSON.stringify(result.missingByService)}`;
+    case "resource_limit":
+      return `plan_stack blocked: ${JSON.stringify(result.issues)}`;
+    case "db_port_exposed":
+      return `plan_stack blocked: ${JSON.stringify(result.issues)}`;
+    case "unsafe_volume":
+      return `plan_stack blocked: ${JSON.stringify(result.issues)}`;
+    case "undeclared_network":
+      return `plan_stack blocked: ${JSON.stringify(result.issues)}`;
+    case "invalid_yaml":
+      return `plan_stack blocked: ${result.error}`;
   }
 }
 
 async function* handlePlanStackToolUse(
   tu: CollectedToolUse,
   ctx: LoopContext,
-): AsyncGenerator<LoopEvent, { isError: boolean; resultMessage: string }> {
+): AsyncGenerator<LoopEvent, { isError: boolean; resultMessage: string; userDeclined?: boolean }> {
   let parsed: unknown = (() => {
     try {
       return planStack.inputSchema.parse(JSON.parse(tu.argsPartial || "{}"));
@@ -271,7 +287,12 @@ async function* handlePlanStackToolUse(
       if (
         planResult.reason === "invalid_spec" ||
         planResult.reason === "invalid_dependency" ||
-        planResult.reason === "port_conflict"
+        planResult.reason === "port_conflict" ||
+        planResult.reason === "resource_limit" ||
+        planResult.reason === "db_port_exposed" ||
+        planResult.reason === "unsafe_volume" ||
+        planResult.reason === "undeclared_network" ||
+        planResult.reason === "invalid_yaml"
       ) {
         return { isError: true, resultMessage: formatPlanBlocker(planResult) };
       }
@@ -319,7 +340,7 @@ async function* handlePlanStackToolUse(
         : {}),
     });
     if (confirm.kind !== "approve") {
-      return { isError: false, resultMessage: "User declined plan." };
+      return { isError: false, resultMessage: "User declined plan.", userDeclined: true };
     }
     const r = yield* applyWithRollback(
       (parsed as { stackName: string }).stackName,
@@ -335,7 +356,7 @@ async function* handlePlanStackToolUse(
 async function* handleRemediateDriftToolUse(
   tu: CollectedToolUse,
   ctx: LoopContext,
-): AsyncGenerator<LoopEvent, { isError: boolean; resultMessage: string }> {
+): AsyncGenerator<LoopEvent, { isError: boolean; resultMessage: string; userDeclined?: boolean }> {
   let parsed: ReturnType<typeof remediateDrift.inputSchema.parse>;
   try {
     parsed = remediateDrift.inputSchema.parse(JSON.parse(tu.argsPartial || "{}"));
@@ -361,7 +382,7 @@ async function* handleRemediateDriftToolUse(
     diff: result.diff,
   });
   if (confirm.kind !== "approve") {
-    return { isError: false, resultMessage: "User declined remediation." };
+    return { isError: false, resultMessage: "User declined remediation.", userDeclined: true };
   }
 
   // Re-apply desired state with rollback protection
@@ -426,6 +447,24 @@ export async function* query(params: QueryParams): AsyncGenerator<LoopEvent, voi
   const lastUser = [...messages]
     .reverse()
     .find((m): m is { role: "user"; content: string } => m.role === "user");
+
+  if (lastUser?.content.trim() === "Destroy all stacks") {
+    const typed = await ctx.requestTypedConfirm(
+      "DESTROY ALL",
+      `This will destroy ${ctx.stateStore.list().length} stacks.`,
+    );
+    if (typed.kind !== "typed_confirm_value" || typed.value !== "DESTROY ALL") {
+      yield {
+        type: "assistant_text",
+        delta: "destroy_all aborted: typed confirmation did not match",
+      };
+      return;
+    }
+    const parsed = destroyAllStacks.inputSchema.parse({});
+    yield* runTool(destroyAllStacks, parsed, ctx);
+    return;
+  }
+
   const mode = lastUser ? classifyIntent(lastUser.content) : "react";
   const maxIterations = LOOP_LIMITS[mode];
 
@@ -466,6 +505,7 @@ export async function* query(params: QueryParams): AsyncGenerator<LoopEvent, voi
           content: r.resultMessage,
           isError: r.isError,
         });
+        if (r.userDeclined) return;
         continue;
       }
       if (tu.name === "destroy_all_stacks") {
@@ -511,6 +551,7 @@ export async function* query(params: QueryParams): AsyncGenerator<LoopEvent, voi
           content: r.resultMessage,
           isError: r.isError,
         });
+        if (r.userDeclined) return;
         continue;
       }
       const tool = findToolByName(getToolsForMode(mode), tu.name);
@@ -556,6 +597,25 @@ export async function* query(params: QueryParams): AsyncGenerator<LoopEvent, voi
         toolUseId: tu.id,
         content: JSON.stringify(result),
         isError: false,
+      });
+    }
+
+    if (ctx.logger) {
+      const actions = collected.toolUses.map((tu) => tu.name);
+      const observations = collected.toolUses.map((tu) => tu.name);
+      ctx.logger.log({
+        ts: new Date().toISOString(),
+        level: "info",
+        sessionId: ctx.sessionId ?? "unknown",
+        iteration: iter + 1,
+        category: "iteration_summary",
+        message: `iteration ${iter + 1}: ${actions.length} action(s)`,
+        data: {
+          thoughtLength: collected.text.length,
+          actions,
+          observations,
+          stopReason: collected.stopReason,
+        },
       });
     }
   }

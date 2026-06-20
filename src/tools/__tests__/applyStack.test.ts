@@ -67,6 +67,18 @@ describe("apply_stack", () => {
     tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "apply-"));
   });
 
+  test("aborts before compose up when YAML round-trip fails", async () => {
+    const runner = new MockComposeRunner(tmpRoot);
+    const ctx = makeCtx(tmpRoot, runner);
+    const malformedYaml = "this is not: valid: yaml: [unclosed";
+    const result = await drain(
+      applyStack.call({ stackName: "badyaml", composeYaml: malformedYaml }, ctx),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.errorOutput).toContain("YAML");
+    expect(result.exitCode).toBe(1);
+  });
+
   test("writes stack YAML then calls composeRunner.forStack().up()", async () => {
     const runner = new MockComposeRunner(tmpRoot);
     const ctx = makeCtx(tmpRoot, runner);
@@ -160,6 +172,71 @@ describe("apply_stack", () => {
     });
     expect(runner.forStackCalls).toEqual([]);
     expect(ctx.stateStore.read("bad")).toBeNull();
+  });
+
+  test("returns runningServices when compose up exits non-zero with partial services running", async () => {
+    const runner = new MockComposeRunner(tmpRoot);
+    const ctx = makeCtx(tmpRoot, runner);
+
+    const yamlPath = path.join(tmpRoot, ".docker-agent/stacks/partial.yaml");
+    const preCreated = runner.forStack("partial", yamlPath);
+    preCreated.up = async function* () {
+      yield "Creating service web... done\n";
+      yield "Creating service db... error\n";
+      return 1;
+    } as never;
+    preCreated.psRows = [{ Name: "partial-web-1", Service: "web", State: "running" }];
+    runner.forStackCalls.length = 0;
+
+    const yaml =
+      "x-docker-agent:\n  name: partial\n  createdAt: '2026-05-26T00:00:00.000Z'\n  lastApplied: null\n  intent: test\n  provider: test\n  generatedBy: test\n  envFileSources: {}\nservices:\n  web:\n    image: nginx:1.27\n  db:\n    image: postgres:16-alpine\n";
+
+    const result = await drain(applyStack.call({ stackName: "partial", composeYaml: yaml }, ctx));
+
+    expect(result.ok).toBe(false);
+    expect(result.exitCode).toBe(1);
+    expect(result.runningServices).toEqual(["web"]);
+  });
+
+  test("returns runningServices for healthy services when some are unhealthy", async () => {
+    const runner = new MockComposeRunner(tmpRoot);
+    const ctx = makeCtx(tmpRoot, runner);
+    ctx.healthCheckDeadlineMs = 0;
+
+    const yamlPath = path.join(tmpRoot, ".docker-agent/stacks/mixed.yaml");
+    const preCreated = runner.forStack("mixed", yamlPath);
+    preCreated.psRows = [
+      { Name: "mixed-web-1", Service: "web", State: "running" },
+      { Name: "mixed-db-1", Service: "db", State: "exited" },
+    ];
+    runner.forStackCalls.length = 0;
+
+    const yaml =
+      "x-docker-agent:\n  name: mixed\n  createdAt: '2026-05-26T00:00:00.000Z'\n  lastApplied: null\n  intent: test\n  provider: test\n  generatedBy: test\n  envFileSources: {}\nservices:\n  web:\n    image: nginx:1.27\n  db:\n    image: postgres:16-alpine\n";
+
+    const result = await drain(applyStack.call({ stackName: "mixed", composeYaml: yaml }, ctx));
+
+    expect(result.ok).toBe(false);
+    expect(result.healthy).toBe(false);
+    expect(result.unhealthyServices).toContainEqual(expect.stringContaining("db"));
+    expect(result.runningServices).toEqual(["web"]);
+  });
+
+  test("successful apply does not set runningServices", async () => {
+    const runner = new MockComposeRunner(tmpRoot);
+    const ctx = makeCtx(tmpRoot, runner);
+    const yaml =
+      "x-docker-agent:\n  name: ok\n  createdAt: '2026-05-26T00:00:00.000Z'\n  lastApplied: null\n  intent: test\n  provider: test\n  generatedBy: test\n  envFileSources: {}\nservices:\n  web:\n    image: nginx:1.27\n";
+
+    const yamlPath = path.join(tmpRoot, ".docker-agent/stacks/ok.yaml");
+    const preCreated = runner.forStack("ok", yamlPath);
+    preCreated.setRunningServices(["web"]);
+    runner.forStackCalls.length = 0;
+
+    const result = await drain(applyStack.call({ stackName: "ok", composeYaml: yaml }, ctx));
+
+    expect(result.ok).toBe(true);
+    expect(result.runningServices).toBeUndefined();
   });
 });
 

@@ -74,9 +74,11 @@ function ActivityRow({ item }: { item: ActivityItem }) {
   if (item.type === "text") {
     if (item.role === "user") {
       return (
-        <Box flexDirection="row">
-          <Text color="cyan">▶ </Text>
-          <Text>{item.text}</Text>
+        <Box flexDirection="row" marginTop={1}>
+          <Text color="green" bold>
+            {"▶ "}
+          </Text>
+          <Text color="green">{item.text}</Text>
         </Box>
       );
     }

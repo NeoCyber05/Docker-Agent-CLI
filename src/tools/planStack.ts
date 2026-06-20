@@ -12,8 +12,13 @@ import {
   detectMissingConfigFiles,
   stageConfigFiles,
 } from "./shared/configFiles";
-import { findRequiredSecrets } from "./shared/requiredSecrets";
+import { type DbPortExposureIssue, checkDbPortExposure } from "./shared/dbPortGuard";
+import { type NetworkIssue, checkNetworkReferences } from "./shared/networkGuard";
+import { findRequiredSecrets, isWeakSecretValue } from "./shared/requiredSecrets";
+import { type ResourceLimitIssue, checkResourceLimits } from "./shared/resourceLimits";
 import { type DraftServiceSpec, type StackDraft, StackDraftSchema } from "./shared/specSchemas";
+import { type VolumeIssue, checkVolumeSafety } from "./shared/volumeGuard";
+import { validateYamlRoundTrip } from "./shared/yamlRoundTrip";
 import { type SpecIssue, validateSpecInput } from "./validateSpec";
 
 export const PlanStackInputSchema = StackDraftSchema;
@@ -47,6 +52,31 @@ export type PlanStackResultBlocked =
       blocked: true;
       reason: "port_conflict";
       portCheck: import("./checkPortConflict").CheckPortConflictResult;
+    }
+  | {
+      blocked: true;
+      reason: "resource_limit";
+      issues: ResourceLimitIssue[];
+    }
+  | {
+      blocked: true;
+      reason: "db_port_exposed";
+      issues: DbPortExposureIssue[];
+    }
+  | {
+      blocked: true;
+      reason: "unsafe_volume";
+      issues: VolumeIssue[];
+    }
+  | {
+      blocked: true;
+      reason: "undeclared_network";
+      issues: NetworkIssue[];
+    }
+  | {
+      blocked: true;
+      reason: "invalid_yaml";
+      error: string;
     };
 
 export type PlanStackResult = PlanStackResultOk | PlanStackResultBlocked;
@@ -123,6 +153,26 @@ export const planStack: Tool<PlanStackInput, PlanStackResult> = {
       return { blocked: true, reason: "port_conflict", portCheck };
     }
 
+    const resourceIssues = checkResourceLimits(input.services);
+    if (resourceIssues.length > 0) {
+      return { blocked: true, reason: "resource_limit", issues: resourceIssues };
+    }
+
+    const dbPortIssues = checkDbPortExposure(input.services);
+    if (dbPortIssues.length > 0) {
+      return { blocked: true, reason: "db_port_exposed", issues: dbPortIssues };
+    }
+
+    const volumeIssues = checkVolumeSafety(ctx.cwd, input.services);
+    if (volumeIssues.length > 0) {
+      return { blocked: true, reason: "unsafe_volume", issues: volumeIssues };
+    }
+
+    const networkIssues = checkNetworkReferences(input.services, input.networks);
+    if (networkIssues.length > 0) {
+      return { blocked: true, reason: "undeclared_network", issues: networkIssues };
+    }
+
     const services = structuredClone(input.services);
     const stagedConfig = stageConfigFiles(
       ctx.cwd,
@@ -189,8 +239,15 @@ export const planStack: Tool<PlanStackInput, PlanStackResult> = {
 
         const merged = mergeEnv(fromEnvFile, remainingInlineEnvironment);
         const missing = rule.required.filter((key) => merged[key] === undefined);
-        const safeKeys = missing.filter((key) => rule.safeDefaults?.[key] !== undefined);
-        const unsafeKeys = missing.filter((key) => rule.safeDefaults?.[key] === undefined);
+        const weak = rule.required.filter(
+          (key) =>
+            merged[key] !== undefined &&
+            typeof merged[key] === "string" &&
+            isWeakSecretValue(key, merged[key] as string, rule),
+        );
+        const replaceable = [...missing, ...weak];
+        const safeKeys = replaceable.filter((key) => rule.safeDefaults?.[key] !== undefined);
+        const unsafeKeys = replaceable.filter((key) => rule.safeDefaults?.[key] === undefined);
 
         if (unsafeKeys.length > 0) {
           missingByService[serviceName] = unsafeKeys;
@@ -264,6 +321,14 @@ export const planStack: Tool<PlanStackInput, PlanStackResult> = {
       ...generatedEnvFileSources,
     };
     const composeYaml = stackToYaml(def);
+    const yamlCheck = validateYamlRoundTrip(composeYaml);
+    if (!yamlCheck.ok) {
+      return {
+        blocked: true,
+        reason: "invalid_yaml",
+        error: yamlCheck.error ?? "unknown YAML error",
+      };
+    }
 
     let diff: StackDiff = {
       stackName: input.stackName,

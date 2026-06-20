@@ -5,6 +5,7 @@ import type { ComposeRunner } from "src/services/docker/composeRunner";
 import type { EngineClient } from "src/services/docker/engineClient";
 import type { SessionRecord, SessionStore } from "src/state/SessionStore";
 import type { StateStore } from "src/state/StateStore";
+import type { LogEntry, StructuredLogger } from "src/state/logger";
 import type { LoopEvent } from "src/types/events";
 import type { Message } from "src/types/message";
 import type { PermissionResponse } from "src/types/permissions";
@@ -46,6 +47,8 @@ export class QueryEngine {
   public provider: Provider;
   public model: string | undefined;
   public totalUsage = { inputTokens: 0, outputTokens: 0 };
+  private logger: StructuredLogger | null = null;
+  private currentIteration = 0;
 
   constructor(private deps: QueryEngineDeps) {
     this.provider = deps.provider;
@@ -71,10 +74,21 @@ export class QueryEngine {
     return this.messages;
   }
 
+  setLogger(logger: StructuredLogger): void {
+    this.logger = logger;
+  }
+
   async *query(userInput: string): AsyncGenerator<LoopEvent, void> {
     const controller = new AbortController();
     this.activeController = controller;
     this.messages.push({ role: "user", content: userInput });
+    this.logger?.log({
+      ts: new Date().toISOString(),
+      level: "info",
+      sessionId: this._sessionId,
+      category: "turn_start",
+      message: userInput,
+    });
     const eventQueue = new AsyncQueue<LoopEvent>();
 
     const ctx: LoopContext = {
@@ -107,6 +121,7 @@ export class QueryEngine {
           reason,
         }),
       allowSet: this.sessionAllowSet,
+      ...(this.logger ? { logger: this.logger } : {}),
     };
 
     const loopPromise = (async () => {
@@ -136,11 +151,20 @@ export class QueryEngine {
           this.totalUsage.inputTokens += ev.inputTokens;
           this.totalUsage.outputTokens += ev.outputTokens;
         }
+        this.logger?.log(this.toLogEntry(ev, this.currentIteration));
         yield ev;
       }
     } finally {
       this.activeController = null;
       await loopPromise.catch(() => {});
+      this.logger?.log({
+        ts: new Date().toISOString(),
+        level: "info",
+        sessionId: this._sessionId,
+        category: "turn_end",
+        message: "turn complete",
+      });
+      this.logger?.close();
       // Persist transcript after turn ends
       if (this.deps.sessionStore) {
         const firstUserMsg = this.messages.find((m) => m.role === "user");
@@ -183,6 +207,127 @@ export class QueryEngine {
     this.pending.clear();
     this.sessionAllowSet.clear();
     this.activeController = null;
+  }
+
+  private toLogEntry(ev: LoopEvent, iteration: number): LogEntry {
+    const ts = new Date().toISOString();
+    const sessionId = this._sessionId;
+    switch (ev.type) {
+      case "iteration_start":
+        this.currentIteration = ev.n;
+        return {
+          ts,
+          level: "info",
+          sessionId,
+          iteration: ev.n,
+          category: "iteration_start",
+          message: `iteration ${ev.n}`,
+        };
+      case "assistant_text":
+        return {
+          ts,
+          level: "info",
+          sessionId,
+          iteration,
+          category: "thought",
+          message: "assistant text",
+          data: { text: ev.delta },
+        };
+      case "tool_call":
+        return {
+          ts,
+          level: "info",
+          sessionId,
+          iteration,
+          category: "action",
+          message: `tool_call: ${ev.name}`,
+          data: { name: ev.name, input: ev.input },
+        };
+      case "tool_progress":
+        return {
+          ts,
+          level: "debug",
+          sessionId,
+          iteration,
+          category: "progress",
+          message: ev.msg,
+        };
+      case "tool_result":
+        return {
+          ts,
+          level: "info",
+          sessionId,
+          iteration,
+          category: "observation",
+          message: `tool_result: ${ev.name}`,
+          data: { name: ev.name, output: ev.output },
+        };
+      case "plan_ready":
+        return {
+          ts,
+          level: "info",
+          sessionId,
+          iteration,
+          category: "plan_ready",
+          message: "plan ready for confirmation",
+        };
+      case "permission_request":
+        return {
+          ts,
+          level: "info",
+          sessionId,
+          iteration,
+          category: "permission_request",
+          message: `permission: ${ev.tool}`,
+        };
+      case "error":
+        return {
+          ts,
+          level: "error",
+          sessionId,
+          iteration,
+          category: "error",
+          message: ev.error.message,
+          data: { stack: ev.error.stack },
+        };
+      case "usage":
+        return {
+          ts,
+          level: "debug",
+          sessionId,
+          iteration,
+          category: "usage",
+          message: `tokens: ${ev.inputTokens} in / ${ev.outputTokens} out`,
+          data: { inputTokens: ev.inputTokens, outputTokens: ev.outputTokens },
+        };
+      case "rollback_started":
+        return {
+          ts,
+          level: "warn",
+          sessionId,
+          iteration,
+          category: "rollback_started",
+          message: `rollback: ${ev.stackName} (${ev.reason})`,
+        };
+      case "rollback_result":
+        return {
+          ts,
+          level: ev.ok ? "info" : "error",
+          sessionId,
+          iteration,
+          category: "rollback_result",
+          message: `rollback ${ev.ok ? "ok" : "failed"}: ${ev.stackName}`,
+        };
+      default:
+        return {
+          ts,
+          level: "debug",
+          sessionId,
+          iteration,
+          category: "event",
+          message: `event: ${(ev as { type: string }).type}`,
+        };
+    }
   }
 
   private deferUserResponse(

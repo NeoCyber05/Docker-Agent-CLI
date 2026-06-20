@@ -1,5 +1,14 @@
 import type { StackDiff } from "./stack";
 
+/**
+ * StructuredLogger (src/state/logger.ts) maps LoopEvent types to NDJSON trace categories:
+ * iteration_start → iteration_start | assistant_text → thought | tool_call → action |
+ * tool_progress → progress | tool_result → observation | plan_ready → plan_ready |
+ * permission_request → permission_request | error → error | usage → usage |
+ * rollback_started → rollback_started | rollback_result → rollback_result |
+ * other → event. QueryEngine also emits turn_start / turn_end; query.ts emits iteration_summary.
+ */
+
 export type LoopEvent =
   | { type: "iteration_start"; n: number }
   | { type: "assistant_text"; delta: string }
@@ -30,6 +39,7 @@ export type LoopEvent =
       stackName: string;
       reason: "apply_failed" | "unhealthy";
       detail: string; // e.g. "exit 1" or "unhealthy: db, cache"
+      runningServices?: string[]; // services confirmed running despite failure
     }
   | {
       type: "rollback_result";

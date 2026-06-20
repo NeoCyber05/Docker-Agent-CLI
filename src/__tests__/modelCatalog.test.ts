@@ -6,6 +6,7 @@ const STATUSES: ProviderStatus[] = [
   { provider: "openai", connected: true },
   { provider: "gemini", connected: false, reason: "API key not set" },
   { provider: "ollama", connected: false, reason: "ECONNREFUSED" },
+  { provider: "openrouter", connected: false, reason: "API key not set" },
 ];
 
 describe("buildModelCatalog", () => {
@@ -18,11 +19,13 @@ describe("buildModelCatalog", () => {
       },
       gemini: { name: "gemini", stream: vi.fn(), listModels: vi.fn() },
       ollama: { name: "ollama", stream: vi.fn(), listModels: vi.fn() },
+      openrouter: { name: "openrouter", stream: vi.fn(), listModels: vi.fn() },
     });
     expect(catalog).toEqual([
       { provider: "gemini", connected: false, reason: "API key not set" },
       { provider: "openai", connected: true, models: ["gpt-4o-mini"] },
       { provider: "ollama", connected: false, reason: "ECONNREFUSED" },
+      { provider: "openrouter", connected: false, reason: "API key not set" },
     ]);
   });
 });

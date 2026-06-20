@@ -1,0 +1,8 @@
+---
+pid: 25640
+cwd: "D:\AI\docker-agent-cli"
+command: "cd D:\\AI\\docker-agent-cli; npx biome check --write src/components/WelcomeBanner.tsx src/components/PromptInput.tsx src/components/__tests__/WelcomeBanner.test.tsx src/components/__tests__/PromptInput.test.tsx"
+started_at: 2026-06-19T18:04:06.569Z
+running_for_ms: 38500011 
+---
+Checked 4 files in 26ms. Fixed 4 files.

@@ -15,6 +15,7 @@ const PROVIDER_LABELS: Record<ProviderName, string> = {
   gemini: "Gemini",
   openai: "OpenAI",
   ollama: "Ollama",
+  openrouter: "OpenRouter",
 };
 
 export function providerLabel(provider: ProviderName): string {

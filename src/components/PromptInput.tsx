@@ -8,6 +8,10 @@ function shouldCompleteSuggestion(text: string, suggestion: SlashCommandSuggesti
   return text.trimEnd().toLowerCase() !== suggestion.insertText.trimEnd().toLowerCase();
 }
 
+function insertAt(current: string, pos: number, insertion: string): string {
+  return current.slice(0, pos) + insertion + current.slice(pos);
+}
+
 // Counts user-perceived characters, treating Unicode combining marks (\p{M})
 // as part of the preceding base character. A single Vietnamese keystroke
 // (e.g. "ế" delivered as base + combining marks) counts as 1, not 3.
@@ -77,11 +81,13 @@ export function PromptInput({
   prefill?: { requestId: number; text: string };
 }): React.ReactElement {
   const [text, setText] = useState("");
+  const [cursorPos, setCursorPos] = useState(0);
   const [history, setHistory] = useState<string[]>([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
   const [draft, setDraft] = useState("");
   const [suggestionIdx, setSuggestionIdx] = useState(0);
   const textRef = useRef("");
+  const cursorPosRef = useRef(0);
   const suggestions = getSlashCommandSuggestions(text);
   const selectedSuggestion = suggestions[Math.min(suggestionIdx, suggestions.length - 1)];
 
@@ -91,10 +97,17 @@ export function PromptInput({
   const pastedIndexRef = useRef(0);
   const lastPasteTimeRef = useRef(0);
 
+  const setCursor = (pos: number) => {
+    cursorPosRef.current = pos;
+    setCursorPos(pos);
+  };
+
   useEffect(() => {
     if (!prefill) return;
     textRef.current = prefill.text;
     setText(prefill.text);
+    cursorPosRef.current = prefill.text.length;
+    setCursorPos(prefill.text.length);
     setSuggestionIdx(0);
   }, [prefill]);
 
@@ -105,14 +118,17 @@ export function PromptInput({
       setSuggestionIdx(0);
       textRef.current = suggestion.insertText;
       setText(textRef.current);
+      setCursor(textRef.current.length);
     };
 
     // Multi-line support: Alt+Enter (key.meta && key.return)
     if (key.return) {
       if (key.meta || key.ctrl) {
         setSuggestionIdx(0);
-        textRef.current += "\n";
-        setText(textRef.current);
+        const newText = insertAt(textRef.current, cursorPosRef.current, "\n");
+        textRef.current = newText;
+        setText(newText);
+        setCursor(cursorPosRef.current + 1);
         return;
       }
       const currentText = textRef.current;
@@ -133,6 +149,7 @@ export function PromptInput({
       setSuggestionIdx(0);
       textRef.current = "";
       setText("");
+      setCursor(0);
       return;
     }
 
@@ -156,6 +173,7 @@ export function PromptInput({
       setSuggestionIdx(0);
       textRef.current = history[nextIdx] ?? "";
       setText(textRef.current);
+      setCursor(textRef.current.length);
       return;
     }
 
@@ -172,12 +190,41 @@ export function PromptInput({
         setSuggestionIdx(0);
         textRef.current = draft;
         setText(textRef.current);
+        setCursor(textRef.current.length);
       } else {
         setHistoryIdx(nextIdx);
         setSuggestionIdx(0);
         textRef.current = history[nextIdx] ?? "";
         setText(textRef.current);
+        setCursor(textRef.current.length);
       }
+      return;
+    }
+
+    if (key.leftArrow) {
+      if (suggestions.length > 0) {
+        setSuggestionIdx((idx) => (idx <= 0 ? suggestions.length - 1 : idx - 1));
+        return;
+      }
+      setCursor(Math.max(0, cursorPosRef.current - 1));
+      return;
+    }
+
+    if (key.rightArrow) {
+      if (suggestions.length > 0) {
+        setSuggestionIdx((idx) => (idx + 1) % suggestions.length);
+        return;
+      }
+      setCursor(Math.min(textRef.current.length, cursorPosRef.current + 1));
+      return;
+    }
+
+    if (key.ctrl && input === "a") {
+      setCursor(0);
+      return;
+    }
+    if (key.ctrl && input === "e") {
+      setCursor(textRef.current.length);
       return;
     }
 
@@ -188,8 +235,12 @@ export function PromptInput({
 
     if (key.backspace || key.delete) {
       setSuggestionIdx(0);
-      textRef.current = textRef.current.slice(0, -1);
-      setText(textRef.current);
+      if (cursorPosRef.current === 0) return;
+      const pos = cursorPosRef.current;
+      const newText = textRef.current.slice(0, pos - 1) + textRef.current.slice(pos);
+      textRef.current = newText;
+      setText(newText);
+      setCursor(pos - 1);
       return;
     }
 
@@ -207,6 +258,7 @@ export function PromptInput({
         justPastedRef.current = false;
         textRef.current = applyInlineEdits(textRef.current, normalized);
         setText(textRef.current);
+        setCursor(textRef.current.length);
         return;
       }
 
@@ -216,6 +268,7 @@ export function PromptInput({
       if (isPasteChunk(normalized)) {
         textRef.current += normalized;
         setText(textRef.current);
+        setCursor(textRef.current.length);
         justPastedRef.current = true;
         pastedCharsRef.current = splitGraphemes(normalized);
         pastedIndexRef.current = 0;
@@ -243,8 +296,10 @@ export function PromptInput({
         }
       }
 
-      textRef.current += normalized;
-      setText(textRef.current);
+      const newText = insertAt(textRef.current, cursorPosRef.current, normalized);
+      textRef.current = newText;
+      setText(newText);
+      setCursor(cursorPosRef.current + normalized.length);
     }
   });
 
@@ -252,12 +307,13 @@ export function PromptInput({
     <Box flexDirection="column" marginLeft={1} marginTop={1}>
       <Box>
         <Text color="cyan" bold>
-          ▶{" "}
+          {"▶ "}
         </Text>
-        <Text>{text}</Text>
+        <Text>{text.slice(0, cursorPos)}</Text>
         <Text color="cyan" bold>
           █
         </Text>
+        <Text>{text.slice(cursorPos)}</Text>
       </Box>
       <Box marginTop={0}>
         <Text dimColor>
@@ -267,7 +323,7 @@ export function PromptInput({
               ? "(Awaiting your response…)"
               : phase === "queue_paused"
                 ? "(Queue paused — /queue resume to continue)"
-                : "(Alt+Enter for newline, Up/Down for history)"}
+                : "(Alt+Enter for newline, ←→ to move cursor, Up/Down for history)"}
         </Text>
       </Box>
       {suggestions.length > 0 && (

@@ -241,6 +241,18 @@ describe("sanitizeToolText", () => {
     expect(sanitized).not.toContain("mno");
   });
 
+  it("preserves a YAML key on the line after a secret-like key name", () => {
+    const yaml = [
+      "addedKeys:",
+      "  - MARIADB_ROOT_PASSWORD",
+      "services:",
+      "  web:",
+      "    image: nginx",
+    ].join("\n");
+
+    expect(sanitizeToolText(yaml)).toContain("\nservices:\n");
+  });
+
   it("truncates to 4096 bytes", () => {
     const long = "a".repeat(10_000);
     const sanitized = sanitizeToolText(long);

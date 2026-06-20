@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import { Readable, Writable } from "node:stream";
 import { Command } from "commander";
 import { render } from "ink";
@@ -12,6 +13,7 @@ import { ComposeRunner } from "./services/docker/composeRunner";
 import { createEngineClient } from "./services/docker/engineClient";
 import { SessionStore } from "./state/SessionStore";
 import { StateStore } from "./state/StateStore";
+import { StructuredLogger } from "./state/logger";
 
 const VERSION = "0.1.0";
 const COMPACT_WELCOME_MAX_ROWS = 16;
@@ -290,6 +292,8 @@ export async function runHeadless(prompt: string, args: ParsedArgs): Promise<num
   const { QueryEngine } = await import("./QueryEngine");
   const deps = await createDeps(args);
   const engine = new QueryEngine(deps);
+  const logDir = path.join(projectStateDir(), "logs");
+  engine.setLogger(new StructuredLogger(logDir, engine.sessionId));
   let hasError = false;
   for await (const ev of engine.query(prompt)) {
     if (ev.type === "assistant_text") process.stdout.write(ev.delta);

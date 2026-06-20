@@ -16,9 +16,9 @@ export const SLASH_COMMANDS: readonly SlashCommandSuggestion[] = [
     insertText: "/clear",
   },
   {
-    usage: "/quit",
+    usage: "/exit",
     description: "Exit docker-agent",
-    insertText: "/quit",
+    insertText: "/exit",
   },
   {
     usage: "/stacks",

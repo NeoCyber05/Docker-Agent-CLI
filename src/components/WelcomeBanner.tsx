@@ -22,7 +22,7 @@ function segColor(type: SegType): string {
     case "water":
       return "cyan";
     case "eye":
-      return "yellow";
+      return "green";
     default:
       return "cyan";
   }
@@ -53,7 +53,7 @@ function WhaleLine({ line }: { line: string }): React.ReactElement {
   return (
     <Box>
       {segs.map((s, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: segments derived from static line string, order is stable
+        // biome-ignore lint/suspicious/noArrayIndexKey: segments derived from static line string
         <Text key={i} color={segColor(s.type)}>
           {s.text}
         </Text>
@@ -73,7 +73,7 @@ const TIPS: Tip[] = [
   { cmd: "/connect", desc: "Connect gemini, openai, or ollama" },
   { cmd: "/stacks", desc: "List managed stacks" },
   { cmd: "/status <stack>", desc: "Inspect status & drift" },
-  { cmd: "/quit", desc: "Exit the agent" },
+  { cmd: "/exit", desc: "Exit the agent" },
 ];
 
 export interface WelcomeBannerProps {
@@ -87,11 +87,10 @@ export interface WelcomeBannerProps {
 export function WelcomeBanner({
   version,
   username,
-  provider,
-  model,
   compact = false,
 }: WelcomeBannerProps): React.ReactElement {
   const user = username ?? os.userInfo().username;
+
   if (compact) {
     return (
       <Box borderStyle="round" borderColor="cyan" paddingX={1} overflowX="hidden">
@@ -99,10 +98,6 @@ export function WelcomeBanner({
           docker-agent{" "}
         </Text>
         <Text color="cyan">v{version}</Text>
-        <Text dimColor> | provider: </Text>
-        <Text color="yellow">{provider}</Text>
-        <Text dimColor> | model: </Text>
-        <Text color="yellow">{model ?? "default"}</Text>
       </Box>
     );
   }
@@ -116,17 +111,6 @@ export function WelcomeBanner({
       paddingY={0}
       overflowX="hidden"
     >
-      <Box marginBottom={1}>
-        <Text color="cyan" bold>
-          docker-agent{" "}
-        </Text>
-        <Text color="cyan">v{version}</Text>
-        <Text dimColor> | provider: </Text>
-        <Text color="yellow">{provider}</Text>
-        <Text dimColor> | model: </Text>
-        <Text color="yellow">{model ?? "default"}</Text>
-      </Box>
-
       <Box flexDirection="row">
         <Box flexDirection="column" width={38} paddingRight={2}>
           <Box justifyContent="center" marginBottom={1}>
@@ -139,7 +123,7 @@ export function WelcomeBanner({
             </Text>
           </Box>
           {WHALE.map((line, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: WHALE is a static constant array, order never changes
+            // biome-ignore lint/suspicious/noArrayIndexKey: WHALE is static
             <WhaleLine key={i} line={line} />
           ))}
           <Box justifyContent="center" marginTop={1}>

@@ -2,9 +2,9 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-export type ProviderName = "gemini" | "openai" | "ollama";
+export type ProviderName = "gemini" | "openai" | "ollama" | "openrouter";
 
-export const PROVIDER_NAMES: readonly ProviderName[] = ["gemini", "openai", "ollama"];
+export const PROVIDER_NAMES: readonly ProviderName[] = ["gemini", "openai", "ollama", "openrouter"];
 
 export function isValidProvider(value: unknown): value is ProviderName {
   return typeof value === "string" && (PROVIDER_NAMES as readonly string[]).includes(value);

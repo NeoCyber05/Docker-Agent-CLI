@@ -7,10 +7,11 @@ import { parseStackDefinition } from "src/state/StateStore";
 import { readEnvFile } from "src/state/envFile";
 import { scrubLine, shouldRedact } from "src/state/secretRedactor";
 import type { StackDefinition } from "src/types/stack";
-import { parse as parseYaml } from "yaml";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { z } from "zod";
 import { findInvalidFileBinds } from "./shared/configFiles";
 import { validateImagesForTool } from "./shared/imageValidation";
+import { validateYamlRoundTrip } from "./shared/yamlRoundTrip";
 
 export const ApplyStackInputSchema = z.object({
   stackName: z.string(),
@@ -27,6 +28,7 @@ export interface ApplyStackResult {
   errorOutput?: string;
   healthy?: boolean; // false when health gate timed out
   unhealthyServices?: string[]; // services not running/healthy at deadline
+  runningServices?: string[]; // services confirmed running despite overall failure
 }
 
 const HEALTH_DEADLINE_MS_DEFAULT = 120_000; // 120s default
@@ -166,7 +168,18 @@ export const applyStack: Tool<ApplyStackInput, ApplyStackResult> = {
   needsPermission: () => true,
   call: async function* (input, ctx): AsyncGenerator<ToolProgress, ApplyStackResult> {
     const yamlPath = path.join(ctx.cwd, ".docker-agent", "stacks", `${input.stackName}.yaml`);
-    const def = parseStackDefinition(parseYaml(input.composeYaml), "apply_stack input");
+
+    let def: StackDefinition;
+    try {
+      def = parseStackDefinition(parseYaml(input.composeYaml), "apply_stack input");
+    } catch (err) {
+      return {
+        ok: false,
+        exitCode: 1,
+        yamlPath,
+        errorOutput: `YAML round-trip validation failed: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
     const imageValidation = await validateImagesForTool(
       Object.values(def.services).map((spec) => spec.image),
       ctx,
@@ -221,6 +234,16 @@ export const applyStack: Tool<ApplyStackInput, ApplyStackResult> = {
     fs.mkdirSync(stacksDir, { recursive: true });
     ctx.stateStore.write(input.stackName, def);
 
+    const yamlCheck = validateYamlRoundTrip(stringifyYaml(def));
+    if (!yamlCheck.ok) {
+      return {
+        ok: false,
+        exitCode: 1,
+        yamlPath,
+        errorOutput: `YAML round-trip validation failed: ${yamlCheck.error}`,
+      };
+    }
+
     yield { type: "progress", msg: "Acquiring stack lock..." };
     const release = await ctx.stateStore.acquireLock(input.stackName, { timeoutMs: 30_000 });
 
@@ -245,7 +268,24 @@ export const applyStack: Tool<ApplyStackInput, ApplyStackResult> = {
           });
 
           if (r.value !== 0) {
-            return { ok: false, exitCode: r.value, yamlPath, errorOutput: captured };
+            // Best-effort probe: which services are actually running despite the failure?
+            let runningServices: string[] | undefined;
+            try {
+              const rows = await bound.ps({ json: true });
+              const running = rows.filter((row) => row.State === "running");
+              if (running.length > 0) {
+                runningServices = running.map((row) => row.Service);
+              }
+            } catch {
+              // ps is diagnostic-only; swallow errors
+            }
+            return {
+              ok: false,
+              exitCode: r.value,
+              yamlPath,
+              errorOutput: captured,
+              ...(runningServices ? { runningServices } : {}),
+            };
           }
 
           // Health gate: poll until all services are running/healthy or deadline elapses
@@ -267,12 +307,23 @@ export const applyStack: Tool<ApplyStackInput, ApplyStackResult> = {
           if (!healthResult.healthy) {
             const failedNames = healthResult.unhealthy.map((u) => u.service);
             const logs = await collectFailureLogs(bound, failedNames, secretKeys);
+            let runningServices: string[] | undefined;
+            try {
+              const rows = await bound.ps({ json: true });
+              const running = rows.filter((row) => row.State === "running");
+              if (running.length > 0) {
+                runningServices = running.map((row) => row.Service);
+              }
+            } catch {
+              // ps is diagnostic-only; swallow errors
+            }
             return {
               ok: false,
               exitCode: 0,
               yamlPath,
               healthy: false,
               unhealthyServices: healthResult.unhealthy.map((u) => `${u.service} (${u.status})`),
+              ...(runningServices ? { runningServices } : {}),
               ...(logs ? { errorOutput: logs } : {}),
             };
           }

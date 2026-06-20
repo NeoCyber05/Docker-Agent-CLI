@@ -599,22 +599,6 @@ describe("REQ 3.4 — slash commands route correctly (not sent to LLM)", () => {
     vi.restoreAllMocks();
   });
 
-  test("/quit exits the REPL via Ink (not process.exit)", async () => {
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
-      throw new Error("process.exit should not be called");
-    });
-    const rendered = renderRepl();
-    apps.push(rendered.app);
-    tmpDirs.push(rendered.tmp);
-    const waitForExit = rendered.app.waitUntilExit();
-    await new Promise((resolve) => setImmediate(resolve));
-
-    await typeLine(rendered.stdin, "/quit");
-
-    await expect(waitForExit).resolves.toBeUndefined();
-    expect(exitSpy).not.toHaveBeenCalled();
-  });
-
   test("/exit exits the REPL via Ink (not process.exit)", async () => {
     const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
       throw new Error("process.exit should not be called");
@@ -661,12 +645,12 @@ describe("REQ 3.4 — slash commands route correctly (not sent to LLM)", () => {
     const output = stripAnsi(rendered.stdout.output());
     expect(output).toContain("Supported slash commands");
     expect(output).toContain("/clear");
-    expect(output).toContain("/quit");
+    expect(output).toContain("/exit");
     // /help must NOT query the LLM
     expect(queriedWith).toHaveLength(0);
   });
 
-  test("/model with provider prefix updates the header provider and model display", async () => {
+  test("/model with provider prefix updates the active provider and model", async () => {
     const rendered = renderRepl();
     apps.push(rendered.app);
     tmpDirs.push(rendered.tmp);
@@ -675,15 +659,14 @@ describe("REQ 3.4 — slash commands route correctly (not sent to LLM)", () => {
     await typeLine(rendered.stdin, "/model openai/gpt-4.1-mini");
 
     const output = stripAnsi(rendered.stdout.output());
-    expect(output).toContain("provider: openai");
-    expect(output).toContain("model: gpt-4.1-mini");
+    expect(output).toContain("Model set to gpt-4.1-mini (openai)");
   });
 
   test("PBT: all REPL-internal slash commands do not query LLM", async () => {
     /**
      * Validates: Requirements 3.4
      *
-     * Property: For all cmd ∈ {/quit, /exit, /clear, /help, /connect, /model,
+     * Property: For all cmd ∈ {/exit, /clear, /help, /connect, /model,
      * /models, /resume} — the REPL handles them internally WITHOUT calling LLM.
      *
      * For commands that exit or require external state (models, resume) we test
@@ -979,7 +962,7 @@ describe("REQ 3.7 — plain text without bold markdown renders verbatim", () => 
       "Deploy nginx with 3 replicas",
       "Checking stack status...",
       "Error: port 80 already in use",
-      "Use /quit to exit",
+      "Use /exit to exit",
       "Stack: web-app (running)",
       "123 containers found",
       "hello world",

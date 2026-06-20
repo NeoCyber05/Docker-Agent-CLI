@@ -45,6 +45,7 @@ import {
 import { type ProviderStatus, getProviderStatuses } from "../services/providerStatus";
 import { formatSlashHelp } from "../slashCommands";
 import type { SessionStore } from "../state/SessionStore";
+import { StructuredLogger } from "../state/logger";
 import { scrubLine } from "../state/secretRedactor";
 import { collectSecretKeys } from "../tools/shared/secretKeys";
 import type { ToolActivity } from "../ui/activity";
@@ -94,6 +95,8 @@ export function REPL({
   const engine = useMemo(() => {
     const next = new QueryEngine(deps);
     if (resumedRecord) next.loadSession(resumedRecord);
+    const logDir = path.join(deps.cwd, ".docker-agent", "logs");
+    next.setLogger(new StructuredLogger(logDir, next.sessionId));
     return next;
   }, [deps, resumedRecord]);
   const apiKeyStore = useMemo(() => deps.apiKeyStore ?? createApiKeyStore(), [deps.apiKeyStore]);
@@ -125,6 +128,7 @@ export function REPL({
 
   const [activeProviderName, setActiveProviderName] = useState(deps.providerName);
   const [activeModel, setActiveModel] = useState<string | undefined>(deps.model);
+  const [timelineKey, setTimelineKey] = useState(0);
   const { exit } = useApp();
   const frameWidth = useSafeFrameWidth();
   const { stdout } = useStdout();
@@ -305,7 +309,7 @@ export function REPL({
       const cmd = parts[0]?.toLowerCase();
       const arg = parts.slice(1).join(" ");
 
-      if (cmd === "/quit" || cmd === "/exit") {
+      if (cmd === "/exit") {
         stopLogPane();
         exit();
         return;
@@ -316,6 +320,7 @@ export function REPL({
         setShowPalette(false);
         setShowQueue(false);
         session.reset();
+        setTimelineKey((k) => k + 1);
         return;
       }
       if (cmd === "/help") {
@@ -540,6 +545,7 @@ export function REPL({
         </Box>
       )}
       <ActivityTimeline
+        key={timelineKey}
         items={session.activities}
         activeToolActivityId={session.activeToolActivityId}
       />

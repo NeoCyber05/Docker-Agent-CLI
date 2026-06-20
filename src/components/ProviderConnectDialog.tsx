@@ -18,10 +18,11 @@ export const PROVIDER_CONNECT_META: Record<
 > = {
   gemini: { title: "Gemini", description: "(API key)", category: "Popular" },
   openai: { title: "OpenAI", description: "(API key)", category: "Popular" },
+  openrouter: { title: "OpenRouter", description: "(API key)", category: "Popular" },
   ollama: { title: "Ollama", description: "(local)", category: "Providers" },
 };
 
-const PROVIDER_ORDER: ProviderName[] = ["gemini", "openai", "ollama"];
+const PROVIDER_ORDER: ProviderName[] = ["gemini", "openai", "openrouter", "ollama"];
 
 const CATEGORY_ORDER = ["Popular", "Providers"] as const;
 

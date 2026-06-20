@@ -239,7 +239,8 @@ describe("REPL terminal rendering", () => {
     );
 
     expect(output).toContain("docker-agent");
-    expect(output).toContain("provider: fake");
+    expect(output).toContain("v0.1.0");
+    expect(output).not.toContain("provider:");
     expect(output).not.toContain("Welcome back");
     expect(output).not.toContain("Tips for getting started");
     expect(visibleLineCount(output)).toBeLessThanOrEqual(8);
@@ -296,7 +297,7 @@ describe("REPL terminal rendering", () => {
     await new Promise((resolve) => setImmediate(resolve));
 
     const output = renderTerminal(rendered.stdout.output());
-    expect(countOccurrences(output, "docker-agent")).toBe(1);
+    expect(countOccurrences(output, "Docker Agent CLI")).toBe(1);
     expect(countOccurrences(output, "Tips for getting started")).toBe(1);
   });
 
@@ -310,7 +311,7 @@ describe("REPL terminal rendering", () => {
     const waitForExit = rendered.app.waitUntilExit();
     await new Promise((resolve) => setImmediate(resolve));
 
-    rendered.stdin.push("/quit");
+    rendered.stdin.push("/exit");
     rendered.stdin.emit("readable");
     await new Promise((resolve) => setImmediate(resolve));
     rendered.stdin.push("\r");

@@ -35,7 +35,7 @@ export function ThinkingIndicator(): React.ReactElement {
   const frame = SPINNER_FRAMES[frameIndex] ?? SPINNER_FRAMES[0];
 
   return (
-    <Text color="yellow">
+    <Text color="green">
       {frame} Thinking… {elapsed}s
     </Text>
   );

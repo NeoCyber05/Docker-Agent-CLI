@@ -36,7 +36,80 @@ function stripAnsi(v: string): string {
   return v.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;?]*[ -/]*[@-~]`, "g"), "");
 }
 
+function lastRenderedFrame(output: string): string {
+  const frameBoundary = new RegExp(`${String.fromCharCode(27)}\\[(?:2J|\\d+;\\d+H|\\d+H|H)`, "g");
+  let lastIndex = 0;
+  let match = frameBoundary.exec(output);
+  while (match !== null) {
+    lastIndex = match.index;
+    match = frameBoundary.exec(output);
+  }
+  return stripAnsi(output.slice(lastIndex));
+}
+
 const diff: StackDiff = { stackName: "web", status: "missing", serviceDiffs: [] };
+
+describe("PlanPreview", () => {
+  test("renders plan preview without crashing", async () => {
+    const stdout = new TestStdout();
+    const app = render(
+      React.createElement(PlanPreview, {
+        composeYaml: "version: '3'\nservices:\n  web:\n    image: nginx",
+        diff: { stackName: "test", status: "missing", serviceDiffs: [] },
+        onAnswer: () => {},
+      }),
+      {
+        stdout: stdout as unknown as NodeJS.WriteStream,
+        stdin: new TestStdin() as unknown as NodeJS.ReadStream,
+        debug: true,
+        patchConsole: false,
+        exitOnCtrlC: false,
+      },
+    );
+    await new Promise((r) => setImmediate(r));
+    const output = stripAnsi(stdout.output());
+    expect(output).toContain("test");
+    expect(output).toContain("YAML");
+    app.unmount();
+    app.cleanup();
+  });
+
+  test("renders expanded YAML with one terminal row per YAML line", async () => {
+    const stdin = new TestStdin();
+    const stdout = new TestStdout();
+    const app = render(
+      React.createElement(PlanPreview, {
+        composeYaml: "services:\n  app:\n    image: nginx:latest",
+        diff,
+        onAnswer: () => {},
+      }),
+      {
+        stdout: stdout as unknown as NodeJS.WriteStream,
+        stdin: stdin as unknown as NodeJS.ReadStream,
+        debug: true,
+        patchConsole: false,
+        exitOnCtrlC: false,
+      },
+    );
+
+    await new Promise((resolve) => setImmediate(resolve));
+    stdin.push("x");
+    stdin.emit("readable");
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const lines = lastRenderedFrame(stdout.output()).split("\n");
+    const servicesLine = lines.findIndex((line) => line.includes("services:"));
+    const appLine = lines.findIndex((line) => line.includes("app:"));
+    const imageLine = lines.findIndex((line) => line.includes("image: nginx:latest"));
+
+    expect(servicesLine).toBeGreaterThan(-1);
+    expect(appLine).toBe(servicesLine + 1);
+    expect(imageLine).toBe(appLine + 1);
+
+    app.unmount();
+    app.cleanup();
+  });
+});
 
 describe("PlanPreview config files", () => {
   const apps: Instance[] = [];

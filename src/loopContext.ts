@@ -1,3 +1,4 @@
+import type { StructuredLogger } from "src/state/logger";
 import type { PermissionResponse } from "src/types/permissions";
 import type { StackDiff } from "src/types/stack";
 import type { ToolContext } from "./Tool";
@@ -15,4 +16,5 @@ export interface LoopContext extends ToolContext {
   requestTypedConfirm(phrase: string, reason: string): Promise<PermissionResponse>;
   requestSecretsInput(service: string, keys: string[], reason: string): Promise<PermissionResponse>;
   allowSet: Set<string>;
+  logger?: StructuredLogger;
 }

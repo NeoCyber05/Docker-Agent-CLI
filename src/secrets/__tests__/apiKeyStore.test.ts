@@ -29,6 +29,7 @@ describe("api key store", () => {
     expect(status).toEqual([
       { provider: "openai", state: "set", source: "saved" },
       { provider: "gemini", state: "unset" },
+      { provider: "openrouter", state: "unset" },
     ]);
     expect(JSON.stringify(status)).not.toContain("sk-test-value");
   });

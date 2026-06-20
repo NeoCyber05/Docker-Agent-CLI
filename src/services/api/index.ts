@@ -3,6 +3,7 @@ import type { ApiKeyStore } from "src/secrets/apiKeyStore";
 import { GeminiProvider } from "./providers/gemini";
 import { OllamaProvider } from "./providers/ollama";
 import { OpenAIProvider } from "./providers/openai";
+import { OpenRouterProvider } from "./providers/openrouter";
 import type { CallModelParams, Provider, ProviderEvent } from "./types";
 
 export function resolveProviderForRequest(
@@ -17,6 +18,8 @@ export function resolveProviderForRequest(
       return new OpenAIProvider(env, options.apiKeyStore);
     case "ollama":
       return new OllamaProvider(env);
+    case "openrouter":
+      return new OpenRouterProvider(env, options.apiKeyStore);
     default:
       throw new Error(`unknown provider: ${String(name)}`);
   }

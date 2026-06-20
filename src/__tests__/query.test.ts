@@ -284,6 +284,27 @@ describe("query core loop", () => {
     );
   });
 
+  test("direct destroy-all command bypasses provider planning", async () => {
+    const recorded = recordingProvider([
+      [
+        { type: "text_delta", text: "I will update the existing stack." },
+        { type: "message_stop", stopReason: "end_turn" as const },
+      ],
+    ]);
+
+    const events = await collectEventsWithProvider("Destroy all stacks", recorded.provider, [
+      { kind: "typed_confirm_value", value: "DESTROY ALL" },
+    ]);
+
+    expect(recorded.calls).toHaveLength(0);
+    expect(
+      events.some((event) => event.type === "tool_call" && event.name === "destroy_all_stacks"),
+    ).toBe(true);
+    expect(events.some((event) => event.type === "tool_call" && event.name === "plan_stack")).toBe(
+      false,
+    );
+  });
+
   test("react: tool that needs permission → denied → no tool_result", async () => {
     const permToolEvents: ProviderEvent[] = [
       { type: "tool_use_start", id: "t1", name: "pull_image" },
@@ -361,14 +382,14 @@ describe("query core loop", () => {
       { type: "message_stop", stopReason: "end_turn" as const },
     ];
     const manyIterations: ProviderEvent[][] = [];
-    // Push 13 tool-use iterations (> maxIterations=12) so the loop hits the cap
-    for (let i = 0; i < 13; i++) manyIterations.push([...iteration]);
+    // Push 25 tool-use iterations (> maxIterations=24 for react mode) so the loop hits the cap
+    for (let i = 0; i < 25; i++) manyIterations.push([...iteration]);
     manyIterations.push([
       { type: "text_delta", text: "done" },
       { type: "message_stop", stopReason: "end_turn" as const },
     ]);
     const responses: PermissionResponse[] = [];
-    for (let i = 0; i < 13; i++) responses.push({ kind: "approve" });
+    for (let i = 0; i < 25; i++) responses.push({ kind: "approve" });
     const events = await collectEvents("list stacks", { perCall: manyIterations }, responses);
     const errorEv = events.find((e) => e.type === "error");
     expect(errorEv).toBeDefined();

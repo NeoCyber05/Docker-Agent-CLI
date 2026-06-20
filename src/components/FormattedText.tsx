@@ -239,7 +239,7 @@ export function FormattedText({ text }: { text: string }): React.ReactElement {
               {parseInline(block.content).map((seg, i) =>
                 seg.bold ? (
                   // biome-ignore lint/suspicious/noArrayIndexKey: stable segment order within block
-                  <Text key={i} bold color="yellow">
+                  <Text key={i} bold color="green">
                     {seg.text}
                   </Text>
                 ) : (

@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { ProviderName } from "src/config";
 
-export type ApiKeyProviderName = Extract<ProviderName, "gemini" | "openai">;
+export type ApiKeyProviderName = Extract<ProviderName, "gemini" | "openai" | "openrouter">;
 export type ApiKeySource = "env" | "saved";
 
 export interface ApiKeyStatus {
@@ -20,11 +20,12 @@ export interface ApiKeyStore {
   has(provider: ApiKeyProviderName): Promise<boolean>;
 }
 
-export const API_KEY_PROVIDERS: readonly ApiKeyProviderName[] = ["openai", "gemini"];
+export const API_KEY_PROVIDERS: readonly ApiKeyProviderName[] = ["openai", "gemini", "openrouter"];
 
 const API_KEY_ENV_VARS: Record<ApiKeyProviderName, string> = {
   gemini: "GEMINI_API_KEY",
   openai: "OPENAI_API_KEY",
+  openrouter: "OPENROUTER_API_KEY",
 };
 
 interface CommandResult {

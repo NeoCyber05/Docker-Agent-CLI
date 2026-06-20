@@ -14,7 +14,7 @@ function maskSecrets(text: string): string {
   // Simpler: replace any value after a secret-like key on the same line.
   return text
     .replace(
-      /((?:--)?(?:secret|token|password|api[-_]?key|credential)[\w-]*(?:=|\s+))["']?[^\s,"'}\]]+["']?/gi,
+      /((?:--)?(?:secret|token|password|api[-_]?key|credential)[\w-]*(?:=|[ \t]+))["']?[^\s,"'}\]]+["']?/gi,
       "$1***",
     )
     .split("\n")

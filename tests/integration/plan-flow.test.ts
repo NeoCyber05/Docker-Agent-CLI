@@ -72,6 +72,8 @@ describe("deploy flow", () => {
 
   beforeEach(() => {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), "plan-flow-"));
+    fs.mkdirSync(path.join(tmp, ".docker-agent"), { recursive: true });
+    fs.writeFileSync(path.join(tmp, ".docker-agent", "policies.yaml"), "project: {}");
     stateStore = new StateStore(path.join(tmp, ".docker-agent"));
     composeRunner = new MockComposeRunner(tmp);
   });

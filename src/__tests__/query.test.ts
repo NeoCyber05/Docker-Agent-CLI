@@ -56,6 +56,8 @@ async function collectEventsWithProvider(
   responses: PermissionResponse[],
 ) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "loop-"));
+  fs.mkdirSync(path.join(tmp, ".docker-agent"), { recursive: true });
+  fs.writeFileSync(path.join(tmp, ".docker-agent", "policies.yaml"), "project: {}");
   const store = new StateStore(tmp);
   const responder = (() => {
     let i = 0;
@@ -448,5 +450,106 @@ describe("query core loop", () => {
     expect((errorEv as { error: Error }).error.message).toContain(
       "agent loop reached max iterations",
     );
+  });
+
+  test("plan_stack blocks execution on Policy violations", async () => {
+    // 1. Create a global policy file requiring healthchecks
+    const globalPolicyPath = path.join(os.homedir(), ".docker-agent", "policies.yaml");
+    const origGlobalPolicy = fs.existsSync(globalPolicyPath) ? fs.readFileSync(globalPolicyPath, "utf-8") : null;
+    fs.mkdirSync(path.dirname(globalPolicyPath), { recursive: true });
+    fs.writeFileSync(
+      globalPolicyPath,
+      `
+global:
+  require:
+    - healthcheck:
+        required: true
+      `,
+    );
+
+    // 2. We mock a plan_stack tool call that returns a spec lacking healthcheck
+    const planStackEvents: ProviderEvent[] = [
+      { type: "tool_use_start", id: "t1", name: "plan_stack" },
+      {
+        type: "tool_use_delta",
+        id: "t1",
+        argsPartialJson: JSON.stringify({
+          stackName: "app",
+          intent: "deploy app",
+          services: {
+            web: { image: "nginx:latest" } // lacks healthcheck
+          }
+        }),
+      },
+      { type: "tool_use_stop", id: "t1" },
+      { type: "message_stop", stopReason: "tool_use" as const },
+    ];
+
+    try {
+      const events = await collectEvents(
+        "deploy stack app",
+        { events: planStackEvents },
+        [],
+      );
+
+      // plan_stack tool itself runs
+      const toolResult = events.find((e) => e.type === "tool_result" && e.name === "plan_stack");
+      expect(toolResult).toBeDefined();
+
+      // but apply_stack is blocked
+      const applyResult = events.find((e) => e.type === "tool_result" && e.name === "apply_stack");
+      expect(applyResult).toBeUndefined();
+    } finally {
+      // restore original global policy
+      if (origGlobalPolicy !== null) {
+        fs.writeFileSync(globalPolicyPath, origGlobalPolicy);
+      } else {
+        try { fs.unlinkSync(globalPolicyPath); } catch {}
+      }
+    }
+  });
+
+  test("destroy_stack with removeVolumes requires typed confirmation", async () => {
+    const scripted = recordingProvider([
+      [
+        { type: "tool_use_start", id: "t1", name: "destroy_stack" },
+        {
+          type: "tool_use_delta",
+          id: "t1",
+          argsPartialJson: JSON.stringify({
+            stackName: "app",
+            removeVolumes: true,
+          }),
+        },
+        { type: "tool_use_stop", id: "t1" },
+        { type: "message_stop", stopReason: "tool_use" },
+      ],
+      [
+        { type: "text_delta", text: "Aborted." },
+        { type: "message_stop", stopReason: "end_turn" },
+      ]
+    ]);
+
+    const events = await collectEventsWithProvider(
+      "delete stack app with volumes",
+      scripted.provider,
+      [{ kind: "typed_confirm_value", value: "WRONG PHRASE" }],
+    );
+
+    // Verify destroy_stack was aborted and the message was sent to the provider
+    expect(scripted.calls).toHaveLength(2);
+    expect(scripted.calls[1]?.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "tool",
+          toolUseId: "t1",
+          content: "destroy_stack aborted: typed confirmation did not match",
+        }),
+      ]),
+    );
+
+    // Also verify destroyStack tool did not execute
+    const toolResult = events.find((e) => e.type === "tool_result" && e.name === "destroy_stack");
+    expect(toolResult).toBeUndefined();
   });
 });

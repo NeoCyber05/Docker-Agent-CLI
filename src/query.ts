@@ -21,6 +21,9 @@ import {
   writeConfigFiles,
 } from "./tools/shared/configFiles";
 import { collectSecretKeys } from "./tools/shared/secretKeys";
+import * as path from "node:path";
+import { PolicyEngine } from "./policy/PolicyEngine";
+import { loadUserConfig } from "./config";
 
 export interface QueryParams {
   messages: Message[];
@@ -266,6 +269,7 @@ function formatPlanBlocker(result: PlanStackResultBlocked): string {
 async function* handlePlanStackToolUse(
   tu: CollectedToolUse,
   ctx: LoopContext,
+  policyEngine: PolicyEngine,
 ): AsyncGenerator<LoopEvent, { isError: boolean; resultMessage: string; userDeclined?: boolean }> {
   let parsed: unknown = (() => {
     try {
@@ -321,6 +325,19 @@ async function* handlePlanStackToolUse(
       cwd: ctx.cwd,
       stateStore: ctx.stateStore,
     });
+
+    const violations = policyEngine.evaluate(planResult.composeYaml);
+    const denyViolations = violations.filter((v) => v.severity === "deny");
+    if (denyViolations.length > 0) {
+      const msgs = denyViolations
+        .map((v) => `[${v.service}] ${v.rule}: ${v.message}`)
+        .join("\n");
+      return {
+        isError: true,
+        resultMessage: `Policy violation(s) detected. Deployment is blocked:\n${msgs}`,
+      };
+    }
+
     const confirm = await ctx.requestConfirm({
       composeYaml: planResult.composeYaml,
       diff: planResult.diff,
@@ -357,6 +374,7 @@ async function* handlePlanStackToolUse(
 async function* handleRemediateDriftToolUse(
   tu: CollectedToolUse,
   ctx: LoopContext,
+  policyEngine: PolicyEngine,
 ): AsyncGenerator<LoopEvent, { isError: boolean; resultMessage: string; userDeclined?: boolean }> {
   let parsed: ReturnType<typeof remediateDrift.inputSchema.parse>;
   try {
@@ -374,6 +392,18 @@ async function* handleRemediateDriftToolUse(
     return {
       isError: false,
       resultMessage: `No remediation needed: ${result.reason ?? "unknown"}`,
+    };
+  }
+
+  const violations = policyEngine.evaluate(result.desiredYaml);
+  const denyViolations = violations.filter((v) => v.severity === "deny");
+  if (denyViolations.length > 0) {
+    const msgs = denyViolations
+      .map((v) => `[${v.service}] ${v.rule}: ${v.message}`)
+      .join("\n");
+    return {
+      isError: true,
+      resultMessage: `Policy violation(s) detected. Remediation is blocked:\n${msgs}`,
     };
   }
 
@@ -451,7 +481,17 @@ async function* runDirectDestroyStack(
     stackName,
     ...(removeVolumes ? { removeVolumes: true } : {}),
   });
-  if (!ctx.allowSet.has("destroy_stack")) {
+  if (removeVolumes) {
+    const phrase = `DESTROY ${stackName}`;
+    const typed = await ctx.requestTypedConfirm(
+      phrase,
+      `This will destroy the stack ${stackName} and delete all its volumes.`,
+    );
+    if (typed.kind !== "typed_confirm_value" || typed.value !== phrase) {
+      yield { type: "assistant_text", delta: "destroy_stack aborted: typed confirmation did not match" };
+      return;
+    }
+  } else if (!ctx.allowSet.has("destroy_stack")) {
     const resp = await ctx.requestPermission("destroy_stack", input);
     if (resp.kind === "deny") {
       yield { type: "assistant_text", delta: "destroy_stack aborted: permission denied" };
@@ -464,6 +504,11 @@ async function* runDirectDestroyStack(
 
 export async function* query(params: QueryParams): AsyncGenerator<LoopEvent, void> {
   const { ctx, provider, model } = params;
+  const userConfig = loadUserConfig();
+  const policyEngine = new PolicyEngine({
+    userConfig,
+    projectPolicyPath: path.join(ctx.cwd, ".docker-agent", "policies.yaml"),
+  });
   const messages = [...params.messages];
   const lastUser = [...messages]
     .reverse()
@@ -525,7 +570,7 @@ export async function* query(params: QueryParams): AsyncGenerator<LoopEvent, voi
     for (const tu of collected.toolUses) {
       if (ctx.abortSignal.aborted) return;
       if (tu.name === "plan_stack") {
-        const r = yield* handlePlanStackToolUse(tu, ctx);
+        const r = yield* handlePlanStackToolUse(tu, ctx, policyEngine);
         messages.push({
           role: "tool",
           toolUseId: tu.id,
@@ -571,7 +616,7 @@ export async function* query(params: QueryParams): AsyncGenerator<LoopEvent, voi
         continue;
       }
       if (tu.name === "remediate_drift") {
-        const r = yield* handleRemediateDriftToolUse(tu, ctx);
+        const r = yield* handleRemediateDriftToolUse(tu, ctx, policyEngine);
         messages.push({
           role: "tool",
           toolUseId: tu.id,
@@ -603,7 +648,38 @@ export async function* query(params: QueryParams): AsyncGenerator<LoopEvent, voi
         });
         continue;
       }
-      if (tool.needsPermission(parsed)) {
+      if (tool.name === "destroy_stack") {
+        const stackName = (parsed as { stackName: string }).stackName;
+        const removeVolumes = (parsed as { removeVolumes?: boolean }).removeVolumes;
+        if (removeVolumes) {
+          const phrase = `DESTROY ${stackName}`;
+          const typed = await ctx.requestTypedConfirm(
+            phrase,
+            `This will destroy the stack ${stackName} and delete all its volumes.`,
+          );
+          if (typed.kind !== "typed_confirm_value" || typed.value !== phrase) {
+            messages.push({
+              role: "tool",
+              toolUseId: tu.id,
+              content: "destroy_stack aborted: typed confirmation did not match",
+              isError: false,
+            });
+            continue;
+          }
+        } else if (!ctx.allowSet.has(tool.name)) {
+          const resp = await ctx.requestPermission(tool.name, parsed);
+          if (resp.kind === "deny") {
+            messages.push({
+              role: "tool",
+              toolUseId: tu.id,
+              content: "User denied permission.",
+              isError: false,
+            });
+            continue;
+          }
+          if (resp.kind === "always_allow_in_session") ctx.allowSet.add(tool.name);
+        }
+      } else if (tool.needsPermission(parsed)) {
         if (!ctx.allowSet.has(tool.name)) {
           const resp = await ctx.requestPermission(tool.name, parsed);
           if (resp.kind === "deny") {

@@ -13,7 +13,10 @@ export function isValidProvider(value: unknown): value is ProviderName {
 export interface UserConfig {
   provider: ProviderName;
   model: string | undefined;
-  defaults: { autoApproveNonDestructive: boolean };
+  defaults: {
+    autoApproveNonDestructive: boolean;
+    missingProjectPolicy?: "use-global" | "deny";
+  };
 }
 
 export function userConfigPath(): string {
@@ -27,7 +30,10 @@ export function projectStateDir(): string {
 const DEFAULTS: UserConfig = {
   provider: "gemini",
   model: undefined,
-  defaults: { autoApproveNonDestructive: false },
+  defaults: {
+    autoApproveNonDestructive: false,
+    missingProjectPolicy: "deny",
+  },
 };
 
 export function loadUserConfig(): UserConfig {

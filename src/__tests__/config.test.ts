@@ -54,7 +54,7 @@ describe("config resolution", () => {
     expect(loadUserConfig()).toEqual({
       provider: "gemini",
       model: undefined,
-      defaults: { autoApproveNonDestructive: false },
+      defaults: { autoApproveNonDestructive: false, missingProjectPolicy: "deny" },
     });
   });
 
@@ -65,7 +65,7 @@ describe("config resolution", () => {
     expect(loadUserConfig()).toEqual({
       provider: "openai",
       model: "gpt-4o-mini",
-      defaults: { autoApproveNonDestructive: false },
+      defaults: { autoApproveNonDestructive: false, missingProjectPolicy: "deny" },
     });
   });
 
@@ -76,7 +76,7 @@ describe("config resolution", () => {
     expect(loadUserConfig()).toEqual({
       provider: "gemini",
       model: undefined,
-      defaults: { autoApproveNonDestructive: false },
+      defaults: { autoApproveNonDestructive: false, missingProjectPolicy: "deny" },
     });
   });
 

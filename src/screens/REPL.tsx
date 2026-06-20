@@ -36,19 +36,15 @@ import {
 } from "../secrets/apiKeyStore";
 import { resolveProviderForRequest } from "../services/api";
 import type { Provider } from "../services/api/types";
-import {
-  type CatalogRow,
-  buildModelCatalog,
-  flattenCatalog,
-  parseProviderModel,
-} from "../services/modelCatalog";
+import { type CatalogRow, buildModelCatalog, flattenCatalog } from "../services/modelCatalog";
 import { type ProviderStatus, getProviderStatuses } from "../services/providerStatus";
-import { formatSlashHelp } from "../slashCommands";
+import { routeSlashCommand } from "../slashRouter";
 import type { SessionStore } from "../state/SessionStore";
 import { StructuredLogger } from "../state/logger";
 import { scrubLine } from "../state/secretRedactor";
 import { collectSecretKeys } from "../tools/shared/secretKeys";
 import type { ToolActivity } from "../ui/activity";
+import { applySlashEffects } from "./applySlashEffects";
 import { useInteractionSession } from "./useInteractionSession";
 
 type LocalPending =
@@ -298,149 +294,40 @@ export function REPL({
   };
 
   const handleSubmit = async (input: string) => {
-    let targetPrompt = input.trim();
+    const targetPrompt = input.trim();
     const lowered = targetPrompt.toLowerCase();
     if (lowered === "exit" || lowered === "quit") {
       setImmediate(() => setImmediate(() => setImmediate(() => exit())));
       return;
     }
     if (targetPrompt.startsWith("/")) {
-      const parts = targetPrompt.split(/\s+/);
-      const cmd = parts[0]?.toLowerCase();
-      const arg = parts.slice(1).join(" ");
-
-      if (cmd === "/exit") {
-        stopLogPane();
-        exit();
-        return;
-      }
-      if (cmd === "/clear") {
-        stopLogPane();
-        setShowDetails(false);
-        setShowPalette(false);
-        setShowQueue(false);
-        session.reset();
-        setTimelineKey((k) => k + 1);
-        return;
-      }
-      if (cmd === "/help") {
-        session.dispatchActivity({ type: "user_text", text: input });
-        session.dispatchActivity({ type: "assistant_text", delta: formatSlashHelp() });
-        return;
-      }
-      if (cmd === "/connect") {
-        session.dispatchActivity({ type: "user_text", text: input });
-        await openProviderConnect();
-        return;
-      }
-      if (cmd === "/models") {
-        session.dispatchActivity({ type: "user_text", text: input });
-        await openModelPicker();
-        return;
-      }
-      if (cmd === "/model") {
-        const modelArg = arg.trim();
-        if (!modelArg) {
-          session.dispatchActivity({ type: "user_text", text: input });
-          await openModelPicker();
-          return;
-        }
-        const parsed = parseProviderModel(modelArg, activeProviderName as ProviderName);
-        if (!parsed) {
-          session.dispatchActivity({ type: "user_text", text: input });
-          session.dispatchActivity({
-            type: "error",
-            error: new Error("Invalid model. Use /model <id> or /model <provider>/<id>"),
-          });
-          return;
-        }
-        engine.provider = resolveProviderForRequest(parsed.provider, process.env, { apiKeyStore });
-        engine.model = parsed.model;
-        setActiveProviderName(parsed.provider);
-        setActiveModel(parsed.model);
-        session.dispatchActivity({ type: "user_text", text: input });
-        session.dispatchActivity({
-          type: "assistant_text",
-          delta: `Model set to ${parsed.model} (${parsed.provider})`,
-        });
-        return;
-      }
-      if (cmd === "/resume") {
-        const sessionStore = deps.sessionStore;
-        if (!sessionStore) {
-          session.dispatchActivity({ type: "user_text", text: input });
-          session.dispatchActivity({
-            type: "error",
-            error: new Error("Session persistence not configured."),
-          });
-          return;
-        }
-        const sessionId = arg.trim() || undefined;
-        const rec = sessionId ? sessionStore.read(sessionId) : sessionStore.latest();
-        if (!rec) {
-          session.dispatchActivity({ type: "user_text", text: input });
-          session.dispatchActivity({
-            type: "error",
-            error: new Error(
-              sessionId
-                ? `Session "${sessionId}" not found.`
-                : "No previous session found to resume.",
-            ),
-          });
-          return;
-        }
-        engine.loadSession(rec);
-        session.replaceActivities(engine.getMessages());
-        return;
-      }
-      if (cmd === "/logs") {
-        const logParts = arg.split(/\s+/).filter(Boolean);
-        const stackName = logParts[0];
-        const service = logParts[1];
-        if (!stackName) {
-          session.dispatchActivity({ type: "user_text", text: input });
-          session.dispatchActivity({
-            type: "error",
-            error: new Error("Usage: /logs <stack> [service]"),
-          });
-          return;
-        }
-        startLogPane(stackName, service);
-        return;
-      }
-      if (cmd === "/cancel") {
-        session.cancelCurrent();
-        return;
-      }
-      if (cmd === "/details") {
-        if (!latestTool) {
-          session.dispatchActivity({ type: "error", error: new Error("No tool activity yet.") });
-          return;
-        }
-        setShowDetails((v) => !v);
-        return;
-      }
-      if (cmd === "/queue") {
-        const sub = parts[1]?.toLowerCase();
-        if (sub === "resume") session.resumeQueue();
-        else if (sub === "clear") session.clearQueue();
-        else if (sub === "remove") {
-          const idx = Number(parts[2]);
-          if (Number.isInteger(idx) && idx > 0) session.removeQueued(idx - 1);
-        }
-        return;
-      }
-
-      if (cmd === "/stacks") targetPrompt = "Show the current stacks as a table";
-      else if (cmd === "/status") targetPrompt = `Show status and drift for stack ${arg}`;
-      else if (cmd === "/destroy" && arg === "all") targetPrompt = "Destroy all stacks";
-      else if (cmd === "/destroy") targetPrompt = `Destroy stack ${arg}`;
-      else if (cmd === "/secrets" && parts[1] === "list")
-        targetPrompt = `List secret keys for stack ${parts.slice(2).join(" ")}`;
-      else if (cmd === "/secrets" && parts[1] === "rotate") {
-        const subparts = parts.slice(2);
-        targetPrompt = `Rotate secrets for service ${subparts[1]} in stack ${subparts[0]}`;
-      } else if (cmd === "/yaml") targetPrompt = `Show the YAML config file for stack ${arg}`;
+      const result = await routeSlashCommand(input, {
+        cwd: deps.cwd,
+        stateStore: deps.stateStore,
+        ...(deps.sessionStore ? { sessionStore: deps.sessionStore } : {}),
+        activeProviderName: activeProviderName as ProviderName,
+        apiKeyStore,
+        hasLatestTool: latestTool !== undefined,
+      });
+      await applySlashEffects(result.effects, {
+        input,
+        session,
+        engine,
+        apiKeyStore,
+        ...(deps.sessionStore ? { sessionStore: deps.sessionStore } : {}),
+        exit,
+        stopLogPane,
+        setShowDetails,
+        setShowPalette,
+        setShowQueue,
+        setTimelineKey,
+        setActiveProviderName,
+        setActiveModel,
+        openProviderConnect,
+        openModelPicker,
+        startLogPane,
+      });
+      if (result.handled) return;
     }
 
     session.submit(targetPrompt);

@@ -1,3 +1,5 @@
+import { SLASH_COMMAND_DEFS } from "src/slashRouter";
+
 export interface Command {
   id: string;
   title: string;
@@ -31,7 +33,7 @@ export class CommandRegistry {
 
 export function createDefaultRegistry(): CommandRegistry {
   const registry = new CommandRegistry();
-  for (const command of SLASH_COMMANDS) {
+  for (const command of SLASH_COMMAND_DEFS) {
     const id = command.usage
       .slice(1)
       .replace(/[<>]/g, "")
@@ -49,4 +51,3 @@ export function createDefaultRegistry(): CommandRegistry {
   }
   return registry;
 }
-import { SLASH_COMMANDS } from "src/slashCommands";

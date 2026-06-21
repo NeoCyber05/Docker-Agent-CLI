@@ -18,8 +18,11 @@ import type {
 export function parseSizeToBytes(sizeStr: string): number {
   const match = sizeStr.trim().match(/^(\d+(?:\.\d+)?)\s*([a-zA-Z]*)$/);
   if (!match) throw new Error(`Invalid size format: ${sizeStr}`);
-  const value = parseFloat(match[1]);
-  const unit = match[2].toLowerCase();
+  const valStr = match[1];
+  const unitStr = match[2];
+  if (!valStr || unitStr === undefined) throw new Error(`Invalid size format: ${sizeStr}`);
+  const value = parseFloat(valStr);
+  const unit = unitStr.toLowerCase();
   switch (unit) {
     case "":
     case "b":
@@ -44,6 +47,70 @@ export function parseSizeToBytes(sizeStr: string): number {
   }
 }
 
+import { z } from "zod";
+
+const resourceLimitsConfigSchema = z.object({
+  cpuRequired: z.boolean().optional(),
+  memoryRequired: z.boolean().optional(),
+  maxMemory: z.string().optional(),
+});
+
+const loggingRotationConfigSchema = z.object({
+  maxSize: z.string().optional(),
+  maxFiles: z.number().optional(),
+});
+
+const healthcheckConfigSchema = z.object({
+  required: z.boolean().optional(),
+  maxIntervalSeconds: z.number().optional(),
+  maxTimeoutSeconds: z.number().optional(),
+});
+
+const untrustedRegistryConfigSchema = z.object({
+  allowedRegistries: z.array(z.string()).optional(),
+});
+
+const denyRuleConfigSchema = z.union([
+  z.enum([
+    "privileged_containers",
+    "mount_docker_socket",
+    "mount_host_root",
+    "host_pid_namespace",
+    "host_network",
+    "add_all_linux_capabilities",
+    "disable_seccomp",
+    "expose_database_publicly",
+    "untrusted_registry",
+  ]),
+  z.object({ untrusted_registry: untrustedRegistryConfigSchema }),
+]);
+
+const requireRuleConfigSchema = z.union([
+  z.enum([
+    "resource_limits",
+    "logging_rotation",
+    "healthcheck",
+    "restart_policy",
+    "non_root_user",
+    "read_only_root_filesystem_when_possible",
+    "project_labels",
+  ]),
+  z.object({ resource_limits: resourceLimitsConfigSchema }),
+  z.object({ logging_rotation: loggingRotationConfigSchema }),
+  z.object({ healthcheck: healthcheckConfigSchema }),
+]);
+
+const policyGroupSchema = z.object({
+  hardDeny: z.array(denyRuleConfigSchema).optional(),
+  require: z.array(requireRuleConfigSchema).optional(),
+});
+
+const policyConfigSchema = z.object({
+  schemaVersion: z.string().optional(),
+  global: policyGroupSchema.optional(),
+  project: policyGroupSchema.optional(),
+});
+
 export class PolicyEngine {
   private globalPolicy: PolicyGroup = {};
   private projectPolicy: PolicyGroup = {};
@@ -58,9 +125,22 @@ export class PolicyEngine {
     const globalPath =
       options?.globalPolicyPath ??
       path.join(os.homedir(), ".docker-agent", "policies.yaml");
-    const projectPath =
-      options?.projectPolicyPath ??
-      path.join(process.cwd(), ".docker-agent", "policies.yaml");
+
+    let projectPath = options?.projectPolicyPath;
+    if (!projectPath) {
+      const rootPath = path.join(process.cwd(), "project-policies.yaml");
+      const legacyPath = path.join(process.cwd(), ".docker-agent", "policies.yaml");
+      if (fs.existsSync(rootPath)) {
+        projectPath = rootPath;
+      } else {
+        projectPath = legacyPath;
+        if (fs.existsSync(legacyPath)) {
+          console.warn(
+            "[docker-agent] Warning: Using legacy .docker-agent/policies.yaml. Please migrate to project-policies.yaml in the root directory.",
+          );
+        }
+      }
+    }
 
     this.missingProjectPolicyMode =
       options?.userConfig?.defaults?.missingProjectPolicy ?? "deny";
@@ -73,7 +153,8 @@ export class PolicyEngine {
     if (fs.existsSync(globalPath)) {
       try {
         const content = fs.readFileSync(globalPath, "utf-8");
-        const parsed = yaml.parse(content) as PolicyConfig;
+        const parsedRaw = yaml.parse(content);
+        const parsed = policyConfigSchema.parse(parsedRaw) as PolicyConfig;
         if (parsed?.global) {
           this.globalPolicy = parsed.global;
         }
@@ -88,7 +169,8 @@ export class PolicyEngine {
     if (fs.existsSync(projectPath)) {
       try {
         const content = fs.readFileSync(projectPath, "utf-8");
-        const parsed = yaml.parse(content) as PolicyConfig;
+        const parsedRaw = yaml.parse(content);
+        const parsed = policyConfigSchema.parse(parsedRaw) as PolicyConfig;
         if (parsed?.project) {
           this.projectPolicy = parsed.project;
           this.hasProjectPolicy = true;
@@ -112,7 +194,7 @@ export class PolicyEngine {
     // A helper to extract rule names
     const getRuleName = (rule: DenyRuleConfig | RequireRuleConfig): string => {
       if (typeof rule === "string") return rule;
-      return Object.keys(rule)[0];
+      return Object.keys(rule)[0] || "";
     };
 
     // Ensure project does not loosen global resource_limits
@@ -242,7 +324,7 @@ export class PolicyEngine {
     if (!group.require) return undefined;
     for (const rule of group.require) {
       if (typeof rule !== "string" && ruleName in rule) {
-        return (rule as Record<string, T>)[ruleName];
+        return (rule as any)[ruleName];
       }
     }
     return undefined;
@@ -252,7 +334,7 @@ export class PolicyEngine {
     if (!group.hardDeny) return undefined;
     for (const rule of group.hardDeny) {
       if (typeof rule !== "string" && ruleName in rule) {
-        return (rule as Record<string, T>)[ruleName];
+        return (rule as any)[ruleName];
       }
     }
     return undefined;
@@ -299,7 +381,7 @@ export class PolicyEngine {
       if (typeof rule === "string") {
         require.add(rule);
       } else {
-        const key = Object.keys(rule)[0];
+        const key = Object.keys(rule)[0] || "";
         require.add(key);
         if ("resource_limits" in rule) {
           const projectLimits = rule.resource_limits;
@@ -308,13 +390,14 @@ export class PolicyEngine {
             "resource_limits",
           );
           if (projectLimits && globalLimits) {
-            // merge limits, project overriding and making tighter
-            resourceLimits = {
-              cpuRequired: globalLimits.cpuRequired || projectLimits.cpuRequired,
-              memoryRequired:
-                globalLimits.memoryRequired || projectLimits.memoryRequired,
-              maxMemory: projectLimits.maxMemory || globalLimits.maxMemory,
-            };
+            const rl: ResourceLimitsConfig = {};
+            const cpuReq = globalLimits.cpuRequired || projectLimits.cpuRequired;
+            if (cpuReq !== undefined) rl.cpuRequired = cpuReq;
+            const memReq = globalLimits.memoryRequired || projectLimits.memoryRequired;
+            if (memReq !== undefined) rl.memoryRequired = memReq;
+            const maxMem = projectLimits.maxMemory || globalLimits.maxMemory;
+            if (maxMem !== undefined) rl.maxMemory = maxMem;
+            resourceLimits = rl;
           } else {
             resourceLimits = projectLimits || globalLimits;
           }
@@ -325,13 +408,15 @@ export class PolicyEngine {
             "logging_rotation",
           );
           if (projectLog && globalLog) {
-            loggingRotation = {
-              maxSize: projectLog.maxSize || globalLog.maxSize,
-              maxFiles:
-                projectLog.maxFiles !== undefined
-                  ? projectLog.maxFiles
-                  : globalLog.maxFiles,
-            };
+            const lr: LoggingRotationConfig = {};
+            const maxS = projectLog.maxSize || globalLog.maxSize;
+            if (maxS !== undefined) lr.maxSize = maxS;
+            const maxF =
+              projectLog.maxFiles !== undefined
+                ? projectLog.maxFiles
+                : globalLog.maxFiles;
+            if (maxF !== undefined) lr.maxFiles = maxF;
+            loggingRotation = lr;
           } else {
             loggingRotation = projectLog || globalLog;
           }
@@ -342,17 +427,20 @@ export class PolicyEngine {
             "healthcheck",
           );
           if (projectHealth && globalHealth) {
-            healthcheck = {
-              required: globalHealth.required || projectHealth.required,
-              maxIntervalSeconds:
-                projectHealth.maxIntervalSeconds !== undefined
-                  ? projectHealth.maxIntervalSeconds
-                  : globalHealth.maxIntervalSeconds,
-              maxTimeoutSeconds:
-                projectHealth.maxTimeoutSeconds !== undefined
-                  ? projectHealth.maxTimeoutSeconds
-                  : globalHealth.maxTimeoutSeconds,
-            };
+            const hc: HealthcheckConfig = {};
+            const req = globalHealth.required || projectHealth.required;
+            if (req !== undefined) hc.required = req;
+            const maxInt =
+              projectHealth.maxIntervalSeconds !== undefined
+                ? projectHealth.maxIntervalSeconds
+                : globalHealth.maxIntervalSeconds;
+            if (maxInt !== undefined) hc.maxIntervalSeconds = maxInt;
+            const maxTime =
+              projectHealth.maxTimeoutSeconds !== undefined
+                ? projectHealth.maxTimeoutSeconds
+                : globalHealth.maxTimeoutSeconds;
+            if (maxTime !== undefined) hc.maxTimeoutSeconds = maxTime;
+            healthcheck = hc;
           } else {
             healthcheck = projectHealth || globalHealth;
           }
@@ -376,14 +464,15 @@ export class PolicyEngine {
       for (const rule of this.projectPolicy.require) processRequireRule(rule);
     }
 
-    return {
+    const result: any = {
       hardDeny,
       require,
-      untrustedRegistry,
-      resourceLimits,
-      loggingRotation,
-      healthcheck,
     };
+    if (untrustedRegistry !== undefined) result.untrustedRegistry = untrustedRegistry;
+    if (resourceLimits !== undefined) result.resourceLimits = resourceLimits;
+    if (loggingRotation !== undefined) result.loggingRotation = loggingRotation;
+    if (healthcheck !== undefined) result.healthcheck = healthcheck;
+    return result;
   }
 
   public evaluate(composeYaml: string): PolicyViolation[] {
@@ -708,8 +797,9 @@ export class PolicyEngine {
 
   private extractRegistry(image: string): string {
     const parts = image.split("/");
-    if (parts.length > 1 && (parts[0].includes(".") || parts[0].includes(":") || parts[0] === "localhost")) {
-      return parts[0];
+    const first = parts[0];
+    if (first && parts.length > 1 && (first.includes(".") || first.includes(":") || first === "localhost")) {
+      return first;
     }
     return "docker.io";
   }
@@ -723,7 +813,9 @@ export class PolicyEngine {
   private parseDurationToSeconds(durationStr: string): number {
     const match = durationStr.trim().match(/^(\d+(?:\.\d+)?)\s*(s|m|h)?$/);
     if (!match) throw new Error(`Invalid duration format: ${durationStr}`);
-    const value = parseFloat(match[1]);
+    const valStr = match[1];
+    if (!valStr) throw new Error(`Invalid duration format: ${durationStr}`);
+    const value = parseFloat(valStr);
     const unit = match[2] || "s";
     switch (unit) {
       case "s":

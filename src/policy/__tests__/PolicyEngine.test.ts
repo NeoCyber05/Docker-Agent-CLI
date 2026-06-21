@@ -181,7 +181,7 @@ project:
 
       const violations = engine.evaluate("version: '3'\nservices:\n  app:\n    image: nginx");
       expect(violations.length).toBe(1);
-      expect(violations[0].rule).toBe("project_policy_missing");
+      expect(violations[0]?.rule).toBe("project_policy_missing");
     });
 
     test("allows deployment with only global policy if missingProjectPolicy is use-global", () => {
@@ -222,7 +222,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       `);
       expect(violations.length).toBe(1);
-      expect(violations[0].rule).toBe("mount_docker_socket");
+      expect(violations[0]?.rule).toBe("mount_docker_socket");
     });
 
     test("checks hardDeny and require rules successfully", () => {

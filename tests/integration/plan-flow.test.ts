@@ -96,7 +96,16 @@ describe("deploy flow", () => {
         planStackEvents({
           stackName: "nginx",
           intent: "tao nginx",
-          services: { web: { image: "nginx:1.27-alpine", ports: ["8080:80"] } },
+          services: [
+            {
+              name: "web",
+              kind: "custom",
+              image: "nginx:1.27-alpine",
+              exposure: "public",
+              hostPort: 8080,
+              containerPort: 80,
+            },
+          ],
         }),
       ],
     });
@@ -126,7 +135,13 @@ describe("deploy flow", () => {
         planStackEvents({
           stackName: "pg",
           intent: "tao postgres",
-          services: { db: { image: "postgres:16-alpine" } },
+          services: [
+            {
+              name: "db",
+              kind: "catalog",
+              catalogId: "postgresql:16",
+            },
+          ],
         }),
       ],
     });
@@ -198,10 +213,21 @@ describe("deploy flow", () => {
         planStackEvents({
           stackName: "partial",
           intent: "deploy partial",
-          services: {
-            web: { image: "nginx:1.27", ports: ["8080:80"] },
-            db: { image: "postgres:16-alpine" },
-          },
+          services: [
+            {
+              name: "web",
+              kind: "custom",
+              image: "nginx:1.27",
+              exposure: "public",
+              hostPort: 8080,
+              containerPort: 80,
+            },
+            {
+              name: "db",
+              kind: "catalog",
+              catalogId: "postgresql:16",
+            },
+          ],
         }),
         [{ type: "message_stop", stopReason: "end_turn" }],
       ],

@@ -39,6 +39,28 @@ const serviceSpecSchema = z.object({
   labels: z.record(z.string()).optional(),
   networks: z.array(z.string()).optional(),
   scale: z.number().optional(),
+  deploy: z
+    .object({
+      resources: z
+        .object({
+          limits: z
+            .object({
+              cpus: z.string().optional(),
+              memory: z.string().optional(),
+            })
+            .optional(),
+        })
+        .optional(),
+    })
+    .optional(),
+  logging: z
+    .object({
+      driver: z.string().optional(),
+      options: z.record(z.string()).optional(),
+    })
+    .optional(),
+  user: z.string().optional(),
+  read_only: z.boolean().optional(),
 });
 
 const stackDefinitionSchema = z.object({

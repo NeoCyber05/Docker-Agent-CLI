@@ -69,12 +69,10 @@ describe("check_port_conflict", () => {
     });
 
     const result = await checkPortConflicts(
+      "app",
       {
-        stackName: "app",
-        services: {
-          api: { image: "example/api:1", ports: ["8080:80"] },
-          admin: { image: "example/admin:1", ports: ["8080:8080"] },
-        },
+        api: { image: "example/api:1", ports: ["8080:80"] },
+        admin: { image: "example/admin:1", ports: ["8080:8080"] },
       },
       makeCtx(engine),
     );
@@ -93,10 +91,8 @@ describe("check_port_conflict", () => {
       containerPort: "80/tcp",
     });
     const result = await checkPortConflicts(
-      {
-        stackName: "app",
-        services: { web: { image: "nginx:1.27-alpine", ports: ["8080:80"] } },
-      },
+      "app",
+      { web: { image: "nginx:1.27-alpine", ports: ["8080:80"] } },
       makeCtx(engine),
     );
     expect(result).toMatchObject({ ok: true, conflicts: [] });
@@ -104,11 +100,10 @@ describe("check_port_conflict", () => {
 
   test("tcp and udp on same host port do not conflict", async () => {
     const result = await checkPortConflicts(
+      "dns",
       {
-        services: {
-          dnsTcp: { image: "example/dns:1", ports: ["5353:53/tcp"] },
-          dnsUdp: { image: "example/dns:1", ports: ["5353:53/udp"] },
-        },
+        dnsTcp: { image: "example/dns:1", ports: ["5353:53/tcp"] },
+        dnsUdp: { image: "example/dns:1", ports: ["5353:53/udp"] },
       },
       makeCtx(new MockDockerEngine()),
     );

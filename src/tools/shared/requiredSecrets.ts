@@ -59,8 +59,9 @@ export function findRequiredSecrets(image: string): RequiredSecretRule | undefin
   return REQUIRED_SECRETS_BY_IMAGE.find((rule) => rule.imagePattern.test(image));
 }
 
-export function isWeakSecretValue(_key: string, value: string, rule: RequiredSecretRule): boolean {
+export function isWeakSecretValue(key: string, value: string, rule: RequiredSecretRule): boolean {
   const lowered = value.trim().toLowerCase();
+  if (lowered === key.toLowerCase()) return true;
   if (GENERIC_WEAK_VALUES.includes(lowered)) return true;
   if (rule.weakValues?.includes(lowered)) return true;
   return false;

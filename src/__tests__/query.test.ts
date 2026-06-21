@@ -144,7 +144,7 @@ describe("query core loop", () => {
       makePlanStackToolEvents("plan-1", {
         stackName: "web",
         intent: "create nginx",
-        services: { web: { image: "nginx:1.27-alpine" } },
+        services: [{ name: "web", kind: "custom", image: "nginx:1.27-alpine" }],
       }),
       [
         { type: "text_delta", text: "Deployment completed." },
@@ -177,10 +177,10 @@ describe("query core loop", () => {
 
   test("deploy performs preflight actions, observes each result, plans, then summarizes", async () => {
     const draft = {
-      services: {
-        api: { image: "example/api:1", ports: ["8080:80"], depends_on: ["db"] },
-        db: { image: "postgres:16-alpine" },
-      },
+      services: [
+        { name: "api", kind: "custom", image: "example/api:1", exposure: "public", containerPort: 80, depends_on: ["db"] },
+        { name: "db", kind: "catalog", catalogId: "postgresql:16" },
+      ],
     };
     const scripted = recordingProvider([
       makeToolEvents("validate-1", "validate_spec", draft),
@@ -217,7 +217,7 @@ describe("query core loop", () => {
         events: makePlanStackToolEvents("t1", {
           stackName: "test",
           intent: "nginx",
-          services: { web: { image: "nginx:1.27-alpine" } },
+          services: [{ name: "web", kind: "custom", image: "nginx:1.27-alpine" }],
         }),
       },
       [{ kind: "approve" }],
@@ -233,7 +233,7 @@ describe("query core loop", () => {
         events: makePlanStackToolEvents("t1", {
           stackName: "test",
           intent: "app",
-          services: { web: { image: "nginx:1.27-alpine" } },
+          services: [{ name: "web", kind: "custom", image: "nginx:1.27-alpine" }],
         }),
       },
       [{ kind: "deny" }],
@@ -467,7 +467,6 @@ global:
       `,
     );
 
-    // 2. We mock a plan_stack tool call that returns a spec lacking healthcheck
     const planStackEvents: ProviderEvent[] = [
       { type: "tool_use_start", id: "t1", name: "plan_stack" },
       {
@@ -476,9 +475,9 @@ global:
         argsPartialJson: JSON.stringify({
           stackName: "app",
           intent: "deploy app",
-          services: {
-            web: { image: "nginx:latest" } // lacks healthcheck
-          }
+          services: [
+            { name: "web", kind: "custom", image: "nginx:latest" } // lacks healthcheck
+          ]
         }),
       },
       { type: "tool_use_stop", id: "t1" },

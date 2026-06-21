@@ -58,81 +58,42 @@ class BufferedStdin extends Readable {
 }
 
 export interface ParsedArgs {
-  command: "chat" | "status" | "destroy" | "plan" | "version" | "help";
-  stack?: string;
-  intent?: string;
-  volumes?: boolean;
-  yes?: boolean;
-  all?: boolean;
-  confirm?: string;
   providerFlag?: string;
   model?: string;
   resume?: string | true; // true = latest, string = specific id
+  yes?: boolean;
+  isVersionOrHelp?: boolean;
 }
 
 export function parseArgs(argv: string[]): ParsedArgs {
   const program = new Command();
-  let parsed: ParsedArgs = { command: "chat" };
   program
     .name("docker-agent")
     .description("Natural-language CLI for managing Docker infrastructure")
     .version(VERSION, "-v, --version")
     .option("--provider <name>", "LLM provider: gemini, openai, ollama")
-    .option("--model <id>", "model id");
-
-  program
-    .command("chat", { isDefault: true })
+    .option("--model <id>", "model id")
     .option("-y, --yes", "auto-approve non-destructive permissions")
-    .option("--resume [id]", "resume a previous session (omit id for latest)")
-    .action((opts) => {
-      parsed = {
-        ...parsed,
-        command: "chat",
-        ...opts,
-        // normalize: --resume with no value comes in as true, with value as string
-        ...(opts.resume !== undefined
-          ? { resume: opts.resume === true || opts.resume === "" ? true : opts.resume }
-          : {}),
-      };
-    });
-  program.command("status [stack]").action((stack: string | undefined) => {
-    parsed = { ...parsed, command: "status", ...(stack ? { stack } : {}) };
-  });
-  program
-    .command("destroy [stack]")
-    .option("--volumes")
-    .option("--all")
-    .option("-y, --yes")
-    .option("--confirm <phrase>")
-    .action((stack: string | undefined, opts: Record<string, unknown>) => {
-      parsed = {
-        ...parsed,
-        command: "destroy",
-        ...(stack ? { stack } : {}),
-        ...(opts.volumes ? { volumes: true } : {}),
-        ...(opts.yes ? { yes: true } : {}),
-        ...(opts.all ? { all: true } : {}),
-        ...(typeof opts.confirm === "string" ? { confirm: opts.confirm } : {}),
-      };
-    });
-  program.command("plan <intent...>").action((intent: string[]) => {
-    parsed = { ...parsed, command: "plan", intent: intent.join(" ") };
-  });
-
-  program.hook("preAction", (_thisCmd, actionCmd) => {
-    const opts = actionCmd.optsWithGlobals();
-    if (opts.provider) parsed.providerFlag = String(opts.provider);
-    if (opts.model) parsed.model = String(opts.model);
-  });
+    .option("--resume [id]", "resume a previous session (omit id for latest)");
 
   program.exitOverride();
   try {
     program.parse(argv);
   } catch (err) {
     const code = (err as { code?: string }).code;
-    if (code === "commander.version") parsed.command = "version";
-    else if (code === "commander.helpDisplayed") parsed.command = "help";
-    else throw err;
+    if (code === "commander.version" || code === "commander.helpDisplayed") {
+      return { isVersionOrHelp: true };
+    }
+    throw err;
+  }
+
+  const opts = program.opts();
+  const parsed: ParsedArgs = {};
+  if (opts.provider) parsed.providerFlag = String(opts.provider);
+  if (opts.model) parsed.model = String(opts.model);
+  if (opts.yes) parsed.yes = true;
+  if (opts.resume !== undefined) {
+    parsed.resume = opts.resume === true || opts.resume === "" ? true : String(opts.resume);
   }
   return parsed;
 }
@@ -250,81 +211,15 @@ export async function main(argv: string[]): Promise<number> {
     process.stderr.write(`${(err as Error).message}\n`);
     return 1;
   }
-  if (args.command === "version" || args.command === "help") return 0;
+  if (args.isVersionOrHelp) return 0;
 
-  if (args.command === "chat") {
-    const deps = await createDeps(args);
-    const resumedRecord = await resolveResume(args, deps.sessionStore);
-    await renderChatSession({
-      ...deps,
-      ...(args.yes ? { yes: true } : {}),
-      ...(resumedRecord ? { resumedRecord } : {}),
-    });
-    return 0;
-  }
-
-  if (args.command === "status") {
-    return await runHeadless(`show status of ${args.stack ?? "all stacks"}`, args);
-  }
-
-  if (args.command === "destroy") {
-    if (args.all) {
-      if (args.confirm !== "DESTROY ALL") {
-        process.stderr.write('destroy --all requires --confirm "DESTROY ALL"\n');
-        return 1;
-      }
-      return await runHeadless("Destroy all stacks", args);
-    }
-    if (!args.stack) {
-      process.stderr.write("destroy requires a stack name or --all\n");
-      return 1;
-    }
-    return await runHeadless(
-      `Destroy stack ${args.stack}${args.volumes ? " with volumes" : ""}`,
-      args,
-    );
-  }
-
-  if (args.command === "plan") {
-    return await runHeadless(args.intent ?? "", args);
-  }
+  const deps = await createDeps(args);
+  const resumedRecord = await resolveResume(args, deps.sessionStore);
+  await renderChatSession({
+    ...deps,
+    ...(args.yes ? { yes: true } : {}),
+    ...(resumedRecord ? { resumedRecord } : {}),
+  });
   return 0;
 }
 
-export async function runHeadless(prompt: string, args: ParsedArgs): Promise<number> {
-  const { QueryEngine } = await import("./QueryEngine");
-  const deps = await createDeps(args);
-  const engine = new QueryEngine(deps);
-  const logDir = path.join(projectStateDir(), "logs");
-  engine.setLogger(new StructuredLogger(logDir, engine.sessionId));
-  let hasError = false;
-  for await (const ev of engine.query(prompt)) {
-    if (ev.type === "assistant_text") process.stdout.write(ev.delta);
-    if (ev.type === "plan_ready") {
-      if (args.yes) engine.respondTo(ev.id, { kind: "approve" });
-      else engine.respondTo(ev.id, { kind: "deny" });
-    }
-    if (ev.type === "permission_request") {
-      if (args.yes) engine.respondTo(ev.id, { kind: "approve" });
-      else engine.respondTo(ev.id, { kind: "deny" });
-    }
-    if (ev.type === "typed_confirm_request") {
-      if (args.confirm === ev.phrase) {
-        engine.respondTo(ev.id, { kind: "typed_confirm_value", value: ev.phrase });
-      } else {
-        engine.respondTo(ev.id, { kind: "deny" });
-      }
-    }
-    if (ev.type === "secrets_input_request") {
-      process.stderr.write(
-        `headless: required secrets for ${ev.service} not provided. Use chat mode.\n`,
-      );
-      engine.respondTo(ev.id, { kind: "deny" });
-    }
-    if (ev.type === "error") {
-      process.stderr.write(`error: ${ev.error.message}\n`);
-      hasError = true;
-    }
-  }
-  return hasError ? 1 : 0;
-}

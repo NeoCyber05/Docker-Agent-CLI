@@ -37,7 +37,7 @@ function invalidImageValidator(image: string): ImageValidator {
       status: "invalid",
       source: "registry",
       error: "manifest not found",
-      suggestion: "postgres:17-alpine",
+      suggestion: "postgres:16-alpine",
     }),
     validateImages: async () => [
       {
@@ -45,7 +45,7 @@ function invalidImageValidator(image: string): ImageValidator {
         status: "invalid",
         source: "registry",
         error: "manifest not found",
-        suggestion: "postgres:17-alpine",
+        suggestion: "postgres:16-alpine",
       },
     ],
   };
@@ -57,7 +57,12 @@ describe("validate_spec", () => {
   test("returns valid for a simple nginx spec", async () => {
     tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "validate-"));
     const result = await drain(
-      validateSpec.call({ services: { web: { image: "nginx:1.27-alpine" } } }, makeCtx(tmpRoot)),
+      validateSpec.call(
+        {
+          services: [{ name: "web", kind: "custom", image: "nginx:1.27-alpine" }],
+        },
+        makeCtx(tmpRoot),
+      ),
     );
     expect(result).toEqual({ valid: true, issues: [], warnings: [] });
   });
@@ -67,12 +72,14 @@ describe("validate_spec", () => {
     const result = await drain(
       validateSpec.call(
         {
-          services: {
-            web: {
+          services: [
+            {
+              name: "web",
+              kind: "custom",
               image: "nginx:1.27-alpine",
-              volumes: ["./nginx.conf:/etc/nginx/nginx.conf"],
+              configMounts: [{ hostPath: "./nginx.conf", containerPath: "/etc/nginx/nginx.conf" }],
             },
-          },
+          ],
         },
         makeCtx(tmpRoot),
       ),
@@ -96,7 +103,7 @@ describe("validate_spec", () => {
     const result = await drain(
       validateSpec.call(
         {
-          services: { web: { image: "nginx:1.27-alpine" } },
+          services: [{ name: "web", kind: "custom", image: "nginx:1.27-alpine" }],
           configFiles: { "../escape.conf": "content" },
         },
         makeCtx(tmpRoot),
@@ -110,7 +117,9 @@ describe("validate_spec", () => {
     tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "validate-"));
     const result = await drain(
       validateSpec.call(
-        { services: { db: { image: "postgres:does-not-exist" } } },
+        {
+          services: [{ name: "db", kind: "custom", image: "postgres:does-not-exist" }],
+        },
         makeCtx(tmpRoot, invalidImageValidator("postgres:does-not-exist")),
       ),
     );

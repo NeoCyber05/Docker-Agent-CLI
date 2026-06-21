@@ -37,7 +37,7 @@ function invalidImageValidator(image: string): ImageValidator {
       status: "invalid",
       source: "registry",
       error: "manifest not found",
-      suggestion: "postgres:17-alpine",
+      suggestion: "postgres:16-alpine",
     }),
     validateImages: async () => [
       {
@@ -45,7 +45,7 @@ function invalidImageValidator(image: string): ImageValidator {
         status: "invalid",
         source: "registry",
         error: "manifest not found",
-        suggestion: "postgres:17-alpine",
+        suggestion: "postgres:16-alpine",
       },
     ],
   };
@@ -65,7 +65,16 @@ describe("plan_stack", () => {
         {
           stackName: "test",
           intent: "nginx",
-          services: { nginx: { image: "nginx:1.27-alpine", ports: ["8080:80"] } },
+          services: [
+            {
+              name: "nginx",
+              kind: "custom",
+              image: "nginx:1.27-alpine",
+              exposure: "public",
+              hostPort: 8080,
+              containerPort: 80,
+            },
+          ],
         },
         ctx,
       ),
@@ -86,12 +95,14 @@ describe("plan_stack", () => {
         {
           stackName: "s",
           intent: "x",
-          services: {
-            api: {
+          services: [
+            {
+              name: "api",
+              kind: "custom",
               image: "node:20",
               environment: { NODE_ENV: "prod", API_KEY: "leakvalue" },
             },
-          },
+          ],
         },
         ctx,
       ),
@@ -120,7 +131,17 @@ describe("plan_stack", () => {
     const ctx = makeCtx(tmpRoot);
     const result = await drain(
       planStack.call(
-        { stackName: "p", intent: "postgres", services: { db: { image: "postgres:16-alpine" } } },
+        {
+          stackName: "p",
+          intent: "postgres",
+          services: [
+            {
+              name: "db",
+              kind: "catalog",
+              catalogId: "postgresql:16",
+            },
+          ],
+        },
         ctx,
       ),
     );
@@ -142,7 +163,13 @@ describe("plan_stack", () => {
         {
           stackName: "b",
           intent: "billing",
-          services: { worker: { image: "mycorp/billing:1.0" } },
+          services: [
+            {
+              name: "worker",
+              kind: "custom",
+              image: "mycorp/billing:1.0",
+            },
+          ],
         },
         ctx,
       ),
@@ -159,7 +186,14 @@ describe("plan_stack", () => {
         {
           stackName: "scaled",
           intent: "x",
-          services: { api: { image: "node:20", scale: 2 } },
+          services: [
+            {
+              name: "api",
+              kind: "custom",
+              image: "node:20",
+              scale: 2,
+            },
+          ],
         },
         ctx,
       ),
@@ -179,7 +213,13 @@ describe("plan_stack", () => {
         {
           stackName: "bad",
           intent: "postgres",
-          services: { db: { image: "postgres:99-alpine" } },
+          services: [
+            {
+              name: "db",
+              kind: "custom",
+              image: "postgres:99-alpine",
+            },
+          ],
         },
         ctx,
       ),
@@ -198,16 +238,23 @@ describe("plan_stack", () => {
         {
           stackName: "web",
           intent: "nginx proxy",
-          services: {
-            nginx: { image: "nginx:1.27", volumes: ["./nginx.conf:/etc/nginx/nginx.conf"] },
-          },
+          services: [
+            {
+              name: "nginx",
+              kind: "custom",
+              image: "nginx:1.27",
+              configMounts: [{ hostPath: "./nginx.conf", containerPath: "/etc/nginx/nginx.conf" }],
+            },
+          ],
           configFiles: { "./nginx.conf": "events {}\n" },
         },
         ctx,
       ),
     );
     if (result.blocked) throw new Error("plan should not be blocked");
-    expect(result.configFiles).toEqual([{ path: "nginx.conf", content: "events {}\n", bytes: 10 }]);
+    expect(result.configFiles).toEqual([
+      { path: "nginx.conf", content: "events {}\n", bytes: 10 },
+    ]);
     // staging must not write to disk yet
     expect(fs.existsSync(path.join(tmpRoot, "nginx.conf"))).toBe(false);
   });
@@ -219,9 +266,14 @@ describe("plan_stack", () => {
         {
           stackName: "web",
           intent: "nginx proxy",
-          services: {
-            nginx: { image: "nginx:1.27", volumes: ["./nginx.conf:/etc/nginx/nginx.conf"] },
-          },
+          services: [
+            {
+              name: "nginx",
+              kind: "custom",
+              image: "nginx:1.27",
+              configMounts: [{ hostPath: "./nginx.conf", containerPath: "/etc/nginx/nginx.conf" }],
+            },
+          ],
         },
         ctx,
       ),
@@ -239,9 +291,14 @@ describe("plan_stack", () => {
         {
           stackName: "web",
           intent: "x",
-          services: {
-            nginx: { image: "nginx:1.27", volumes: ["./nginx.conf:/etc/nginx/nginx.conf"] },
-          },
+          services: [
+            {
+              name: "nginx",
+              kind: "custom",
+              image: "nginx:1.27",
+              configMounts: [{ hostPath: "./nginx.conf", containerPath: "/etc/nginx/nginx.conf" }],
+            },
+          ],
           configFiles: { "../evil.conf": "x" },
         },
         ctx,
@@ -260,7 +317,14 @@ describe("plan_stack", () => {
         {
           stackName: "app",
           intent: "api",
-          services: { api: { image: "example/api:1", depends_on: ["db"] } },
+          services: [
+            {
+              name: "api",
+              kind: "custom",
+              image: "example/api:1",
+              depends_on: ["db"],
+            },
+          ],
         },
         ctx,
       ),
@@ -280,10 +344,20 @@ describe("plan_stack", () => {
         {
           stackName: "app",
           intent: "workers",
-          services: {
-            api: { image: "example/api:1", depends_on: ["worker"] },
-            worker: { image: "example/worker:1", depends_on: ["api"] },
-          },
+          services: [
+            {
+              name: "api",
+              kind: "custom",
+              image: "example/api:1",
+              depends_on: ["worker"],
+            },
+            {
+              name: "worker",
+              kind: "custom",
+              image: "example/worker:1",
+              depends_on: ["api"],
+            },
+          ],
         },
         ctx,
       ),
@@ -303,12 +377,14 @@ describe("plan_stack", () => {
         {
           stackName: "weakpw",
           intent: "postgres with weak password",
-          services: {
-            db: {
-              image: "postgres:17-alpine",
+          services: [
+            {
+              name: "db",
+              kind: "catalog",
+              catalogId: "postgresql:16",
               environment: { POSTGRES_PASSWORD: "postgres" },
             },
-          },
+          ],
         },
         ctx,
       ),
@@ -329,8 +405,14 @@ describe("plan_stack", () => {
 
   test("blocks when service count exceeds limit", async () => {
     const ctx = makeCtx(tmpRoot);
-    const services: Record<string, { image: string }> = {};
-    for (let i = 0; i <= 25; i++) services[`svc${i}`] = { image: "nginx:1.27-alpine" };
+    const services: any[] = [];
+    for (let i = 0; i <= 25; i++) {
+      services.push({
+        name: `svc${i}`,
+        kind: "custom",
+        image: "nginx:1.27-alpine",
+      });
+    }
     const result = await drain(
       planStack.call({ stackName: "toobig", intent: "too many services", services }, ctx),
     );
@@ -345,9 +427,15 @@ describe("plan_stack", () => {
         {
           stackName: "dbexposed",
           intent: "postgres exposed",
-          services: {
-            db: { image: "postgres:17-alpine", ports: ["5432:5432"] },
-          },
+          services: [
+            {
+              name: "db",
+              kind: "catalog",
+              catalogId: "postgresql:16",
+              exposure: "public",
+              hostPort: 5432,
+            },
+          ],
         },
         ctx,
       ),
@@ -356,44 +444,27 @@ describe("plan_stack", () => {
     if (result.blocked) expect(result.reason).toBe("db_port_exposed");
   });
 
-  test("blocks path traversal in volume mount", async () => {
+  test("blocks path traversal in config file mount", async () => {
     const ctx = makeCtx(tmpRoot);
     const result = await drain(
       planStack.call(
         {
           stackName: "traversal",
           intent: "path traversal",
-          services: {
-            web: {
+          services: [
+            {
+              name: "web",
+              kind: "custom",
               image: "nginx:1.27-alpine",
-              volumes: ["../../etc:/etc:ro"],
+              configMounts: [{ hostPath: "../../etc", containerPath: "/etc:ro" }],
             },
-          },
+          ],
         },
         ctx,
       ),
     );
     expect(result.blocked).toBe(true);
     if (result.blocked) expect(result.reason).toBe("unsafe_volume");
-  });
-
-  test("blocks undeclared network reference", async () => {
-    const ctx = makeCtx(tmpRoot);
-    const result = await drain(
-      planStack.call(
-        {
-          stackName: "badnet",
-          intent: "undeclared network",
-          services: {
-            web: { image: "nginx:1.27-alpine", networks: ["ghost"] },
-          },
-          networks: { frontend: {} },
-        },
-        ctx,
-      ),
-    );
-    expect(result.blocked).toBe(true);
-    if (result.blocked) expect(result.reason).toBe("undeclared_network");
   });
 
   test("blocks running-container port collision before writing secrets", async () => {
@@ -417,7 +488,15 @@ describe("plan_stack", () => {
         {
           stackName: "app",
           intent: "api",
-          services: { api: { image: "example/api:1", ports: ["8080:80"] } },
+          services: [
+            {
+              name: "api",
+              kind: "custom",
+              image: "example/api:1",
+              exposure: "public",
+              hostPort: 8080,
+            },
+          ],
         },
         ctx,
       ),

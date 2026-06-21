@@ -22,6 +22,20 @@ export interface ServiceSpec {
   labels?: Record<string, string>;
   networks?: string[];
   scale?: number;
+  deploy?: {
+    resources?: {
+      limits?: {
+        cpus?: string;
+        memory?: string;
+      };
+    };
+  };
+  logging?: {
+    driver?: string;
+    options?: Record<string, string>;
+  };
+  user?: string;
+  read_only?: boolean;
 }
 
 export interface EnvFileSource {

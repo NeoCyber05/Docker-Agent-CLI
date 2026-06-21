@@ -1,6 +1,8 @@
 import type { Tool, ToolContext, ToolProgress } from "src/Tool";
 import { z } from "zod";
-import { ServicesSchema } from "./shared/specSchemas";
+import { ServicesSchema, type StackDraft } from "./shared/specSchemas";
+import { prepareStackDraft } from "./shared/translator";
+import type { ServiceSpec } from "src/types/stack";
 
 export interface PublishedPort {
   hostIp: string;
@@ -25,7 +27,8 @@ export interface CheckPortConflictResult {
 }
 
 export const CheckPortConflictInputSchema = z.object({
-  stackName: z.string().optional(),
+  stackName: z.string().regex(/^[a-z][a-z0-9_-]{0,62}$/).optional(),
+  intent: z.string().optional(),
   services: ServicesSchema,
 });
 export type CheckPortConflictInput = z.infer<typeof CheckPortConflictInputSchema>;
@@ -111,19 +114,16 @@ function bindingsConflict(a: PublishedPort, b: PublishedPort): boolean {
   return aIp === "0.0.0.0" || bIp === "0.0.0.0" || aIp === bIp;
 }
 
-function bindingKey(binding: PublishedPort): string {
-  return `${binding.protocol}:${normalizeHostIp(binding.hostIp)}:${binding.hostPort}`;
-}
-
 export async function checkPortConflicts(
-  input: CheckPortConflictInput,
+  stackName: string,
+  services: Record<string, ServiceSpec>,
   ctx: ToolContext,
 ): Promise<CheckPortConflictResult> {
   const conflicts: PortConflict[] = [];
   const invalid: CheckPortConflictResult["invalid"] = [];
   const draftBindings: Array<{ service: string; binding: PublishedPort }> = [];
 
-  for (const [service, spec] of Object.entries(input.services)) {
+  for (const [service, spec] of Object.entries(services)) {
     for (const portValue of spec.ports ?? []) {
       const parsed = parsePublishedPorts(portValue);
       if (parsed.length === 0 && portValue.includes(":")) {
@@ -180,7 +180,7 @@ export async function checkPortConflicts(
 
   for (const summary of containers) {
     if (summary.State === "exited" || summary.State === "dead") continue;
-    if (input.stackName && summary.Labels?.["com.docker.compose.project"] === input.stackName) {
+    if (stackName && summary.Labels?.["com.docker.compose.project"] === stackName) {
       continue;
     }
     const inspected = (await ctx.dockerEngine.inspect(summary.Id)) as {
@@ -246,6 +246,19 @@ export const checkPortConflict: Tool<CheckPortConflictInput, CheckPortConflictRe
   needsPermission: () => false,
   call: async function* (input, ctx): AsyncGenerator<ToolProgress, CheckPortConflictResult> {
     yield { type: "progress", msg: "Checking published ports..." };
-    return checkPortConflicts(input, ctx);
+    const draft: StackDraft = {
+      stackName: input.stackName ?? "validate-temp-stack",
+      intent: input.intent ?? "validation only",
+      services: input.services,
+    };
+    const prep = await prepareStackDraft(draft, ctx);
+    if (!prep.ok) {
+      return {
+        ok: false,
+        conflicts: [],
+        invalid: [{ service: "*", value: "services", message: prep.error }],
+      };
+    }
+    return checkPortConflicts(draft.stackName, prep.prepared.services, ctx);
   },
 };

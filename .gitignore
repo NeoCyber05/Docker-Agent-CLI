@@ -21,3 +21,11 @@ API DOCS.md
 opencode
 .codegraph
 mcps
+
+# Local Agent Configs
+.mcp.json
+opencode.jsonc
+skills-lock.json
+.codegraph/daemon.pid
+terminals/
+

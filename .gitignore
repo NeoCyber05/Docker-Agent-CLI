@@ -26,6 +26,8 @@ mcps
 .mcp.json
 opencode.jsonc
 skills-lock.json
-.codegraph/daemon.pid
 terminals/
-
+.agents/skills/
+.claude/
+.codegraph/
+.vscode/

@@ -68,11 +68,11 @@ interface Tip {
 }
 
 const TIPS: Tip[] = [
-  { cmd: "/help", desc: "Show all commands" },
-  { cmd: "/models", desc: "Browse and select a model" },
+  { cmd: "/help", desc: "Show all commands & shortcuts" },
+  { cmd: "/model", desc: "Browse or set the active model" },
   { cmd: "/connect", desc: "Connect gemini, openai, or ollama" },
   { cmd: "/stacks", desc: "List managed stacks" },
-  { cmd: "/status <stack>", desc: "Inspect status & drift" },
+  { cmd: "Ctrl+O", desc: "Open tool details panel" },
   { cmd: "/exit", desc: "Exit the agent" },
 ];
 

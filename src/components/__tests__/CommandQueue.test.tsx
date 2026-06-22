@@ -58,12 +58,13 @@ function renderQueuePanel(
   queue: string[],
   onRemove = vi.fn(),
   onClear = vi.fn(),
+  onResume = vi.fn(),
   onClose = vi.fn(),
 ) {
   const stdin = new TestStdin();
   const stdout = new TestStdout();
   const stderr = new TestStdout();
-  const app = render(React.createElement(QueuePanel, { queue, onRemove, onClear, onClose }), {
+  const app = render(React.createElement(QueuePanel, { queue, onRemove, onClear, onResume, onClose }), {
     stdin: stdin as unknown as NodeJS.ReadStream,
     stdout: stdout as unknown as NodeJS.WriteStream,
     stderr: stderr as unknown as NodeJS.WriteStream,
@@ -110,7 +111,7 @@ describe("CommandPalette", () => {
     const commands = createDefaultRegistry().getAll();
     expect(commands).toHaveLength(SLASH_COMMANDS.length);
     expect(commands.map((command) => command.id)).toEqual(
-      expect.arrayContaining(["help", "cancel", "details", "queue-resume", "queue-clear"]),
+      expect.arrayContaining(["help", "model", "stacks", "connect"]),
     );
   });
 });

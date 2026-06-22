@@ -11,16 +11,7 @@ Instead of writing complex `docker-compose.yaml` files, configuring networks, vo
 
 ![Demo](demo.jpg)
 
-## Key Features
 
-- **Natural Language Provisioning**: Ask in plain English or Vietnamese to design and deploy complex Docker Compose stacks.
-- **ReAct Agent Architecture**: The agent plans, generates Compose files, and applies changes via an iterative execution loop.
-- **Interactive REPL**: A Terminal UI built with Ink featuring streaming responses, visual diff previews, and permission dialogs.
-- **Secure Secrets & API Keys**: Manages stack secrets in isolated files and saves API keys securely in the OS keychain.
-- **Real-Time Drift & Remediation**: Detects discrepancies between desired configuration and running containers, with auto-remediation.
-- **Multi-Provider support**: Works with Gemini, OpenAI, OpenRouter, and Ollama.
-
----
 
 ## Prerequisites
 
@@ -89,7 +80,7 @@ The CLI maintains project-local state in `.docker-agent` under your current work
 ├── stacks/              # Saved YAML definitions of active stacks
 │   └── .archive/        # Archived configs of destroyed/previous stacks
 ├── sessions/            # Persisted conversation transcripts
-│   ├── index.json       # Session index for /resume
+│   ├── index.json       # Session index for /sessions and /resume
 │   └── <id>.json        # Individual session records (secrets redacted)
 ├── locks/               # Process locks to prevent concurrent mutations
 ├── secrets/             # Per-stack .env files (mode 0700)
@@ -111,7 +102,7 @@ API keys saved via `/connect` are stored separately under `~/.docker-agent/api-k
 | `--provider <name>` | LLM provider: `gemini`, `openai`, `openrouter`, or `ollama` |
 | `--model <id>` | Model override for the session |
 | `-y, --yes` | Auto-approve non-destructive permissions (destructive tools still gated) |
-| `--resume [id]` | Resume the latest session, or a specific session by id |
+| `--resume [id]` | Resume the latest session, or a specific session by id (restores transcript and saved model) |
 | `-v, --version` | Print version |
 | `-h, --help` | Show help |
 
@@ -124,8 +115,7 @@ Shortcut commands available inside the interactive shell:
 | :--- | :--- |
 | `/help` | List all slash commands |
 | `/connect` | Connect a provider (enter API key or configure Ollama) |
-| `/models` | Browse and select a model for the active provider |
-| `/model <id>` | Set model override (`/model openai/gpt-4o` also switches provider) |
+| `/model` | Browse models (no args) or set override (`/model openai/gpt-4o`) |
 | `/stacks` | List managed stacks |
 | `/status <stack>` | Show status and drift for a stack |
 | `/yaml <stack>` | Print the stack's Compose YAML |
@@ -134,15 +124,21 @@ Shortcut commands available inside the interactive shell:
 | `/destroy all` | Tear down all stacks (requires typed `DESTROY ALL` confirmation) |
 | `/secrets list <stack>` | List secret env keys (values masked) |
 | `/secrets rotate <stack> <service>` | Rotate secrets for a service |
+| `/sessions` | List saved sessions (newest first) |
 | `/resume` | Resume the most recent session |
 | `/resume <id>` | Resume a specific session by id |
-| `/cancel` | Cancel the current agent turn (`Ctrl+C`) |
-| `/details` | Toggle details panel for the latest tool run (`Ctrl+O`) |
-| `/queue resume` | Resume processing queued prompts |
-| `/queue clear` | Clear the prompt queue |
-| `/queue remove <index>` | Remove a queued prompt (1-based index) |
 | `/clear` | Reset conversation context and clear the screen |
 | `/exit` | Exit the REPL (`exit` without slash also works) |
+
+### Keyboard shortcuts (REPL)
+
+| Shortcut | Action |
+| :--- | :--- |
+| `Ctrl+C` | Cancel the current agent turn |
+| `Ctrl+O` | Toggle tool details panel |
+| `Ctrl+P` | Open command palette |
+| `Ctrl+Q` | Open queue panel (`r` resume, `d` remove, `c` clear) |
+| `Enter` (empty input, queue paused) | Resume processing the queue |
 
 ---
 
@@ -166,6 +162,16 @@ The LLM agent can call these tools during a session:
 | `exec_docker` | escape-hatch | Run read-only `docker` subcommands (`ps`, `inspect`, `logs`, etc.) |
 
 Destructive tools (`apply_stack`, `destroy_stack`, `destroy_all_stacks`) require explicit approval in the REPL. `--yes` auto-approves only non-destructive permissions.
+
+### Session persistence
+
+- Transcripts are saved to `.docker-agent/sessions/<id>.json` after each turn (secrets redacted).
+- Each record stores `createdAt`, `updatedAt`, `cwd`, `provider`, optional `model`, `firstPrompt`, `stackNames`, and the full `messages[]` array.
+- `createdAt` is preserved across turns; only `updatedAt` changes on subsequent saves.
+- `stackNames` is populated from managed stacks in `.docker-agent/stacks/`.
+- Resume (`--resume` or `/resume`) reloads the transcript and restores the saved model override. Pending permission dialogs are **not** resumed.
+- If the saved `cwd` differs from the current working directory, a warning is shown in the REPL and on stderr.
+- The REPL footer shows the active `session: <id>` for reference.
 
 ---
 

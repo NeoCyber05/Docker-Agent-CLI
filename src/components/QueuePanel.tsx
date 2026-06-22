@@ -6,11 +6,13 @@ export function QueuePanel({
   queue,
   onRemove,
   onClear,
+  onResume,
   onClose,
 }: {
   queue: string[];
   onRemove: (index: number) => void;
   onClear: () => void;
+  onResume: () => void;
   onClose: () => void;
 }): React.ReactElement {
   const [selected, setSelected] = useState(0);
@@ -36,6 +38,10 @@ export function QueuePanel({
       onClear();
       return;
     }
+    if (_input.toLowerCase() === "r" && queue.length > 0) {
+      onResume();
+      return;
+    }
   });
 
   return (
@@ -51,7 +57,7 @@ export function QueuePanel({
           </Text>
         </Box>
       ))}
-      <Text dimColor>Up/Down select | d remove | c clear | Esc close</Text>
+      <Text dimColor>Up/Down select | r resume | d remove | c clear | Esc close</Text>
     </Box>
   );
 }

@@ -109,4 +109,28 @@ describe("check_port_conflict", () => {
     );
     expect(result.ok).toBe(true);
   });
+
+  test("returns an actionable result when Docker Engine is unavailable", async () => {
+    const engine = new MockDockerEngine();
+    engine.listContainers.mockRejectedValueOnce(
+      Object.assign(new Error("connect ENOENT //./pipe/docker_engine"), { code: "ENOENT" }),
+    );
+
+    const result = await checkPortConflicts(
+      "app",
+      { web: { image: "nginx:1.27-alpine", ports: ["8080:80"] } },
+      makeCtx(engine),
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      conflicts: [],
+      invalid: [],
+      dockerError: {
+        code: "docker_engine_unavailable",
+        message:
+          "Docker Engine is unavailable. Start Docker Desktop or the Docker daemon, then retry.",
+      },
+    });
+  });
 });

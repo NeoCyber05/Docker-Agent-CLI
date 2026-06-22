@@ -372,7 +372,7 @@ describe("REPL terminal rendering", () => {
     expect(output).toContain("Popular");
   });
 
-  test("/models shows grouped model picker for connected providers", async () => {
+  test("/model without args shows grouped model picker for connected providers", async () => {
     const openaiProvider = {
       name: "openai",
       stream: async function* () {},
@@ -389,7 +389,7 @@ describe("REPL terminal rendering", () => {
     tmpDirs.push(rendered.tmp);
     await new Promise((resolve) => setImmediate(resolve));
 
-    await typeLine(rendered.stdin, "/models");
+    await typeLine(rendered.stdin, "/model");
     await waitUntil(() => stripAnsi(rendered.stdout.output()).includes("Select model"));
 
     const output = stripAnsi(rendered.stdout.output());

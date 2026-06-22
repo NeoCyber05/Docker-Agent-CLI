@@ -15,19 +15,17 @@ import { remediateDrift } from "./tools/remediateDrift";
 import { resolveDependency } from "./tools/resolveDependency";
 import { validateSpec } from "./tools/validateSpec";
 
-export type QueryMode = "deploy" | "react";
-
 const preflightTools: Tool[] = [
   validateSpec as Tool,
   resolveDependency as Tool,
   checkPortConflict as Tool,
 ];
 
-export function getAllTools(): Tool[] {
+/** Tools exposed to the LLM (apply_stack is internal — plan confirm flow only). */
+export function getAgentTools(): Tool[] {
   return [
     ...preflightTools,
     planStack as Tool,
-    applyStack as Tool,
     destroyStack as Tool,
     destroyAllStacks as Tool,
     listStacks as Tool,
@@ -41,20 +39,7 @@ export function getAllTools(): Tool[] {
   ];
 }
 
-export function getToolsForMode(mode: QueryMode): Tool[] {
-  if (mode === "deploy") return [...preflightTools, planStack as Tool];
-  return [
-    ...preflightTools,
-    planStack as Tool,
-    destroyStack as Tool,
-    destroyAllStacks as Tool,
-    listStacks as Tool,
-    inspectDrift as Tool,
-    remediateDrift as Tool,
-    getStackStatus as Tool,
-    getLogs as Tool,
-    getHealth as Tool,
-    pullImage as Tool,
-    execDocker as Tool,
-  ];
+/** Full registry including internal tools (e.g. apply_stack for tests and dispatch). */
+export function getAllTools(): Tool[] {
+  return [...getAgentTools(), applyStack as Tool];
 }

@@ -168,7 +168,9 @@ async function resolveResume(
         ? "No previous session found to resume.\n"
         : `Session ${args.resume} not found.\n`,
     );
+    return null;
   }
+  process.stderr.write(`[docker-agent] Resuming session ${rec.id}\n`);
   return rec;
 }
 
@@ -222,4 +224,3 @@ export async function main(argv: string[]): Promise<number> {
   });
   return 0;
 }
-

@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { MemoryApiKeyStore } from "src/secrets/apiKeyStore";
 import { SLASH_COMMAND_DEFS, resolveSlashKey, routeSlashCommand } from "src/slashRouter";
+import { SessionStore } from "src/state/SessionStore";
 import { StateStore } from "src/state/StateStore";
 import type { StackDefinition } from "src/types/stack";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
@@ -13,7 +14,6 @@ function makeCtx(tmpRoot: string) {
     stateStore: new StateStore(path.join(tmpRoot, ".docker-agent")),
     activeProviderName: "gemini" as const,
     apiKeyStore: new MemoryApiKeyStore(),
-    hasLatestTool: true,
   };
 }
 
@@ -26,7 +26,6 @@ describe("resolveSlashKey", () => {
   test("resolves multi-token commands with longest match", () => {
     expect(resolveSlashKey(["/secrets", "list"])).toBe("/secrets list");
     expect(resolveSlashKey(["/secrets", "rotate", "s", "svc"])).toBe("/secrets rotate");
-    expect(resolveSlashKey(["/queue", "remove", "2"])).toBe("/queue remove");
     expect(resolveSlashKey(["/destroy", "all"])).toBe("/destroy all");
     expect(resolveSlashKey(["/destroy", "ALL"])).toBe("/destroy all");
   });
@@ -62,7 +61,7 @@ describe("routeSlashCommand", () => {
   });
 
   test("registry metadata covers every SLASH_COMMAND_DEFS entry", () => {
-    expect(SLASH_COMMAND_DEFS.length).toBeGreaterThanOrEqual(20);
+    expect(SLASH_COMMAND_DEFS.length).toBeGreaterThanOrEqual(16);
     for (const def of SLASH_COMMAND_DEFS) {
       expect(def.usage).toMatch(/^\//);
       expect(def.description.length).toBeGreaterThan(0);
@@ -115,9 +114,10 @@ describe("routeSlashCommand — data dispatch", () => {
       ]),
     );
     const assistant = result.effects.find((e) => e.type === "emit_assistant_text");
-    expect(assistant && "delta" in assistant ? assistant.delta : "").toContain(
-      "Supported slash commands",
-    );
+    const delta = assistant && "delta" in assistant ? assistant.delta : "";
+    expect(delta).toContain("Supported slash commands");
+    expect(delta).toContain("Keyboard shortcuts");
+    expect(delta).toContain("Ctrl+O");
   });
 
   test("/stacks emits table without LLM submit", async () => {
@@ -260,24 +260,11 @@ describe("routeSlashCommand — UI effects", () => {
     expect(result.effects).toEqual([{ type: "clear_session" }]);
   });
 
-  test("/cancel emits cancel_current", async () => {
-    const result = await routeSlashCommand("/cancel", ctx);
-    expect(result.effects).toEqual([{ type: "cancel_current" }]);
-  });
-
   test("/connect opens provider connect dialog", async () => {
     const result = await routeSlashCommand("/connect", ctx);
     expect(result.effects).toEqual([
       { type: "emit_user_text", text: "/connect" },
       { type: "open_provider_connect" },
-    ]);
-  });
-
-  test("/models opens model picker", async () => {
-    const result = await routeSlashCommand("/models", ctx);
-    expect(result.effects).toEqual([
-      { type: "emit_user_text", text: "/models" },
-      { type: "open_model_picker" },
     ]);
   });
 
@@ -317,36 +304,30 @@ describe("routeSlashCommand — UI effects", () => {
     ]);
   });
 
-  test("/details without tool emits error", async () => {
-    const result = await routeSlashCommand("/details", { ...ctx, hasLatestTool: false });
-    expect(result.effects).toEqual([{ type: "emit_error", message: "No tool activity yet." }]);
-  });
-
-  test("/details with tool toggles panel", async () => {
-    const result = await routeSlashCommand("/details", ctx);
-    expect(result.effects).toEqual([{ type: "toggle_details" }]);
-  });
-
-  test("/queue resume", async () => {
-    const result = await routeSlashCommand("/queue resume", ctx);
-    expect(result.effects).toEqual([{ type: "queue_resume" }]);
-  });
-
-  test("/queue clear", async () => {
-    const result = await routeSlashCommand("/queue clear", ctx);
-    expect(result.effects).toEqual([{ type: "queue_clear" }]);
-  });
-
-  test("/queue remove with valid index", async () => {
-    const result = await routeSlashCommand("/queue remove 2", ctx);
-    expect(result.effects).toEqual([{ type: "queue_remove", index: 1 }]);
-  });
-
-  test("/queue remove invalid shows usage", async () => {
-    const result = await routeSlashCommand("/queue remove", ctx);
-    expect(
-      result.effects.some((e) => e.type === "emit_error" && e.message.includes("Usage:")),
-    ).toBe(true);
+  test("/sessions lists saved sessions", async () => {
+    const stateRoot = path.join(tmpRoot, ".docker-agent");
+    const sessionStore = new SessionStore(stateRoot);
+    sessionStore.save({
+      schemaVersion: 1,
+      id: "sess-a",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-02-01T00:00:00.000Z",
+      cwd: tmpRoot,
+      provider: "gemini",
+      firstPrompt: "deploy nginx",
+      stackNames: ["web"],
+      messages: [{ role: "user", content: "deploy nginx" }],
+    });
+    const result = await routeSlashCommand("/sessions", { ...ctx, sessionStore });
+    expect(result.effects).toEqual(
+      expect.arrayContaining([
+        { type: "emit_user_text", text: "/sessions" },
+        expect.objectContaining({
+          type: "emit_assistant_text",
+          delta: expect.stringContaining("sess-a"),
+        }),
+      ]),
+    );
   });
 
   test("/resume emits load_session without id", async () => {

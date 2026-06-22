@@ -39,7 +39,7 @@ import type { Provider } from "../services/api/types";
 import { type CatalogRow, buildModelCatalog, flattenCatalog } from "../services/modelCatalog";
 import { type ProviderStatus, getProviderStatuses } from "../services/providerStatus";
 import { routeSlashCommand } from "../slashRouter";
-import type { SessionStore } from "../state/SessionStore";
+import { type SessionStore, sessionCwdMismatchWarning } from "../state/SessionStore";
 import { StructuredLogger } from "../state/logger";
 import { scrubLine } from "../state/secretRedactor";
 import { collectSecretKeys } from "../tools/shared/secretKeys";
@@ -88,6 +88,10 @@ export function REPL({
   resumedRecord?: import("../state/SessionStore").SessionRecord;
   showBanner?: boolean;
 }): React.ReactElement {
+  const resumeWarning = useMemo(
+    () => (resumedRecord ? sessionCwdMismatchWarning(resumedRecord, deps.cwd) : undefined),
+    [resumedRecord, deps.cwd],
+  );
   const engine = useMemo(() => {
     const next = new QueryEngine(deps);
     if (resumedRecord) next.loadSession(resumedRecord);
@@ -97,6 +101,11 @@ export function REPL({
   }, [deps, resumedRecord]);
   const apiKeyStore = useMemo(() => deps.apiKeyStore ?? createApiKeyStore(), [deps.apiKeyStore]);
   const session = useInteractionSession(engine, resumedRecord?.messages);
+
+  useEffect(() => {
+    if (!resumeWarning) return;
+    session.dispatchActivity({ type: "assistant_text", delta: resumeWarning });
+  }, [resumeWarning, session]);
   const latestTool = [...session.activities]
     .reverse()
     .find((activity): activity is ToolActivity => activity.type === "tool");
@@ -123,7 +132,9 @@ export function REPL({
   } | null>(null);
 
   const [activeProviderName, setActiveProviderName] = useState(deps.providerName);
-  const [activeModel, setActiveModel] = useState<string | undefined>(deps.model);
+  const [activeModel, setActiveModel] = useState<string | undefined>(
+    resumedRecord?.model ?? deps.model,
+  );
   const [timelineKey, setTimelineKey] = useState(0);
   const { exit } = useApp();
   const frameWidth = useSafeFrameWidth();
@@ -307,7 +318,6 @@ export function REPL({
         ...(deps.sessionStore ? { sessionStore: deps.sessionStore } : {}),
         activeProviderName: activeProviderName as ProviderName,
         apiKeyStore,
-        hasLatestTool: latestTool !== undefined,
       });
       await applySlashEffects(result.effects, {
         input,
@@ -545,12 +555,14 @@ export function REPL({
           queue={session.queue}
           onRemove={session.removeQueued}
           onClear={session.clearQueue}
+          onResume={session.resumeQueue}
           onClose={() => setShowQueue(false)}
         />
       )}
       {!isInputBlocked && !activeLogPane && (
         <PromptInput
           onSubmit={(value) => void handleSubmit(value)}
+          onResumeQueue={session.resumeQueue}
           phase={session.phase}
           {...(composerPrefill ? { prefill: composerPrefill } : {})}
         />
@@ -562,6 +574,7 @@ export function REPL({
       )}
       <Footer
         usage={engine.totalUsage}
+        sessionId={engine.sessionId}
         activeTool={activeTool?.title}
         queueCount={session.queue.length}
       />

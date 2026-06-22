@@ -3,7 +3,11 @@ import type { LoopContext, PlanReadyPayload } from "src/loopContext";
 import type { Provider } from "src/services/api/types";
 import type { ComposeRunner } from "src/services/docker/composeRunner";
 import type { EngineClient } from "src/services/docker/engineClient";
-import type { SessionRecord, SessionStore } from "src/state/SessionStore";
+import {
+  type SessionRecord,
+  type SessionStore,
+  sessionCwdMismatchWarning,
+} from "src/state/SessionStore";
 import type { StateStore } from "src/state/StateStore";
 import type { LogEntry, StructuredLogger } from "src/state/logger";
 import type { LoopEvent } from "src/types/events";
@@ -44,6 +48,7 @@ export class QueryEngine {
   private activeController: AbortController | null = null;
   private _sessionId: string = nanoid();
   private resumedId: string | null = null;
+  private sessionCreatedAt: string | null = null;
   public provider: Provider;
   public model: string | undefined;
   public totalUsage = { inputTokens: 0, outputTokens: 0 };
@@ -59,14 +64,28 @@ export class QueryEngine {
     return this._sessionId;
   }
 
+  /** Whether this engine continued an existing persisted session. */
+  get isResumed(): boolean {
+    return this.resumedId !== null;
+  }
+
   /** Rehydrate a prior session record. Must be called before the first query(). */
-  loadSession(record: SessionRecord): void {
-    if (record.schemaVersion !== 1) return; // guard against bad calls
+  loadSession(record: SessionRecord): string | undefined {
+    if (record.schemaVersion !== 1) return undefined;
     this.messages = [...record.messages];
     this.resumedId = record.id;
-    this._sessionId = record.id; // continue under same id
+    this._sessionId = record.id;
+    this.sessionCreatedAt = record.createdAt;
+    if (record.model !== undefined) {
+      this.model = record.model;
+    }
     this.pending.clear();
     this.sessionAllowSet.clear(); // permissions are NEVER resumed (safety)
+    const warning = sessionCwdMismatchWarning(record, this.deps.cwd);
+    if (warning) {
+      process.stderr.write(`[docker-agent] ${warning}\n`);
+    }
+    return warning;
   }
 
   /** Returns current messages for REPL repaint after resume. */
@@ -167,20 +186,25 @@ export class QueryEngine {
       this.logger?.close();
       // Persist transcript after turn ends
       if (this.deps.sessionStore) {
+        const now = new Date().toISOString();
+        if (this.sessionCreatedAt === null) {
+          this.sessionCreatedAt = now;
+        }
         const firstUserMsg = this.messages.find((m) => m.role === "user");
         const firstPrompt = firstUserMsg?.role === "user" ? firstUserMsg.content : "(empty)";
         this.deps.sessionStore.save({
           schemaVersion: 1,
           id: this._sessionId,
-          createdAt: new Date().toISOString(), // SessionStore.save will update updatedAt on overwrite
-          updatedAt: new Date().toISOString(),
+          createdAt: this.sessionCreatedAt,
+          updatedAt: now,
           cwd: this.deps.cwd,
           provider:
             typeof this.provider === "object" && "name" in this.provider
               ? (this.provider as { name: string }).name
               : "unknown",
+          ...(this.model ? { model: this.model } : {}),
           firstPrompt,
-          stackNames: [],
+          stackNames: this.deps.stateStore.list().map((stack) => stack.name),
           messages: this.messages,
         });
       }
@@ -207,6 +231,9 @@ export class QueryEngine {
     this.pending.clear();
     this.sessionAllowSet.clear();
     this.activeController = null;
+    this.resumedId = null;
+    this.sessionCreatedAt = null;
+    this._sessionId = nanoid();
   }
 
   private toLogEntry(ev: LoopEvent, iteration: number): LogEntry {

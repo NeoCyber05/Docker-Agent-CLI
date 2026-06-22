@@ -667,15 +667,15 @@ describe("REQ 3.4 — slash commands route correctly (not sent to LLM)", () => {
      * Validates: Requirements 3.4
      *
      * Property: For all cmd ∈ {/exit, /clear, /help, /connect, /model,
-     * /models, /resume} — the REPL handles them internally WITHOUT calling LLM.
+     * /resume} — the REPL handles them internally WITHOUT calling LLM.
      *
-     * For commands that exit or require external state (models, resume) we test
+     * For commands that exit or require external state (model picker, resume) we test
      * the non-destructive ones that leave the REPL running.
      */
     const internalCommands = [
       "/help",
       "/connect",
-      "/models",
+      "/model",
       "/model openai/llama3",
       "/stacks",
       "/destroy webapp",

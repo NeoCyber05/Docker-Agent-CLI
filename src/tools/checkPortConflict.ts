@@ -1,8 +1,8 @@
 import type { Tool, ToolContext, ToolProgress } from "src/Tool";
+import type { ServiceSpec } from "src/types/stack";
 import { z } from "zod";
 import { ServicesSchema, type StackDraft } from "./shared/specSchemas";
 import { prepareStackDraft } from "./shared/translator";
-import type { ServiceSpec } from "src/types/stack";
 
 export interface PublishedPort {
   hostIp: string;
@@ -24,10 +24,17 @@ export interface CheckPortConflictResult {
   ok: boolean;
   conflicts: PortConflict[];
   invalid: Array<{ service: string; value: string; message: string }>;
+  dockerError?: {
+    code: "docker_engine_unavailable" | "docker_inspection_failed";
+    message: string;
+  };
 }
 
 export const CheckPortConflictInputSchema = z.object({
-  stackName: z.string().regex(/^[a-z][a-z0-9_-]{0,62}$/).optional(),
+  stackName: z
+    .string()
+    .regex(/^[a-z][a-z0-9_-]{0,62}$/)
+    .optional(),
   intent: z.string().optional(),
   services: ServicesSchema,
 });
@@ -114,6 +121,26 @@ function bindingsConflict(a: PublishedPort, b: PublishedPort): boolean {
   return aIp === "0.0.0.0" || bIp === "0.0.0.0" || aIp === bIp;
 }
 
+function describeDockerError(error: unknown): NonNullable<CheckPortConflictResult["dockerError"]> {
+  const code =
+    typeof error === "object" && error !== null && "code" in error
+      ? String((error as { code: unknown }).code)
+      : "";
+  if (code === "ENOENT" || code === "ECONNREFUSED") {
+    return {
+      code: "docker_engine_unavailable",
+      message:
+        "Docker Engine is unavailable. Start Docker Desktop or the Docker daemon, then retry.",
+    };
+  }
+
+  const detail = error instanceof Error ? error.message : String(error);
+  return {
+    code: "docker_inspection_failed",
+    message: `Could not inspect running Docker containers: ${detail}`,
+  };
+}
+
 export async function checkPortConflicts(
   stackName: string,
   services: Record<string, ServiceSpec>,
@@ -175,38 +202,47 @@ export async function checkPortConflicts(
     }
   }
 
-  const containers = await ctx.dockerEngine.listContainers({ all: true });
   const runningBindings: Array<{ container: string; binding: PublishedPort }> = [];
 
-  for (const summary of containers) {
-    if (summary.State === "exited" || summary.State === "dead") continue;
-    if (stackName && summary.Labels?.["com.docker.compose.project"] === stackName) {
-      continue;
-    }
-    const inspected = (await ctx.dockerEngine.inspect(summary.Id)) as {
-      NetworkSettings?: {
-        Ports?: Record<string, Array<{ HostIp?: string; HostPort?: string }> | null>;
+  try {
+    const containers = await ctx.dockerEngine.listContainers({ all: true });
+    for (const summary of containers) {
+      if (summary.State === "exited" || summary.State === "dead") continue;
+      if (stackName && summary.Labels?.["com.docker.compose.project"] === stackName) {
+        continue;
+      }
+      const inspected = (await ctx.dockerEngine.inspect(summary.Id)) as {
+        NetworkSettings?: {
+          Ports?: Record<string, Array<{ HostIp?: string; HostPort?: string }> | null>;
+        };
       };
-    };
-    const ports = inspected.NetworkSettings?.Ports ?? {};
-    for (const [containerPortKey, bindings] of Object.entries(ports)) {
-      if (!bindings) continue;
-      const [containerPortRaw, protocolRaw] = containerPortKey.split("/");
-      const protocol = protocolRaw === "udp" ? "udp" : "tcp";
-      const containerPort = Number(containerPortRaw);
-      for (const binding of bindings) {
-        if (!binding.HostPort) continue;
-        runningBindings.push({
-          container: summary.Names?.[0] ?? summary.Id,
-          binding: {
-            hostIp: binding.HostIp ?? "0.0.0.0",
-            hostPort: Number(binding.HostPort),
-            containerPort,
-            protocol,
-          },
-        });
+      const ports = inspected.NetworkSettings?.Ports ?? {};
+      for (const [containerPortKey, bindings] of Object.entries(ports)) {
+        if (!bindings) continue;
+        const [containerPortRaw, protocolRaw] = containerPortKey.split("/");
+        const protocol = protocolRaw === "udp" ? "udp" : "tcp";
+        const containerPort = Number(containerPortRaw);
+        for (const binding of bindings) {
+          if (!binding.HostPort) continue;
+          runningBindings.push({
+            container: summary.Names?.[0] ?? summary.Id,
+            binding: {
+              hostIp: binding.HostIp ?? "0.0.0.0",
+              hostPort: Number(binding.HostPort),
+              containerPort,
+              protocol,
+            },
+          });
+        }
       }
     }
+  } catch (error) {
+    return {
+      ok: false,
+      conflicts,
+      invalid,
+      dockerError: describeDockerError(error),
+    };
   }
 
   for (const draft of draftBindings) {

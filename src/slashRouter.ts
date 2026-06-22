@@ -7,7 +7,7 @@ import {
   dispatchStacks,
   dispatchYaml,
 } from "src/slashDispatch";
-import type { SessionStore } from "src/state/SessionStore";
+import { type SessionStore, formatSessionsList } from "src/state/SessionStore";
 import type { StateStore } from "src/state/StateStore";
 
 export interface SlashCommandDef {
@@ -23,11 +23,6 @@ export type SlashEffect =
   | { type: "submit_prompt"; prompt: string }
   | { type: "exit" }
   | { type: "clear_session" }
-  | { type: "cancel_current" }
-  | { type: "toggle_details" }
-  | { type: "queue_resume" }
-  | { type: "queue_clear" }
-  | { type: "queue_remove"; index: number }
   | { type: "open_provider_connect" }
   | { type: "open_model_picker"; scopeProvider?: ProviderName }
   | { type: "set_model"; provider: ProviderName; model: string }
@@ -45,7 +40,6 @@ export interface SlashRouterContext {
   sessionStore?: SessionStore;
   activeProviderName: ProviderName;
   apiKeyStore: ApiKeyStore;
-  hasLatestTool: boolean;
 }
 
 export const SLASH_COMMAND_DEFS: readonly SlashCommandDef[] = [
@@ -84,34 +78,18 @@ export const SLASH_COMMAND_DEFS: readonly SlashCommandDef[] = [
     description: "Connect a provider (API key or Ollama)",
     insertText: "/connect",
   },
-  { usage: "/models", description: "Browse and select a model", insertText: "/models" },
   {
-    usage: "/model <id>",
-    description: "Set model override (or provider/model)",
+    usage: "/model",
+    description: "Browse models (no args) or set override (/model provider/id)",
     insertText: "/model ",
   },
   { usage: "/yaml <stack>", description: "Show stack YAML", insertText: "/yaml " },
+  { usage: "/sessions", description: "List saved sessions", insertText: "/sessions" },
   { usage: "/resume", description: "Resume the most recent session", insertText: "/resume" },
   { usage: "/resume <id>", description: "Resume a specific session by id", insertText: "/resume " },
-  { usage: "/cancel", description: "Cancel the current turn", insertText: "/cancel" },
-  { usage: "/details", description: "Open details for the latest tool", insertText: "/details" },
-  {
-    usage: "/queue resume",
-    description: "Resume processing the queue",
-    insertText: "/queue resume",
-  },
-  { usage: "/queue clear", description: "Clear the queued turns", insertText: "/queue clear" },
-  {
-    usage: "/queue remove <index>",
-    description: "Remove a queued turn by index",
-    insertText: "/queue remove ",
-  },
 ];
 
 const HANDLER_KEYS = [
-  "/queue remove",
-  "/queue resume",
-  "/queue clear",
   "/secrets list",
   "/secrets rotate",
   "/destroy all",
@@ -124,20 +102,31 @@ const HANDLER_KEYS = [
   "/destroy",
   "/secrets",
   "/connect",
-  "/models",
   "/model",
   "/yaml",
+  "/sessions",
   "/resume",
-  "/cancel",
-  "/details",
 ] as const;
 
 type HandlerKey = (typeof HANDLER_KEYS)[number];
+
+export function formatKeyboardShortcuts(): string {
+  return [
+    "Keyboard shortcuts:",
+    "- Ctrl+C: Cancel current turn",
+    "- Ctrl+O: Tool details panel",
+    "- Ctrl+P: Command palette",
+    "- Ctrl+Q: Queue panel (r resume, d remove, c clear)",
+    "- Enter (empty, queue paused): Resume queue",
+  ].join("\n");
+}
 
 export function formatSlashHelp(): string {
   return [
     "Supported slash commands:",
     ...SLASH_COMMAND_DEFS.map((command) => `- ${command.usage}: ${command.description}`),
+    "",
+    formatKeyboardShortcuts(),
   ].join("\n");
 }
 
@@ -367,21 +356,23 @@ function handleLogs(input: string, parts: string[]): SlashRouteResult {
   };
 }
 
-function handleDetails(ctx: SlashRouterContext): SlashRouteResult {
-  if (!ctx.hasLatestTool) {
-    return { handled: true, effects: [{ type: "emit_error", message: "No tool activity yet." }] };
-  }
-  return { handled: true, effects: [{ type: "toggle_details" }] };
-}
-
-function handleQueueRemove(parts: string[]): SlashRouteResult {
-  const idx = Number(parts[2]);
-  if (Number.isInteger(idx) && idx > 0) {
-    return { handled: true, effects: [{ type: "queue_remove", index: idx - 1 }] };
+function handleSessions(input: string, ctx: SlashRouterContext): SlashRouteResult {
+  const store = ctx.sessionStore;
+  if (!store) {
+    return {
+      handled: true,
+      effects: [
+        { type: "emit_user_text", text: input },
+        { type: "emit_error", message: "Session persistence not configured." },
+      ],
+    };
   }
   return {
     handled: true,
-    effects: [{ type: "emit_error", message: "Usage: /queue resume | clear | remove <index>" }],
+    effects: [
+      { type: "emit_user_text", text: input },
+      { type: "emit_assistant_text", delta: formatSessionsList(store.list()) },
+    ],
   };
 }
 
@@ -441,13 +432,10 @@ export async function routeSlashCommand(
         handled: true,
         effects: [{ type: "emit_user_text", text: input }, { type: "open_provider_connect" }],
       };
-    case "/models":
-      return {
-        handled: true,
-        effects: [{ type: "emit_user_text", text: input }, { type: "open_model_picker" }],
-      };
     case "/model":
       return handleModel(input, parts, ctx);
+    case "/sessions":
+      return handleSessions(input, ctx);
     case "/resume":
       return {
         handled: true,
@@ -460,16 +448,6 @@ export async function routeSlashCommand(
       };
     case "/logs":
       return handleLogs(input, parts);
-    case "/cancel":
-      return { handled: true, effects: [{ type: "cancel_current" }] };
-    case "/details":
-      return handleDetails(ctx);
-    case "/queue resume":
-      return { handled: true, effects: [{ type: "queue_resume" }] };
-    case "/queue clear":
-      return { handled: true, effects: [{ type: "queue_clear" }] };
-    case "/queue remove":
-      return handleQueueRemove(parts);
     default:
       return {
         handled: true,

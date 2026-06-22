@@ -178,7 +178,14 @@ describe("query core loop", () => {
   test("deploy performs preflight actions, observes each result, plans, then summarizes", async () => {
     const draft = {
       services: [
-        { name: "api", kind: "custom", image: "example/api:1", exposure: "public", containerPort: 80, depends_on: ["db"] },
+        {
+          name: "api",
+          kind: "custom",
+          image: "example/api:1",
+          exposure: "public",
+          containerPort: 80,
+          depends_on: ["db"],
+        },
         { name: "db", kind: "catalog", catalogId: "postgresql:16" },
       ],
     };
@@ -436,7 +443,7 @@ describe("query core loop", () => {
       { type: "message_stop", stopReason: "end_turn" as const },
     ];
     const manyIterations: ProviderEvent[][] = [];
-    // Push 25 tool-use iterations (> maxIterations=24 for react mode) so the loop hits the cap
+    // Push 25 tool-use iterations (> maxIterations=24) so the loop hits the cap
     for (let i = 0; i < 25; i++) manyIterations.push([...iteration]);
     manyIterations.push([
       { type: "text_delta", text: "done" },
@@ -455,7 +462,9 @@ describe("query core loop", () => {
   test("plan_stack blocks execution on Policy violations", async () => {
     // 1. Create a global policy file requiring healthchecks
     const globalPolicyPath = path.join(os.homedir(), ".docker-agent", "policies.yaml");
-    const origGlobalPolicy = fs.existsSync(globalPolicyPath) ? fs.readFileSync(globalPolicyPath, "utf-8") : null;
+    const origGlobalPolicy = fs.existsSync(globalPolicyPath)
+      ? fs.readFileSync(globalPolicyPath, "utf-8")
+      : null;
     fs.mkdirSync(path.dirname(globalPolicyPath), { recursive: true });
     fs.writeFileSync(
       globalPolicyPath,
@@ -476,8 +485,8 @@ global:
           stackName: "app",
           intent: "deploy app",
           services: [
-            { name: "web", kind: "custom", image: "nginx:latest" } // lacks healthcheck
-          ]
+            { name: "web", kind: "custom", image: "nginx:latest" }, // lacks healthcheck
+          ],
         }),
       },
       { type: "tool_use_stop", id: "t1" },
@@ -485,11 +494,7 @@ global:
     ];
 
     try {
-      const events = await collectEvents(
-        "deploy stack app",
-        { events: planStackEvents },
-        [],
-      );
+      const events = await collectEvents("deploy stack app", { events: planStackEvents }, []);
 
       // plan_stack tool itself runs
       const toolResult = events.find((e) => e.type === "tool_result" && e.name === "plan_stack");
@@ -503,7 +508,9 @@ global:
       if (origGlobalPolicy !== null) {
         fs.writeFileSync(globalPolicyPath, origGlobalPolicy);
       } else {
-        try { fs.unlinkSync(globalPolicyPath); } catch {}
+        try {
+          fs.unlinkSync(globalPolicyPath);
+        } catch {}
       }
     }
   });
@@ -526,7 +533,7 @@ global:
       [
         { type: "text_delta", text: "Aborted." },
         { type: "message_stop", stopReason: "end_turn" },
-      ]
+      ],
     ]);
 
     const events = await collectEventsWithProvider(

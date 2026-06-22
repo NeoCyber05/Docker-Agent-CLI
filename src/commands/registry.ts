@@ -45,8 +45,6 @@ export function createDefaultRegistry(): CommandRegistry {
       title: command.usage,
       description: command.description,
       insertText: command.insertText,
-      ...(id === "cancel" ? { shortcut: "Ctrl+C" } : {}),
-      ...(id === "details" ? { shortcut: "Ctrl+O" } : {}),
     });
   }
   return registry;

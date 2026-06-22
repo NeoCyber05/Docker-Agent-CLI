@@ -73,10 +73,12 @@ function applyInlineEdits(current: string, input: string): string {
 
 export function PromptInput({
   onSubmit,
+  onResumeQueue,
   phase = "idle",
   prefill,
 }: {
   onSubmit: (text: string) => void;
+  onResumeQueue?: () => void;
   phase?: InteractionPhase;
   prefill?: { requestId: number; text: string };
 }): React.ReactElement {
@@ -145,6 +147,8 @@ export function PromptInput({
         setHistoryIdx(-1);
         setDraft("");
         onSubmit(t);
+      } else if (phase === "queue_paused" && onResumeQueue) {
+        onResumeQueue();
       }
       setSuggestionIdx(0);
       textRef.current = "";
@@ -322,8 +326,8 @@ export function PromptInput({
             : phase === "awaiting_input"
               ? "(Awaiting your response…)"
               : phase === "queue_paused"
-                ? "(Queue paused — /queue resume to continue)"
-                : "(Alt+Enter for newline, ←→ to move cursor, Up/Down for history)"}
+                ? "(Queue paused — Enter to resume, Ctrl+Q to manage)"
+                : "(Alt+Enter newline, ←→ cursor, ↑↓ history, Ctrl+O tool details)"}
         </Text>
       </Box>
       {suggestions.length > 0 && (

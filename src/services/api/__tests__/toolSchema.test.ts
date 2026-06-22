@@ -3,7 +3,7 @@ import {
   toJsonSchema,
   toOpenAIFunction,
 } from "src/services/api/toolSchema";
-import { getToolsForMode } from "src/tools";
+import { getAgentTools } from "src/tools";
 import { describe, expect, test } from "vitest";
 import { z } from "zod";
 
@@ -44,8 +44,8 @@ describe("toolSchema", () => {
     });
   });
 
-  test("all deploy ReAct tools convert for OpenAI and Gemini", () => {
-    for (const tool of getToolsForMode("deploy")) {
+  test("all agent tools convert for OpenAI and Gemini", () => {
+    for (const tool of getAgentTools()) {
       const toolSchema = {
         name: tool.name,
         description: tool.description,

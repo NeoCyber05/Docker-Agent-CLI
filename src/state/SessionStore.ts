@@ -27,6 +27,35 @@ export interface SessionIndexEntry {
   stackNames: string[];
 }
 
+/** Warn when resuming a session saved under a different working directory. */
+export function sessionCwdMismatchWarning(record: SessionRecord, cwd: string): string | undefined {
+  if (record.cwd === cwd) return undefined;
+  return `Resuming session saved in ${record.cwd} (current directory: ${cwd}). Stack paths may differ.`;
+}
+
+/** Format index entries for /sessions output (newest-first). */
+export function formatSessionsList(entries: SessionIndexEntry[]): string {
+  if (entries.length === 0) return "No saved sessions.";
+  return [
+    "Saved sessions (newest first):",
+    ...entries.map((entry, index) => {
+      const stacks =
+        entry.stackNames.length > 0 ? `  stacks: ${entry.stackNames.join(", ")}` : "";
+      const prompt =
+        entry.firstPrompt.length > 72
+          ? `${entry.firstPrompt.slice(0, 69)}...`
+          : entry.firstPrompt;
+      return [
+        `${index + 1}. ${entry.id}`,
+        `   updated: ${entry.updatedAt}${stacks}`,
+        `   prompt: ${prompt}`,
+      ].join("\n");
+    }),
+    "",
+    "Resume with /resume or /resume <id>",
+  ].join("\n");
+}
+
 function warn(message: string): void {
   process.stderr.write(`[docker-agent] ${message}\n`);
 }
@@ -136,8 +165,11 @@ export class SessionStore {
    * If the write fails, logs a warning and preserves the prior file.
    */
   save(record: SessionRecord): void {
+    const existing = this.read(record.id);
+    const createdAt = existing?.createdAt ?? record.createdAt;
     const redacted: SessionRecord = {
       ...record,
+      createdAt,
       messages: redactMessages(record.messages),
     };
 

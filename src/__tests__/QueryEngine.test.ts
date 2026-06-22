@@ -3,7 +3,9 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { QueryEngine } from "src/QueryEngine";
 import type { CallModelParams, ProviderEvent } from "src/services/api/types";
+import { SessionStore } from "src/state/SessionStore";
 import { StateStore } from "src/state/StateStore";
+import type { StackDefinition } from "src/types/stack";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { MockComposeRunner } from "../../tests/mocks/mockComposeRunner";
 import { MockDockerEngine } from "../../tests/mocks/mockDockerEngine";
@@ -231,6 +233,89 @@ describe("QueryEngine", () => {
       if (ev.type === "assistant_text") events.push(ev.delta);
     }
     expect(events.join("")).toBe("second");
+  });
+
+  test("loadSession restores model and returns cwd mismatch warning", () => {
+    const engine = new QueryEngine({
+      stateStore: new StateStore(tmp),
+      dockerEngine: new MockDockerEngine() as never,
+      composeRunner: new MockComposeRunner(tmp) as never,
+      cwd: "/current",
+      provider: fakeProvider([]),
+      model: "cli-default",
+    });
+
+    const warning = engine.loadSession({
+      schemaVersion: 1,
+      id: "saved-session",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-02T00:00:00.000Z",
+      cwd: "/saved",
+      provider: "openai",
+      model: "gpt-4.1-mini",
+      firstPrompt: "hello",
+      stackNames: [],
+      messages: [{ role: "user", content: "hello" }],
+    });
+
+    expect(warning).toContain("/saved");
+    expect(engine.sessionId).toBe("saved-session");
+    expect(engine.model).toBe("gpt-4.1-mini");
+    expect(engine.isResumed).toBe(true);
+  });
+
+  test("persists createdAt, model, and stackNames across turns", async () => {
+    const stateRoot = path.join(tmp, "state");
+    const stateStore = new StateStore(stateRoot);
+    const sessionStore = new SessionStore(stateRoot);
+    const stackDef: StackDefinition = {
+      "x-docker-agent": {
+        name: "web",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        lastApplied: null,
+        intent: "test",
+        provider: "gemini",
+        generatedBy: "test",
+        envFileSources: {},
+      },
+      services: { app: { image: "nginx" } },
+    };
+    const engine = new QueryEngine({
+      stateStore,
+      sessionStore,
+      dockerEngine: new MockDockerEngine() as never,
+      composeRunner: new MockComposeRunner(tmp) as never,
+      cwd: tmp,
+      provider: fakeProvider([
+        { type: "text_delta", text: "ok" },
+        { type: "message_stop", stopReason: "end_turn" },
+      ]),
+      model: "gemini-2.0",
+    });
+    stateStore.write("web", stackDef);
+
+    for await (const _ of engine.query("deploy")) {
+      // drain
+    }
+
+    const sessionId = engine.sessionId;
+    const afterFirst = sessionStore.read(sessionId);
+    const createdAt = afterFirst?.createdAt;
+    expect(createdAt).toBeTruthy();
+
+    engine.provider = fakeProvider([
+      { type: "text_delta", text: "again" },
+      { type: "message_stop", stopReason: "end_turn" },
+    ]);
+    for await (const _ of engine.query("update")) {
+      // drain
+    }
+
+    const saved = sessionStore.read(sessionId);
+    expect(saved?.model).toBe("gemini-2.0");
+    expect(saved?.stackNames).toEqual(["web"]);
+    expect(saved?.createdAt).toBe(createdAt);
+    expect(saved?.updatedAt).not.toBe(createdAt);
   });
 
   test("reset clears messages and allow set", async () => {

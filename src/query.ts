@@ -5,9 +5,9 @@ import { scrubLine } from "src/state/secretRedactor";
 import type { LoopEvent } from "src/types/events";
 import type { AssistantBlock, Message } from "src/types/message";
 import { type Tool, findToolByName } from "./Tool";
-import { buildSystemPrompt, classifyIntent } from "./context";
+import { buildSystemPrompt } from "./context";
 import { isDestroyAllPrompt, parseDirectDestroyStack } from "./slashDispatch";
-import { type QueryMode, getToolsForMode } from "./tools";
+import { getAgentTools } from "./tools";
 import { applyStack } from "./tools/applyStack";
 import { destroyAllStacks } from "./tools/destroyAllStacks";
 import { destroyStack } from "./tools/destroyStack";
@@ -45,20 +45,16 @@ interface ProviderTurnResult {
   stopReason: "end_turn" | "tool_use" | "max_tokens";
 }
 
-const LOOP_LIMITS: Record<QueryMode, number> = {
-  deploy: 16,
-  react: 24,
-};
+const MAX_ITERATIONS = 24;
 
 async function* runProvider(
   provider: Provider,
   messages: Message[],
-  mode: QueryMode,
   ctx: LoopContext,
   model: string | undefined,
 ): AsyncGenerator<LoopEvent, ProviderTurnResult> {
-  const tools = getToolsForMode(mode);
-  const system = buildSystemPrompt(mode, ctx.stateStore.summary());
+  const tools = getAgentTools();
+  const system = buildSystemPrompt(ctx.stateStore.summary());
   const provEvents = provider.stream({
     messages,
     tools: tools.map((t) => ({
@@ -544,13 +540,10 @@ export async function* query(params: QueryParams): AsyncGenerator<LoopEvent, voi
     return;
   }
 
-  const mode = lastUser ? classifyIntent(lastUser.content) : "react";
-  const maxIterations = LOOP_LIMITS[mode];
-
-  for (let iter = 0; iter < maxIterations; iter++) {
+  for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
     if (ctx.abortSignal.aborted) return;
     yield { type: "iteration_start", n: iter + 1 };
-    const stream = runProvider(provider, messages, mode, ctx, model);
+    const stream = runProvider(provider, messages, ctx, model);
     let collected: ProviderTurnResult = { text: "", toolUses: [], stopReason: "end_turn" };
     while (true) {
       if (ctx.abortSignal.aborted) return;
@@ -633,7 +626,7 @@ export async function* query(params: QueryParams): AsyncGenerator<LoopEvent, voi
         if (r.userDeclined) return;
         continue;
       }
-      const tool = findToolByName(getToolsForMode(mode), tu.name);
+      const tool = findToolByName(getAgentTools(), tu.name);
       if (!tool) {
         messages.push({
           role: "tool",
@@ -731,6 +724,6 @@ export async function* query(params: QueryParams): AsyncGenerator<LoopEvent, voi
   }
   yield {
     type: "error",
-    error: new Error(`agent loop reached max iterations (${maxIterations})`),
+    error: new Error(`agent loop reached max iterations (${MAX_ITERATIONS})`),
   };
 }

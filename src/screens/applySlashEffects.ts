@@ -57,21 +57,6 @@ export async function applySlashEffects(
         deps.session.reset();
         deps.setTimelineKey((k) => k + 1);
         break;
-      case "cancel_current":
-        deps.session.cancelCurrent();
-        break;
-      case "toggle_details":
-        deps.setShowDetails((v) => !v);
-        break;
-      case "queue_resume":
-        deps.session.resumeQueue();
-        break;
-      case "queue_clear":
-        deps.session.clearQueue();
-        break;
-      case "queue_remove":
-        deps.session.removeQueued(effect.index);
-        break;
       case "open_provider_connect":
         await deps.openProviderConnect();
         break;
@@ -109,7 +94,13 @@ export async function applySlashEffects(
           });
           break;
         }
-        deps.engine.loadSession(rec);
+        const warning = deps.engine.loadSession(rec);
+        if (warning) {
+          deps.session.dispatchActivity({ type: "assistant_text", delta: warning });
+        }
+        if (rec.model !== undefined) {
+          deps.setActiveModel(rec.model);
+        }
         deps.session.replaceActivities(deps.engine.getMessages());
         break;
       }

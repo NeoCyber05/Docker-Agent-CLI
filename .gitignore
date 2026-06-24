@@ -8,8 +8,7 @@ coverage/
 .docker-agent/
 .DS_Store
 claude-code/
-docs/superpowers/specs/
-docs
+docs/superpowers/
 .cursor
 short_description_plan.md 
 AGENTS.md
@@ -21,7 +20,7 @@ API DOCS.md
 opencode
 .codegraph
 mcps
-
+architecture.mdoke 
 # Local Agent Configs
 .mcp.json
 opencode.jsonc
@@ -31,3 +30,6 @@ terminals/
 .claude/
 .codegraph/
 .vscode/
+CLAUDE.md
+
+project-policies.yaml

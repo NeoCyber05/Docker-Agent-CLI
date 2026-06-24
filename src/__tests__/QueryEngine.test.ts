@@ -33,6 +33,7 @@ describe("QueryEngine", () => {
   let tmp: string;
   beforeEach(() => {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), "qe-"));
+    fs.writeFileSync(path.join(tmp, "project-policies.yaml"), "project: {}");
   });
   afterEach(() => {
     fs.rmSync(tmp, { recursive: true, force: true });

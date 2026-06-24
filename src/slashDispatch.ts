@@ -13,7 +13,7 @@ export type DirectSlashResult = { ok: true; text: string } | { ok: false; error:
 
 export function formatStacksTable(stacks: StackSummary[]): string {
   if (stacks.length === 0) {
-    return "**Managed stacks**\n\nNo stacks defined under `.docker-agent/stacks/`.";
+    return "**Managed stacks**\n\nNo stacks defined under `.docker-agent/states/`.";
   }
   const header = "| Name | Services | Last applied |";
   const sep = "| --- | --- | --- |";

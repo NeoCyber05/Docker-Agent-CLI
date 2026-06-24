@@ -180,6 +180,7 @@ function renderRepl(
   tmp: string;
 } {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "repl-ui-"));
+  fs.writeFileSync(path.join(tmp, "project-policies.yaml"), "project: {}");
   const stdout = new TestStdout(size);
   const stderr = new TestStdout(size);
   const stdin = new TestStdin();
@@ -323,7 +324,7 @@ describe("REPL terminal rendering", () => {
     expect(countOccurrences(output, "Tips for getting started")).toBe(1);
   });
 
-  test("slash quit exits through Ink instead of process.exit", async () => {
+  test("slash exit exits through Ink instead of process.exit", async () => {
     const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
       throw new Error("process.exit should not be called from REPL");
     });
@@ -606,9 +607,9 @@ describe("REPL slash command direct dispatch", () => {
     apps.push(rendered.app);
     tmpDirs.push(rendered.tmp);
 
-    fs.mkdirSync(path.join(rendered.tmp, "stacks"), { recursive: true });
+    fs.mkdirSync(path.join(rendered.tmp, "states"), { recursive: true });
     fs.writeFileSync(
-      path.join(rendered.tmp, "stacks", "webapp.yaml"),
+      path.join(rendered.tmp, "states", "webapp.yaml"),
       `x-docker-agent:\n  name: webapp\n  createdAt: "2026-05-26T00:00:00Z"\n  lastApplied: null\n  intent: test\n  provider: gemini\n  generatedBy: test\n  envFileSources: {}\nservices:\n  web:\n    image: nginx:1.27-alpine\n    environment:\n      POSTGRES_PASSWORD: hidden\n      PORT: "8080"\n`,
     );
 

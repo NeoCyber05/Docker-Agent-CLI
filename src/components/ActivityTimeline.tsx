@@ -138,7 +138,9 @@ export function ActivityTimeline({
     lastItem?.type === "text" && lastItem.role === "assistant" ? lastItem : undefined;
   const committedItems = items.filter(
     (item) =>
-      !(item.type === "tool" && item.id === activeToolActivityId) && item.id !== activeText?.id,
+      !(item.type === "tool" && item.id === activeToolActivityId) &&
+      item.id !== activeText?.id &&
+      item.type !== "usage",
   );
 
   return (

@@ -77,7 +77,7 @@ The CLI maintains project-local state in `.docker-agent` under your current work
 
 ```text
 .docker-agent/
-├── stacks/              # Saved YAML definitions of active stacks
+├── states/              # Saved YAML definitions of desired stack state
 │   └── .archive/        # Archived configs of destroyed/previous stacks
 ├── sessions/            # Persisted conversation transcripts
 │   ├── index.json       # Session index for /sessions and /resume
@@ -152,7 +152,7 @@ The LLM agent can call these tools during a session:
 | `apply_stack` | high-level | Apply an approved plan (runs after plan confirmation) |
 | `destroy_stack` | high-level | Tear down one stack |
 | `destroy_all_stacks` | high-level | Tear down all stacks (requires `DESTROY ALL`) |
-| `list_stacks` | read-only | List stacks in `.docker-agent/stacks/` |
+| `list_stacks` | read-only | List stacks in `.docker-agent/states/` |
 | `get_stack_status` | read-only | Container status for a stack |
 | `get_logs` | read-only | Fetch container logs |
 | `get_health` | read-only | Health-check status |
@@ -168,7 +168,7 @@ Destructive tools (`apply_stack`, `destroy_stack`, `destroy_all_stacks`) require
 - Transcripts are saved to `.docker-agent/sessions/<id>.json` after each turn (secrets redacted).
 - Each record stores `createdAt`, `updatedAt`, `cwd`, `provider`, optional `model`, `firstPrompt`, `stackNames`, and the full `messages[]` array.
 - `createdAt` is preserved across turns; only `updatedAt` changes on subsequent saves.
-- `stackNames` is populated from managed stacks in `.docker-agent/stacks/`.
+- `stackNames` is populated from managed stacks in `.docker-agent/states/`.
 - Resume (`--resume` or `/resume`) reloads the transcript and restores the saved model override. Pending permission dialogs are **not** resumed.
 - If the saved `cwd` differs from the current working directory, a warning is shown in the REPL and on stderr.
 - The REPL footer shows the active `session: <id>` for reference.

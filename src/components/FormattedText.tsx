@@ -3,38 +3,146 @@ import React from "react";
 
 export interface InlineSegment {
   bold: boolean;
+  italic?: boolean;
+  code?: boolean;
   text: string;
 }
 
 export function parseInline(content: string): InlineSegment[] {
   const segments: InlineSegment[] = [];
-  const regex = /\*\*([^*]+)\*\*/g;
+  let i = 0;
   let lastIndex = 0;
 
-  for (;;) {
-    const match = regex.exec(content);
-    if (match === null) break;
+  const pushPlain = (endIdx: number) => {
+    if (endIdx > lastIndex) {
+      segments.push({ bold: false, text: content.slice(lastIndex, endIdx) });
+    }
+  };
 
-    const [fullMatch, innerText] = match;
-    const matchStart = match.index;
+  const isWhitespace = (char: string) => {
+    return char === " " || char === "\t" || char === "\n" || char === "\r";
+  };
 
-    // Plain text before this bold segment
-    if (matchStart > lastIndex) {
-      segments.push({ bold: false, text: content.slice(lastIndex, matchStart) });
+  while (i < content.length) {
+    // 1. Check inline code
+    if (content.startsWith("`", i)) {
+      const nextIdx = content.indexOf("`", i + 1);
+      if (nextIdx !== -1 && nextIdx > i + 1) {
+        pushPlain(i);
+        segments.push({ bold: false, code: true, text: content.slice(i, nextIdx + 1) });
+        i = nextIdx + 1;
+        lastIndex = i;
+        continue;
+      }
     }
 
-    // Bold segment (innerText is guaranteed to exist since the group always captures)
-    segments.push({ bold: true, text: innerText ?? fullMatch });
+    // 2. Check bold (** or __)
+    if (content.startsWith("**", i)) {
+      if (i + 2 < content.length && !isWhitespace(content[i + 2] ?? "")) {
+        let nextIdx = i + 2;
+        let found = false;
+        while ((nextIdx = content.indexOf("**", nextIdx)) !== -1) {
+          if (nextIdx > i + 2 && !isWhitespace(content[nextIdx - 1] ?? "")) {
+            found = true;
+            break;
+          }
+          nextIdx += 2;
+        }
+        if (found) {
+          pushPlain(i);
+          segments.push({ bold: true, text: content.slice(i + 2, nextIdx) });
+          i = nextIdx + 2;
+          lastIndex = i;
+          continue;
+        }
+      }
+      i += 2;
+      continue;
+    }
+    if (content.startsWith("__", i)) {
+      if (i + 2 < content.length && !isWhitespace(content[i + 2] ?? "")) {
+        let nextIdx = i + 2;
+        let found = false;
+        while ((nextIdx = content.indexOf("__", nextIdx)) !== -1) {
+          if (nextIdx > i + 2 && !isWhitespace(content[nextIdx - 1] ?? "")) {
+            found = true;
+            break;
+          }
+          nextIdx += 2;
+        }
+        if (found) {
+          pushPlain(i);
+          segments.push({ bold: true, text: content.slice(i + 2, nextIdx) });
+          i = nextIdx + 2;
+          lastIndex = i;
+          continue;
+        }
+      }
+      i += 2;
+      continue;
+    }
 
-    lastIndex = matchStart + fullMatch.length;
+    // 3. Check italic (* or _)
+    if (content.startsWith("*", i)) {
+      if (i + 1 < content.length && !isWhitespace(content[i + 1] ?? "")) {
+        let nextIdx = i + 1;
+        let found = false;
+        while ((nextIdx = content.indexOf("*", nextIdx)) !== -1) {
+          const isDoubleAsterisk =
+            content.startsWith("**", nextIdx) ||
+            (nextIdx > 0 && content.startsWith("**", nextIdx - 1));
+          if (isDoubleAsterisk) {
+            nextIdx = content.startsWith("**", nextIdx) ? nextIdx + 2 : nextIdx + 1;
+            continue;
+          }
+          if (nextIdx > i + 1 && !isWhitespace(content[nextIdx - 1] ?? "")) {
+            found = true;
+            break;
+          }
+          nextIdx += 1;
+        }
+        if (found) {
+          pushPlain(i);
+          segments.push({ bold: false, italic: true, text: content.slice(i, nextIdx + 1) });
+          i = nextIdx + 1;
+          lastIndex = i;
+          continue;
+        }
+      }
+    }
+    if (content.startsWith("_", i)) {
+      if (i + 1 < content.length && !isWhitespace(content[i + 1] ?? "")) {
+        let nextIdx = i + 1;
+        let found = false;
+        while ((nextIdx = content.indexOf("_", nextIdx)) !== -1) {
+          const isDoubleUnderline =
+            content.startsWith("__", nextIdx) ||
+            (nextIdx > 0 && content.startsWith("__", nextIdx - 1));
+          if (isDoubleUnderline) {
+            nextIdx = content.startsWith("__", nextIdx) ? nextIdx + 2 : nextIdx + 1;
+            continue;
+          }
+          if (nextIdx > i + 1 && !isWhitespace(content[nextIdx - 1] ?? "")) {
+            found = true;
+            break;
+          }
+          nextIdx += 1;
+        }
+        if (found) {
+          pushPlain(i);
+          segments.push({ bold: false, italic: true, text: content.slice(i, nextIdx + 1) });
+          i = nextIdx + 1;
+          lastIndex = i;
+          continue;
+        }
+      }
+    }
+
+    i++;
   }
 
-  // Remaining plain text after the last match (or the whole string if no matches)
-  if (lastIndex < content.length) {
-    segments.push({ bold: false, text: content.slice(lastIndex) });
-  }
+  pushPlain(content.length);
 
-  // No matches at all → return the entire string as a single plain segment
   if (segments.length === 0) {
     segments.push({ bold: false, text: content });
   }
@@ -236,16 +344,32 @@ export function FormattedText({ text }: { text: string }): React.ReactElement {
           // biome-ignore lint/suspicious/noArrayIndexKey: stable block order, blocks don't reorder
           <Box key={idx}>
             <Text wrap="wrap">
-              {parseInline(block.content).map((seg, i) =>
-                seg.bold ? (
-                  // biome-ignore lint/suspicious/noArrayIndexKey: stable segment order within block
-                  <Text key={i} bold color="green">
-                    {seg.text}
-                  </Text>
-                ) : (
-                  seg.text
-                ),
-              )}
+              {parseInline(block.content).map((seg, i) => {
+                if (seg.code) {
+                  return (
+                    <Text key={i} color="cyan">
+                      {seg.text}
+                    </Text>
+                  );
+                }
+                if (seg.bold) {
+                  return (
+                    // biome-ignore lint/suspicious/noArrayIndexKey: stable segment order within block
+                    <Text key={i} bold color="green">
+                      {seg.text}
+                    </Text>
+                  );
+                }
+                if (seg.italic) {
+                  return (
+                    // biome-ignore lint/suspicious/noArrayIndexKey: stable segment order within block
+                    <Text key={i} italic color="yellow">
+                      {seg.text}
+                    </Text>
+                  );
+                }
+                return seg.text;
+              })}
             </Text>
           </Box>
         );

@@ -102,6 +102,7 @@ export const ServicesSchema = z
 export const StackDraftSchema = z.object({
   stackName: z.string().regex(/^[a-z][a-z0-9_-]{0,62}$/),
   intent: z.string(),
+  networkName: z.string().regex(/^[a-z][a-z0-9_-]{0,62}$/).optional(),
   services: ServicesSchema,
   configFiles: z.record(z.string()).optional(),
 });

@@ -6,7 +6,7 @@ import type { ToolContext } from "src/Tool";
 import type { ImageValidator } from "src/services/docker/imageValidator";
 import { StateStore } from "src/state/StateStore";
 import { applyStack, verifyHealth } from "src/tools/applyStack";
-import { beforeEach, describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { MockComposeRunner } from "../../../tests/mocks/mockComposeRunner";
 import { MockDockerEngine } from "../../../tests/mocks/mockDockerEngine";
 
@@ -86,7 +86,7 @@ describe("apply_stack", () => {
       "x-docker-agent:\n  name: webapp\n  createdAt: '2026-05-26T00:00:00.000Z'\n  lastApplied: null\n  intent: test\n  provider: test\n  generatedBy: test\n  envFileSources: {}\nservices:\n  web:\n    image: nginx:1.27\n";
 
     // Pre-create the bound runner and configure it to return healthy services for the health gate
-    const yamlPath = path.join(tmpRoot, ".docker-agent/stacks/webapp.yaml");
+    const yamlPath = path.join(tmpRoot, ".docker-agent/states/webapp.yaml");
     const preCreated = runner.forStack("webapp", yamlPath);
     preCreated.setRunningServices(["web"]);
     // Reset forStackCalls so the test assertion sees the call from applyStack (index 0)
@@ -178,7 +178,7 @@ describe("apply_stack", () => {
     const runner = new MockComposeRunner(tmpRoot);
     const ctx = makeCtx(tmpRoot, runner);
 
-    const yamlPath = path.join(tmpRoot, ".docker-agent/stacks/partial.yaml");
+    const yamlPath = path.join(tmpRoot, ".docker-agent/states/partial.yaml");
     const preCreated = runner.forStack("partial", yamlPath);
     preCreated.up = async function* () {
       yield "Creating service web... done\n";
@@ -203,7 +203,7 @@ describe("apply_stack", () => {
     const ctx = makeCtx(tmpRoot, runner);
     ctx.healthCheckDeadlineMs = 0;
 
-    const yamlPath = path.join(tmpRoot, ".docker-agent/stacks/mixed.yaml");
+    const yamlPath = path.join(tmpRoot, ".docker-agent/states/mixed.yaml");
     const preCreated = runner.forStack("mixed", yamlPath);
     preCreated.psRows = [
       { Name: "mixed-web-1", Service: "web", State: "running" },
@@ -228,7 +228,7 @@ describe("apply_stack", () => {
     const yaml =
       "x-docker-agent:\n  name: ok\n  createdAt: '2026-05-26T00:00:00.000Z'\n  lastApplied: null\n  intent: test\n  provider: test\n  generatedBy: test\n  envFileSources: {}\nservices:\n  web:\n    image: nginx:1.27\n";
 
-    const yamlPath = path.join(tmpRoot, ".docker-agent/stacks/ok.yaml");
+    const yamlPath = path.join(tmpRoot, ".docker-agent/states/ok.yaml");
     const preCreated = runner.forStack("ok", yamlPath);
     preCreated.setRunningServices(["web"]);
     runner.forStackCalls.length = 0;
@@ -237,6 +237,77 @@ describe("apply_stack", () => {
 
     expect(result.ok).toBe(true);
     expect(result.runningServices).toBeUndefined();
+  });
+
+  test("HTTP probe success (HTTP 200) allows deployment to succeed", async () => {
+    const runner = new MockComposeRunner(tmpRoot);
+    const ctx = makeCtx(tmpRoot, runner);
+    const yaml =
+      "x-docker-agent:\n  name: webapp\n  createdAt: '2026-05-26T00:00:00.000Z'\n  lastApplied: null\n  intent: test\n  provider: test\n  generatedBy: test\n  envFileSources: {}\nservices:\n  web:\n    image: nginx:1.27\n    ports:\n      - \"8080:80\"\n";
+
+    const yamlPath = path.join(tmpRoot, ".docker-agent/states/webapp.yaml");
+    const preCreated = runner.forStack("webapp", yamlPath);
+    preCreated.setRunningServices(["web"]);
+    runner.forStackCalls.length = 0;
+
+    const mockFetch = vi.fn().mockResolvedValue({
+      status: 200,
+      text: async () => "OK",
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const result = await drain(applyStack.call({ stackName: "webapp", composeYaml: yaml }, ctx));
+
+    expect(result.ok).toBe(true);
+    expect(result.healthy).toBe(true);
+    expect(mockFetch).toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  test("HTTP probe failure (HTTP 500) fails deployment with correct contract", async () => {
+    const runner = new MockComposeRunner(tmpRoot);
+    const ctx = makeCtx(tmpRoot, runner);
+    const yaml =
+      "x-docker-agent:\n  name: webapp\n  createdAt: '2026-05-26T00:00:00.000Z'\n  lastApplied: null\n  intent: test\n  provider: test\n  generatedBy: test\n  envFileSources: {}\nservices:\n  web:\n    image: nginx:1.27\n    ports:\n      - \"8080:80\"\n";
+
+    const yamlPath = path.join(tmpRoot, ".docker-agent/states/webapp.yaml");
+    const preCreated = runner.forStack("webapp", yamlPath);
+    preCreated.setRunningServices(["web"]);
+    runner.forStackCalls.length = 0;
+
+    const mockFetch = vi.fn().mockResolvedValue({
+      status: 500,
+      text: async () => "Database connection error",
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const result = await drain(applyStack.call({ stackName: "webapp", composeYaml: yaml }, ctx));
+
+    expect(result.ok).toBe(false);
+    expect(result.healthy).toBe(false);
+    expect(result.unhealthyServices).toContainEqual(expect.stringContaining("web (HTTP probe failed: HTTP 500: Database connection error detected)"));
+    vi.unstubAllGlobals();
+  });
+
+  test("HTTP probe inconclusive (timeout/connection refused) does not cause false-fail", async () => {
+    const runner = new MockComposeRunner(tmpRoot);
+    const ctx = makeCtx(tmpRoot, runner);
+    const yaml =
+      "x-docker-agent:\n  name: webapp\n  createdAt: '2026-05-26T00:00:00.000Z'\n  lastApplied: null\n  intent: test\n  provider: test\n  generatedBy: test\n  envFileSources: {}\nservices:\n  web:\n    image: nginx:1.27\n    ports:\n      - \"8080:80\"\n";
+
+    const yamlPath = path.join(tmpRoot, ".docker-agent/states/webapp.yaml");
+    const preCreated = runner.forStack("webapp", yamlPath);
+    preCreated.setRunningServices(["web"]);
+    runner.forStackCalls.length = 0;
+
+    const mockFetch = vi.fn().mockRejectedValue(new Error("Connect timeout"));
+    vi.stubGlobal("fetch", mockFetch);
+
+    const result = await drain(applyStack.call({ stackName: "webapp", composeYaml: yaml }, ctx));
+
+    expect(result.ok).toBe(true);
+    expect(result.healthy).toBe(true);
+    vi.unstubAllGlobals();
   });
 });
 

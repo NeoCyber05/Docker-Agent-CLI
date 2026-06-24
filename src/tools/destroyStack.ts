@@ -1,5 +1,5 @@
 import * as fs from "node:fs";
-import * as path from "node:path";
+import { stackStateYamlPath } from "src/config";
 import type { Tool, ToolProgress } from "src/Tool";
 import { z } from "zod";
 
@@ -23,7 +23,7 @@ export const destroyStack: Tool<DestroyStackInput, DestroyStackResult> = {
   category: "high-level",
   needsPermission: () => true,
   call: async function* (input, ctx): AsyncGenerator<ToolProgress, DestroyStackResult> {
-    const yamlPath = path.join(ctx.cwd, ".docker-agent", "stacks", `${input.stackName}.yaml`);
+    const yamlPath = stackStateYamlPath(ctx.cwd, input.stackName);
     if (!fs.existsSync(yamlPath)) {
       yield { type: "progress", msg: `No stack file for ${input.stackName}; nothing to do.` };
       return { ok: true, exitCode: 0 };

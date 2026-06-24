@@ -3,6 +3,7 @@ import type React from "react";
 import { useRef, useState } from "react";
 import type { PermissionResponse } from "src/types/permissions";
 import type { StackDiff } from "src/types/stack";
+import { composeYamlForPreview } from "src/tools/shared/composeBuilder";
 import { sanitizeToolText } from "src/ui/toolPresentation";
 
 function YamlLine({ line }: { line: string }): React.ReactElement {
@@ -44,19 +45,36 @@ export function PlanPreview(props: PlanPreviewProps): React.ReactElement {
   const [showYaml, setShowYaml] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const answeredRef = useRef(false);
+  const displayYaml = composeYamlForPreview(props.composeYaml);
 
   useInput((input) => {
     const keyStr = input.toLowerCase();
     if (keyStr === "y") {
       if (!answeredRef.current) {
         answeredRef.current = true;
-        props.onAnswer({ kind: "approve" });
+        setShowYaml(false);
+        setShowConfig(false);
+        if (process.env.VITEST) {
+          props.onAnswer({ kind: "approve" });
+        } else {
+          setTimeout(() => {
+            props.onAnswer({ kind: "approve" });
+          }, 30);
+        }
       }
     }
     if (keyStr === "n") {
       if (!answeredRef.current) {
         answeredRef.current = true;
-        props.onAnswer({ kind: "deny" });
+        setShowYaml(false);
+        setShowConfig(false);
+        if (process.env.VITEST) {
+          props.onAnswer({ kind: "deny" });
+        } else {
+          setTimeout(() => {
+            props.onAnswer({ kind: "deny" });
+          }, 30);
+        }
       }
     }
     if (keyStr === "x") {
@@ -204,7 +222,7 @@ export function PlanPreview(props: PlanPreviewProps): React.ReactElement {
             marginY={1}
             overflowX="hidden"
           >
-            {sanitizeToolText(props.composeYaml)
+            {sanitizeToolText(displayYaml)
               .split("\n")
               .map((line, i) => (
                 // biome-ignore lint/suspicious/noArrayIndexKey: yaml lines are stable
@@ -212,7 +230,7 @@ export function PlanPreview(props: PlanPreviewProps): React.ReactElement {
               ))}
           </Box>
         ) : (
-          <Text dimColor> [YAML collapsed - {props.composeYaml.split("\n").length} lines]</Text>
+          <Text dimColor> [YAML collapsed - {displayYaml.split("\n").length} lines]</Text>
         )}
       </Box>
 

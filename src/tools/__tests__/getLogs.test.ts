@@ -25,7 +25,7 @@ describe("get_logs", () => {
   });
 
   function writeStackYaml(name: string): void {
-    const dir = path.join(tmpRoot, ".docker-agent", "stacks");
+    const dir = path.join(tmpRoot, ".docker-agent", "states");
     fs.mkdirSync(dir, { recursive: true });
     // Minimal yaml file is enough — the tool only checks existence and uses composeRunner.
     fs.writeFileSync(path.join(dir, `${name}.yaml`), "services: {}\n");

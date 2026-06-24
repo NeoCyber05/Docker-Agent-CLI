@@ -1,0 +1,317 @@
+# Hệ thống Policy
+
+Docker Agent CLI áp dụng **policy dạng khai báo (YAML)** để kiểm soát stack Docker Compose trước khi deploy. Policy chặn cấu hình không an toàn hoặc không tuân chuẩn **trước** khi chạy `docker compose up`.
+
+Policy được đánh giá bởi `PolicyEngine` khi:
+
+- Agent gọi `plan_stack` (sau khi sinh YAML, trước khi user approve)
+- Agent gọi `remediate_drift` (trước khi apply bản khắc phục)
+
+Vi phạm mức `deny` → deployment bị chặn. Vi phạm mức `warn` → cảnh báo, không chặn.
+
+---
+
+## Vị trí file policy
+
+| Phạm vi | Đường dẫn mặc định | Ghi chú |
+|---------|-------------------|---------|
+| **Global** | `~/.docker-agent/policies.yaml` | Áp dụng cho mọi project |
+| **Project** | `<project>/project-policies.yaml` | **Khuyến nghị** — đặt ở root repo |
+| **Legacy** | `<project>/.docker-agent/policies.yaml` | Vẫn hỗ trợ; CLI in cảnh báo migration |
+
+Thứ tự ưu tiên khi tìm project policy:
+
+1. `project-policies.yaml` (root)
+2. `.docker-agent/policies.yaml` (legacy)
+
+---
+
+## Cấu trúc file YAML
+
+```yaml
+schemaVersion: "1"   # tùy chọn
+
+global:
+  hardDeny:
+    - <rule>
+  require:
+    - <rule>
+
+project:
+  hardDeny:
+    - <rule>
+  require:
+    - <rule>
+```
+
+- `global` — định nghĩa trong `~/.docker-agent/policies.yaml`
+- `project` — định nghĩa trong `project-policies.yaml` (hoặc legacy path)
+
+Cả hai nhóm được **merge**: rule từ global và project đều có hiệu lực. Project policy **không được nới lỏng** global policy (xem [Hierarchy](#hierarchy-global-và-project)).
+
+---
+
+## Hierarchy global và project
+
+Khi cả global và project đều có rule có tham số, project chỉ được **siết chặt hơn**:
+
+| Rule | Ràng buộc |
+|------|-----------|
+| `resource_limits` | Không tắt `cpuRequired`/`memoryRequired` nếu global bật; `maxMemory` project ≤ global |
+| `logging_rotation` | `maxSize`, `maxFiles` project ≤ global |
+| `healthcheck` | Không tắt `required` nếu global bật; interval/timeout project ≤ global |
+| `untrusted_registry` | `allowedRegistries` project phải là **tập con** của global |
+
+Vi phạm hierarchy → `PolicyEngine` throw lỗi khi khởi tạo (CLI không chạy được với config sai).
+
+---
+
+## Khi thiếu project policy
+
+Hành vi phụ thuộc `defaults.missingProjectPolicy` trong `~/.docker-agent/config.json`:
+
+| Giá trị | Hành vi |
+|---------|---------|
+| `deny` (**mặc định**) | Mọi deploy bị chặn với rule `project_policy_missing` |
+| `use-global` | Chỉ áp dụng global policy; không bắt buộc file project |
+
+Khi `deny` và file project chưa tồn tại, CLI có thể **đề xuất tạo** `project-policies.yaml` mặc định (sau khi user approve permission `initialize_project_policy`):
+
+```yaml
+project:
+  hardDeny: []
+  require: []
+```
+
+---
+
+## Nhóm `hardDeny` — Cấm tuyệt đối
+
+Các rule dạng chuỗi đơn giản — thêm vào danh sách `hardDeny`:
+
+| Rule | Mô tả | Điều kiện vi phạm |
+|------|-------|-------------------|
+| `privileged_containers` | Cấm container privileged | `privileged: true` |
+| `mount_docker_socket` | Cấm mount Docker socket | volume host `/var/run/docker.sock` |
+| `mount_host_root` | Cấm mount thư mục hệ thống | host path là `/`, `/etc`, `/root`, `/usr`, `/var` |
+| `host_pid_namespace` | Cấm dùng PID namespace host | `pid: host` |
+| `host_network` | Cấm host network mode | `network_mode: host` |
+| `add_all_linux_capabilities` | Cấm thêm toàn bộ capability | `cap_add` chứa `ALL` hoặc `all` |
+| `disable_seccomp` | Cấm tắt seccomp | `security_opt` chứa `seccomp:unconfined` |
+| `expose_database_publicly` | Cấm expose DB ra ngoài localhost | Image DB (postgres, mysql, redis, …) + port không bind `127.0.0.1:` |
+| `untrusted_registry` | Chỉ cho phép registry trong whitelist | Xem cấu hình bên dưới |
+
+### `untrusted_registry` (có tham số)
+
+```yaml
+hardDeny:
+  - untrusted_registry:
+      allowedRegistries:
+        - docker.io
+        - gcr.io
+        - ghcr.io
+```
+
+- Image không có registry rõ ràng → mặc định `docker.io`
+- Registry phải nằm trong `allowedRegistries`, nếu không → vi phạm `deny`
+
+---
+
+## Nhóm `require` — Bắt buộc / khuyến nghị
+
+### Rule đơn giản (không tham số)
+
+| Rule | Mô tả | Severity | Điều kiện vi phạm |
+|------|-------|----------|-------------------|
+| `restart_policy` | Phải có restart policy | `deny` | Thiếu `restart` hoặc `restart: no` |
+| `non_root_user` | Phải chạy non-root | `deny` | Thiếu `user` |
+| `project_labels` | Phải có labels | `deny` | Thiếu `labels` |
+| `read_only_root_filesystem_when_possible` | Khuyến nghị read-only root FS | `warn` | `read_only` không phải `true` |
+
+### Rule có tham số
+
+#### `resource_limits`
+
+```yaml
+require:
+  - resource_limits:
+      cpuRequired: true
+      memoryRequired: true
+      maxMemory: 4GiB
+```
+
+| Tham số | Kiểm tra |
+|---------|----------|
+| `cpuRequired` | Bắt buộc `deploy.resources.limits.cpus` |
+| `memoryRequired` | Bắt buộc `deploy.resources.limits.memory` |
+| `maxMemory` | Memory limit không vượt ngưỡng (hỗ trợ `k`, `m`, `g`, `GiB`, …) |
+
+#### `logging_rotation`
+
+```yaml
+require:
+  - logging_rotation:
+      maxSize: 10m
+      maxFiles: 3
+```
+
+| Tham số | Kiểm tra |
+|---------|----------|
+| — | Bắt buộc `logging.driver: json-file` |
+| `maxSize` | `logging.options.max-size` phải có và ≤ ngưỡng |
+| `maxFiles` | `logging.options.max-file` phải có và ≤ ngưỡng |
+
+#### `healthcheck`
+
+```yaml
+require:
+  - healthcheck:
+      required: true
+      maxIntervalSeconds: 30
+      maxTimeoutSeconds: 5
+```
+
+| Tham số | Kiểm tra |
+|---------|----------|
+| `required` | Phải có `healthcheck.test`, không `disable: true` |
+| `maxIntervalSeconds` | `healthcheck.interval` ≤ ngưỡng (hỗ trợ `s`, `m`, `h`) |
+| `maxTimeoutSeconds` | `healthcheck.timeout` ≤ ngưỡng |
+
+---
+
+## Kết quả đánh giá
+
+Mỗi vi phạm có dạng:
+
+```typescript
+{
+  service: string;      // tên service, hoặc "*" cho lỗi toàn cục
+  rule: string;         // tên rule
+  message: string;      // mô tả lỗi
+  severity: "deny" | "warn";
+}
+```
+
+### Rule đặc biệt (không khai báo trong YAML)
+
+| Rule | Khi nào |
+|------|---------|
+| `project_policy_missing` | Thiếu project policy và `missingProjectPolicy: deny` |
+| `invalid_yaml` | YAML Compose không parse được |
+
+Thông báo lỗi gửi về agent dạng:
+
+```text
+Policy violation(s) detected. Deployment is blocked:
+[web] non_root_user: Running as non-root user (e.g., user: '1000:1000') is required
+```
+
+---
+
+## Ví dụ cấu hình đầy đủ
+
+### Global — baseline bảo mật
+
+File: `~/.docker-agent/policies.yaml`
+
+```yaml
+schemaVersion: "1"
+
+global:
+  hardDeny:
+    - privileged_containers
+    - mount_docker_socket
+    - mount_host_root
+    - host_pid_namespace
+    - host_network
+    - add_all_linux_capabilities
+    - disable_seccomp
+    - untrusted_registry:
+        allowedRegistries:
+          - docker.io
+          - gcr.io
+    - expose_database_publicly
+  require:
+    - restart_policy
+    - resource_limits:
+        memoryRequired: true
+        maxMemory: 8GiB
+    - logging_rotation:
+        maxSize: 50m
+        maxFiles: 5
+```
+
+### Project — siết thêm theo team
+
+File: `<project>/project-policies.yaml`
+
+```yaml
+schemaVersion: "1"
+
+project:
+  hardDeny:
+    - mount_docker_socket   # nhấn mạnh thêm (đã có ở global)
+  require:
+    - non_root_user
+    - healthcheck:
+        required: true
+        maxIntervalSeconds: 30
+    - project_labels
+    - read_only_root_filesystem_when_possible
+    - resource_limits:
+        cpuRequired: true
+        maxMemory: 2GiB      # siết hơn global 8GiB — hợp lệ
+```
+
+---
+
+## Luồng kiểm tra trong agent
+
+```mermaid
+flowchart TD
+  A[plan_stack sinh composeYaml] --> B[PolicyEngine.evaluate]
+  B --> C{project_policy_missing?}
+  C -->|Yes + deny mode| D[Chặn deploy]
+  C -->|No| E[Duyệt từng service]
+  E --> F{hardDeny rules}
+  E --> G{require rules}
+  F --> H[Thu thập violations]
+  G --> H
+  H --> I{Có severity deny?}
+  I -->|Yes| D
+  I -->|No| J[Hiện plan preview cho user]
+  J --> K[User approve → apply_stack]
+```
+
+`plan_stack` còn có các guard **không thuộc policy YAML** (port conflict, volume safety, DB port exposure, missing secrets, resource limits, v.v.) — chạy **trước** bước `PolicyEngine.evaluate`. Ngoài ra, `injectDbHealthchecks` tự động thêm healthcheck cho DB (postgres, mysql, mariadb, mongo, redis) và nâng `depends_on` lên `service_healthy` trước khi đánh giá policy. Policy là lớp kiểm soát **sau** khi YAML đã hợp lệ về mặt cấu trúc.
+
+---
+
+## Cấu hình liên quan
+
+Trong `~/.docker-agent/config.json`:
+
+```json
+{
+  "provider": "gemini",
+  "defaults": {
+    "autoApproveNonDestructive": false,
+    "missingProjectPolicy": "deny"
+  }
+}
+```
+
+| Trường | Ảnh hưởng policy |
+|--------|------------------|
+| `missingProjectPolicy` | `deny` hoặc `use-global` khi thiếu `project-policies.yaml` |
+
+---
+
+## Tham chiếu code
+
+| File | Nội dung |
+|------|----------|
+| `src/policy/PolicyEngine.ts` | Load, merge, validate, evaluate policy |
+| `src/policy/types.ts` | Type definitions |
+| `src/query.ts` | Gọi `evaluate()` trong `plan_stack` và `remediate_drift` |
+| `src/policy/__tests__/PolicyEngine.test.ts` | Test cases cho từng rule |

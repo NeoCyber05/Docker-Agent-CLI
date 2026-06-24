@@ -46,6 +46,7 @@ export async function applySlashEffects(
         deps.session.submit(effect.prompt);
         break;
       case "exit":
+        deps.session.cancelCurrent();
         deps.stopLogPane();
         deps.exit();
         break;

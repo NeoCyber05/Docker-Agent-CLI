@@ -38,7 +38,7 @@ describe("MockComposeRunner", () => {
 
   test("forStack uses cwd from constructor", () => {
     const runner = new MockComposeRunner("/project");
-    const bound = runner.forStack("svc", "/project/.docker-agent/stacks/svc.yaml");
+    const bound = runner.forStack("svc", "/project/.docker-agent/states/svc.yaml");
     expect(bound.cwd).toBe("/project");
     expect(bound.spawnedArgs).toContain("/project");
   });

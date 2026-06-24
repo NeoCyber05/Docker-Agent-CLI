@@ -6,6 +6,8 @@ import {
   loadUserConfig,
   projectStateDir,
   resolveProvider,
+  stackStateYamlPath,
+  stackStatesDir,
   userConfigPath,
 } from "src/config";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
@@ -47,6 +49,14 @@ describe("config resolution", () => {
 
   test("projectStateDir is cwd/.docker-agent", () => {
     expect(projectStateDir()).toBe(path.join(process.cwd(), ".docker-agent"));
+  });
+
+  test("stackStatesDir and stackStateYamlPath resolve under .docker-agent/states", () => {
+    const cwd = path.join(tmpDir, "project");
+    expect(stackStatesDir(cwd)).toBe(path.join(cwd, ".docker-agent", "states"));
+    expect(stackStateYamlPath(cwd, "webapp")).toBe(
+      path.join(cwd, ".docker-agent", "states", "webapp.yaml"),
+    );
   });
 
   test("loadUserConfig returns defaults when file missing", () => {

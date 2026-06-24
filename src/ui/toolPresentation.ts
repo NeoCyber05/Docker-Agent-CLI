@@ -157,6 +157,22 @@ export function presentTool(name: string, input: unknown, output?: unknown): Too
   let summary = `Run ${name}`;
 
   switch (name) {
+    case "initialize_project_policy": {
+      const typedInput = input as { reason?: string; path?: string; content?: string };
+      const detailLines = [
+        `Reason: ${typedInput.reason ?? ""}`,
+        `Path: ${typedInput.path ?? ""}`,
+        "",
+        "Proposed Content:",
+        ...(typedInput.content ?? "").split("\n").map((line) => `  ${line}`),
+      ];
+      return {
+        title: "Initialize Project Policy",
+        summary:
+          "Create project-policies.yaml with default/empty configuration (respecting global policy)",
+        detailLines,
+      };
+    }
     case "plan_stack": {
       const stackName = (input as Record<string, unknown>)?.stackName ?? "unknown";
       const intent = (input as Record<string, unknown>)?.intent ?? "";

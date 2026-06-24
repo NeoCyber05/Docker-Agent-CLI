@@ -1,5 +1,5 @@
 import * as fs from "node:fs";
-import * as path from "node:path";
+import { stackStateYamlPath } from "src/config";
 import type { Tool, ToolProgress } from "src/Tool";
 import { scrubLine } from "src/state/secretRedactor";
 import { z } from "zod";
@@ -50,7 +50,7 @@ export const getLogs: Tool<GetLogsInput, GetLogsResult> = {
   category: "read-only",
   needsPermission: () => false,
   call: async function* (input, ctx): AsyncGenerator<ToolProgress, GetLogsResult> {
-    const yamlPath = path.join(ctx.cwd, ".docker-agent", "stacks", `${input.stackName}.yaml`);
+    const yamlPath = stackStateYamlPath(ctx.cwd, input.stackName);
     if (!fs.existsSync(yamlPath)) {
       return {
         logTail: `stack ${input.stackName} not found`,

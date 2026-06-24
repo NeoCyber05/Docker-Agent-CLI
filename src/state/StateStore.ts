@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { STACK_STATES_DIR_NAME } from "src/config";
 import type { StackDefinition, StackSummary } from "src/types/stack";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { z } from "zod";
@@ -123,6 +124,14 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
+function migrateLegacyStacksDir(root: string): void {
+  const legacy = path.join(root, "stacks");
+  const states = path.join(root, STACK_STATES_DIR_NAME);
+  if (fs.existsSync(legacy) && !fs.existsSync(states)) {
+    fs.renameSync(legacy, states);
+  }
+}
+
 export class StateStore {
   private readonly warn: (message: string) => void;
 
@@ -131,8 +140,9 @@ export class StateStore {
     opts: StateStoreOptions = {},
   ) {
     this.warn = opts.warn ?? ((message) => console.warn(`[docker-agent] ${message}`));
-    fs.mkdirSync(path.join(root, "stacks"), { recursive: true });
-    fs.mkdirSync(path.join(root, "stacks", ".archive"), { recursive: true });
+    migrateLegacyStacksDir(root);
+    fs.mkdirSync(path.join(root, STACK_STATES_DIR_NAME), { recursive: true });
+    fs.mkdirSync(path.join(root, STACK_STATES_DIR_NAME, ".archive"), { recursive: true });
     fs.mkdirSync(path.join(root, "sessions"), { recursive: true });
     fs.mkdirSync(path.join(root, "locks"), { recursive: true });
     fs.mkdirSync(path.join(root, "logs"), { recursive: true });
@@ -140,7 +150,7 @@ export class StateStore {
   }
 
   private stackPath(name: string): string {
-    return path.join(this.root, "stacks", `${name}.yaml`);
+    return path.join(this.root, STACK_STATES_DIR_NAME, `${name}.yaml`);
   }
 
   read(stackName: string): StackDefinition | null {
@@ -157,7 +167,7 @@ export class StateStore {
   }
 
   list(): StackSummary[] {
-    const dir = path.join(this.root, "stacks");
+    const dir = path.join(this.root, STACK_STATES_DIR_NAME);
     const entries = fs
       .readdirSync(dir, { withFileTypes: true })
       .filter((e) => e.isFile() && e.name.endsWith(".yaml"));
@@ -183,17 +193,17 @@ export class StateStore {
     if (!fs.existsSync(src)) return;
     if (archive) {
       const ts = new Date().toISOString().replace(/[:.]/g, "-");
-      const dst = path.join(this.root, "stacks", ".archive", `${stackName}-${ts}.yaml`);
+      const dst = path.join(this.root, STACK_STATES_DIR_NAME, ".archive", `${stackName}-${ts}.yaml`);
       fs.renameSync(src, dst);
       // Timestamped files are durable history; this stable copy is the latest archived state.
-      fs.copyFileSync(dst, path.join(this.root, "stacks", ".archive", `${stackName}.yaml`));
+      fs.copyFileSync(dst, path.join(this.root, STACK_STATES_DIR_NAME, ".archive", `${stackName}.yaml`));
     } else {
       fs.unlinkSync(src);
     }
   }
 
   readArchive(stackName: string): StackDefinition | null {
-    const p = path.join(this.root, "stacks", ".archive", `${stackName}.yaml`);
+    const p = path.join(this.root, STACK_STATES_DIR_NAME, ".archive", `${stackName}.yaml`);
     if (!fs.existsSync(p)) return null;
     try {
       return this.readStackFile(p);
@@ -204,7 +214,7 @@ export class StateStore {
   }
 
   hasArchiveMarker(stackName: string): boolean {
-    const archiveDir = path.join(this.root, "stacks", ".archive");
+    const archiveDir = path.join(this.root, STACK_STATES_DIR_NAME, ".archive");
     try {
       const entries = fs.readdirSync(archiveDir);
       return entries.some((name) => name.startsWith(stackName) && name.endsWith(".yaml"));

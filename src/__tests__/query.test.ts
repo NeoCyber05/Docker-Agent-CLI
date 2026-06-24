@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { LoopContext } from "src/loopContext";
-import { query } from "src/query";
+import { formatPlanBlocker, query } from "src/query";
 import type { CallModelParams, Provider, ProviderEvent } from "src/services/api/types";
 import { StateStore } from "src/state/StateStore";
 import type { PermissionResponse } from "src/types/permissions";
@@ -557,5 +557,50 @@ global:
     // Also verify destroyStack tool did not execute
     const toolResult = events.find((e) => e.type === "tool_result" && e.name === "destroy_stack");
     expect(toolResult).toBeUndefined();
+  });
+
+  test("formatPlanBlocker formats all blocker reasons cleanly without raw JSON", () => {
+    // 1. invalid_spec
+    const specErr = formatPlanBlocker({
+      blocked: true,
+      reason: "invalid_spec",
+      issues: [{ code: "invalid_image", path: "services.web.image", message: "Nginx image not found" }],
+    });
+    expect(specErr).toContain("plan_stack blocked: Specification is invalid:");
+    expect(specErr).toContain("- [services.web.image] Nginx image not found");
+    expect(specErr).not.toContain("{");
+
+    // 2. port_conflict
+    const portErr = formatPlanBlocker({
+      blocked: true,
+      reason: "port_conflict",
+      portCheck: {
+        ok: false,
+        conflicts: [
+          {
+            source: "running",
+            service: "web",
+            hostIp: "0.0.0.0",
+            hostPort: 8080,
+            protocol: "tcp",
+            conflictsWith: "other-container",
+          },
+        ],
+        invalid: [],
+      },
+    });
+    expect(portErr).toContain("plan_stack blocked: Port conflict detected.");
+    expect(portErr).toContain("- Port 8080/tcp published by service 'web' conflicts with other-container (running container).");
+    expect(portErr).not.toContain("{");
+
+    // 3. missing_required_env
+    const envErr = formatPlanBlocker({
+      blocked: true,
+      reason: "missing_required_env",
+      missingByService: { db: ["DB_PASSWORD"] },
+    });
+    expect(envErr).toContain("plan_stack blocked: Missing required environment variables.");
+    expect(envErr).toContain("- Service 'db' requires: DB_PASSWORD");
+    expect(envErr).not.toContain("{");
   });
 });

@@ -507,4 +507,99 @@ describe("plan_stack", () => {
     });
     expect(fs.readdirSync(path.join(tmpRoot, ".docker-agent/secrets"))).toHaveLength(0);
   });
+
+  test("custom network name generated when networkName is provided", async () => {
+    const ctx = makeCtx(tmpRoot);
+    const result = await drain(
+      planStack.call(
+        {
+          stackName: "test-net",
+          intent: "nginx",
+          networkName: "custom-wp-net",
+          services: [
+            {
+              name: "nginx",
+              kind: "custom",
+              image: "nginx:1.27-alpine",
+            },
+          ],
+        },
+        ctx,
+      ),
+    );
+
+    if (result.blocked) throw new Error("plan should not be blocked");
+    expect(result.composeYaml).toContain("custom-wp-net");
+    const parsed = parseYaml(result.composeYaml);
+    expect(parsed.networks?.default?.name).toBe("custom-wp-net");
+  });
+
+  test("volume name does not contain stackName prefix in generated YAML", async () => {
+    const ctx = makeCtx(tmpRoot);
+    const result = await drain(
+      planStack.call(
+        {
+          stackName: "my-stack",
+          intent: "mysql",
+          services: [
+            {
+              name: "db",
+              kind: "catalog",
+              catalogId: "mysql:8.0",
+              persistence: {
+                size: "10Gi",
+              },
+            },
+          ],
+        },
+        ctx,
+      ),
+    );
+
+    if (result.blocked) throw new Error("plan should not be blocked");
+    const parsed = parseYaml(result.composeYaml);
+    expect(parsed.volumes?.db_data).toBeDefined();
+    expect(parsed.volumes?.["my-stack_db_data"]).toBeUndefined();
+    expect(parsed.services?.db?.volumes?.[0]).toContain("db_data:");
+  });
+
+  test("auto-injects database healthcheck and upgrades depends_on in composeYaml", async () => {
+    const ctx = makeCtx(tmpRoot);
+    const result = await drain(
+      planStack.call(
+        {
+          stackName: "webapp-stack",
+          intent: "wordpress + mysql",
+          services: [
+            {
+              name: "db",
+              kind: "custom",
+              image: "mysql:8.0",
+              environment: {
+                MYSQL_ROOT_PASSWORD: "secretpassword",
+              },
+            },
+            {
+              name: "web",
+              kind: "custom",
+              image: "wordpress:latest",
+              depends_on: ["db"],
+            },
+          ],
+        },
+        ctx,
+      ),
+    );
+
+    if (result.blocked) throw new Error("plan should not be blocked");
+    const parsed = parseYaml(result.composeYaml);
+
+    expect(parsed.services?.db?.healthcheck).toBeDefined();
+    expect(parsed.services?.db?.healthcheck?.test).toEqual(["CMD", "mysqladmin", "ping", "-h", "localhost"]);
+    expect(parsed.services?.db?.healthcheck?.start_period).toBe("30s");
+
+    expect(parsed.services?.web?.depends_on).toEqual({
+      db: { condition: "service_healthy" },
+    });
+  });
 });

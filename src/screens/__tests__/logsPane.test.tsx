@@ -103,7 +103,7 @@ describe("REPL /logs pane", () => {
   });
 
   function setupStack(tmp: string): void {
-    const dir = path.join(tmp, ".docker-agent", "stacks");
+    const dir = path.join(tmp, ".docker-agent", "states");
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, "web.yaml"), "services: {}\n");
   }

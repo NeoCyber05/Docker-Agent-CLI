@@ -74,6 +74,53 @@ describe("PlanPreview", () => {
     app.cleanup();
   });
 
+  test("hides x-docker-agent metadata when YAML is expanded", async () => {
+    const stdin = new TestStdin();
+    const stdout = new TestStdout();
+    const composeYaml = [
+      "x-docker-agent:",
+      "  name: redis-cache",
+      "  createdAt: 2026-06-23T06:11:12.361Z",
+      "  lastApplied: 2026-06-23T06:13:01.634Z",
+      '  intent: "Adjust redis-cache"',
+      "  provider: unknown",
+      "  generatedBy: unknown",
+      "  envFileSources: {}",
+      "services:",
+      "  redis:",
+      "    image: redis:7",
+    ].join("\n");
+    const app = render(
+      React.createElement(PlanPreview, {
+        composeYaml,
+        diff,
+        onAnswer: () => {},
+      }),
+      {
+        stdout: stdout as unknown as NodeJS.WriteStream,
+        stdin: stdin as unknown as NodeJS.ReadStream,
+        debug: true,
+        patchConsole: false,
+        exitOnCtrlC: false,
+      },
+    );
+
+    await new Promise((resolve) => setImmediate(resolve));
+    stdin.push("x");
+    stdin.emit("readable");
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const output = lastRenderedFrame(stdout.output());
+    expect(output).not.toContain("x-docker-agent");
+    expect(output).not.toContain("createdAt");
+    expect(output).not.toContain("lastApplied");
+    expect(output).toContain("services:");
+    expect(output).toContain("image: redis:7");
+
+    app.unmount();
+    app.cleanup();
+  });
+
   test("renders expanded YAML with one terminal row per YAML line", async () => {
     const stdin = new TestStdin();
     const stdout = new TestStdout();

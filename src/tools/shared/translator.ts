@@ -2,6 +2,7 @@ import type { ToolContext } from "../../Tool";
 import type { ServiceSpec } from "../../types/stack";
 import type { StackDraft, HybridServiceIntent } from "./specSchemas";
 import * as crypto from "node:crypto";
+import { injectDbHealthchecks } from "./dbHealthcheck";
 
 export interface PreparedStack {
   stackName: string;
@@ -20,7 +21,7 @@ const CATALOG_REGISTRY: Record<
     image: string;
     containerPort: number;
     defaultEnv: Record<string, string>;
-    healthcheck: { test: string[]; interval: string; timeout: string; retries: number };
+    healthcheck?: { test: string[]; interval: string; timeout: string; retries: number; start_period?: string };
     defaultDbVolume: string;
   }
 > = {
@@ -31,12 +32,6 @@ const CATALOG_REGISTRY: Record<
       POSTGRES_USER: "postgres",
       POSTGRES_PASSWORD: "POSTGRES_PASSWORD", // Triggers secret generator
     },
-    healthcheck: {
-      test: ["CMD-SHELL", "pg_isready -U postgres"],
-      interval: "10s",
-      timeout: "5s",
-      retries: 5,
-    },
     defaultDbVolume: "/var/lib/postgresql/data",
   },
   "postgresql:15": {
@@ -46,36 +41,18 @@ const CATALOG_REGISTRY: Record<
       POSTGRES_USER: "postgres",
       POSTGRES_PASSWORD: "POSTGRES_PASSWORD", // Triggers secret generator
     },
-    healthcheck: {
-      test: ["CMD-SHELL", "pg_isready -U postgres"],
-      interval: "10s",
-      timeout: "5s",
-      retries: 5,
-    },
     defaultDbVolume: "/var/lib/postgresql/data",
   },
   "redis:7": {
     image: "redis:7-alpine",
     containerPort: 6379,
     defaultEnv: {},
-    healthcheck: {
-      test: ["CMD", "redis-cli", "ping"],
-      interval: "10s",
-      timeout: "5s",
-      retries: 5,
-    },
     defaultDbVolume: "/data",
   },
   "redis:6": {
     image: "redis:6-alpine",
     containerPort: 6379,
     defaultEnv: {},
-    healthcheck: {
-      test: ["CMD", "redis-cli", "ping"],
-      interval: "10s",
-      timeout: "5s",
-      retries: 5,
-    },
     defaultDbVolume: "/data",
   },
   "mysql:8.0": {
@@ -84,24 +61,12 @@ const CATALOG_REGISTRY: Record<
     defaultEnv: {
       MYSQL_ROOT_PASSWORD: "MYSQL_ROOT_PASSWORD", // Triggers secret generator
     },
-    healthcheck: {
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"],
-      interval: "10s",
-      timeout: "5s",
-      retries: 5,
-    },
     defaultDbVolume: "/var/lib/mysql",
   },
   "mongodb:6.0": {
     image: "mongo:6.0",
     containerPort: 27017,
     defaultEnv: {},
-    healthcheck: {
-      test: ["CMD-SHELL", "echo 'db.runCommand({ping:1})' | mongosh localhost:27017/test --quiet"],
-      interval: "10s",
-      timeout: "5s",
-      retries: 5,
-    },
     defaultDbVolume: "/data/db",
   },
   "nginx:1.27": {
@@ -224,7 +189,7 @@ export async function prepareStackDraft(
   const networks: Record<string, any> = {};
 
   const defaultNetworkName = "default";
-  networks[defaultNetworkName] = {};
+  networks[defaultNetworkName] = input.networkName ? { name: input.networkName } : {};
 
   // Fetch occupied ports on the host
   const occupiedPorts = await getOccupiedPorts(ctx, input.stackName);
@@ -278,7 +243,7 @@ export async function prepareStackDraft(
       spec.healthcheck = catalogEntry.healthcheck;
 
       if (intent.persistence) {
-        const volName = `${input.stackName}_${serviceName}_data`;
+        const volName = `${serviceName}_data`;
         spec.volumes = [`${volName}:${catalogEntry.defaultDbVolume}`];
         volumes[volName] = {};
       }
@@ -294,7 +259,7 @@ export async function prepareStackDraft(
 
       if (intent.persistence) {
         const mountPath = intent.persistence.path ?? "/data";
-        const volName = `${input.stackName}_${serviceName}_data`;
+        const volName = `${serviceName}_data`;
         spec.volumes = [`${volName}:${mountPath}`];
         volumes[volName] = {};
       }
@@ -366,6 +331,8 @@ export async function prepareStackDraft(
 
     services[serviceName] = spec;
   }
+
+  injectDbHealthchecks(services);
 
   const prepared: any = {
     stackName: input.stackName,

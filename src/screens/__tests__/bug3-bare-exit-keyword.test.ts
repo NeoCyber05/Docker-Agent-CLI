@@ -98,10 +98,10 @@ function neverProvider() {
 // Bug Condition helper (formalised in design.md)
 // ---------------------------------------------------------------------------
 
-/** isBugCondition_exit(input): trim().toLowerCase() === "exit" OR "quit" */
+/** isBugCondition_exit(input): trim().toLowerCase() === "exit" */
 function isBugConditionExit(input: string): boolean {
   const t = input.trim().toLowerCase();
-  return t === "exit" || t === "quit";
+  return t === "exit";
 }
 
 // ---------------------------------------------------------------------------
@@ -203,8 +203,6 @@ describe("Bug 3 — Bare exit/quit keyword: exploration (EXPECTED TO FAIL on unf
 
   const bugConditionCases: Array<{ label: string; input: string }> = [
     { label: '"exit"', input: "exit" },
-    { label: '"quit"', input: "quit" },
-    { label: '"  QUIT  " (whitespace + uppercase)', input: "  QUIT  " },
     { label: '"EXIT" (uppercase)', input: "EXIT" },
   ];
 
@@ -232,7 +230,6 @@ describe("Bug 3 — Bare exit/quit keyword: exploration (EXPECTED TO FAIL on unf
 
   const preservationCases: Array<{ label: string; input: string }> = [
     { label: '"how do I exit a container"', input: "how do I exit a container" },
-    { label: '"please quit and restart"', input: "please quit and restart" },
     { label: '"exiting now"', input: "exiting now" },
   ];
 

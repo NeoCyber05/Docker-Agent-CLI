@@ -145,6 +145,7 @@ function renderRepl(
   tmp: string;
 } {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "preservation-"));
+  fs.writeFileSync(path.join(tmp, "project-policies.yaml"), "project: {}");
   const stdout = new TestStdout();
   const stderr = new TestStdout();
   const stdin = new TestStdin();
@@ -260,10 +261,10 @@ function notBugConditionRole(role: string): boolean {
   return role !== "assistant";
 }
 
-/** ¬C_exit: trim().toLowerCase() ∉ {"exit", "quit"} */
+/** ¬C_exit: trim().toLowerCase() ∉ {"exit"} */
 function notBugConditionExit(input: string): boolean {
   const t = input.trim().toLowerCase();
-  return t !== "exit" && t !== "quit";
+  return t !== "exit";
 }
 
 /** ¬C_markdown: no "**…**" pair in text */
@@ -772,7 +773,7 @@ describe("REQ 3.5 — ordinary prompts (¬C_exit) do not trigger REPL exit", () 
     /**
      * Validates: Requirements 3.5
      *
-     * Property: For all input where trim().toLowerCase() ∉ {exit, quit},
+     * Property: For all input where trim().toLowerCase() ∉ {exit},
      * the REPL does NOT exit and the prompt IS sent to the LLM.
      *
      * Generator: varied strings including sentences with "exit"/"quit" words
@@ -791,6 +792,8 @@ describe("REQ 3.5 — ordinary prompts (¬C_exit) do not trigger REPL exit", () 
       "quitting",
       "  exit now please", // has spaces but contains extra words → ¬C_exit
       "exit-container", // hyphenated → ¬C_exit
+      "quit",
+      "QUIT",
     ];
 
     for (const input of nonExitInputs) {

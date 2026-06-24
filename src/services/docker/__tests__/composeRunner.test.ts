@@ -48,7 +48,7 @@ describe("ComposeRunner", () => {
   test("forStack().up emits docker compose -p NAME --project-directory CWD -f YAML up -d", async () => {
     const spawner = new StubSpawner();
     const runner = new ComposeRunner("/cwd", spawner);
-    const bound = runner.forStack("webapp", "/cwd/.docker-agent/stacks/webapp.yaml");
+    const bound = runner.forStack("webapp", "/cwd/.docker-agent/states/webapp.yaml");
     const out: string[] = [];
     let exit = -1;
     const gen = bound.up({ detach: true });
@@ -71,7 +71,7 @@ describe("ComposeRunner", () => {
         "--project-directory",
         "/cwd",
         "-f",
-        "/cwd/.docker-agent/stacks/webapp.yaml",
+        "/cwd/.docker-agent/states/webapp.yaml",
         "up",
         "-d",
       ],

@@ -22,6 +22,7 @@ class Sink extends Writable {
 
 test("starts a submitted turn", async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "interaction-"));
+  fs.writeFileSync(path.join(tmp, "project-policies.yaml"), "project: {}");
   let calls = 0;
   const engine = new QueryEngine({
     cwd: tmp,

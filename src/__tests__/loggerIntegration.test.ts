@@ -35,6 +35,7 @@ describe("QueryEngine structured logging", () => {
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "qe-log-"));
+    fs.writeFileSync(path.join(tmpDir, "project-policies.yaml"), "project: {}");
   });
 
   afterEach(() => {

@@ -1,5 +1,5 @@
 import type { ServiceSpec, StackDefinition } from "src/types/stack";
-import { stringify as stringifyYaml } from "yaml";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
 export interface PlanInput {
   stackName: string;
@@ -45,4 +45,18 @@ export function buildStackDefinition(
 
 export function stackToYaml(def: StackDefinition): string {
   return stringifyYaml(def);
+}
+
+/** Strip internal x-docker-agent metadata for user-facing compose previews. */
+export function composeYamlForPreview(composeYaml: string): string {
+  try {
+    const parsed = parseYaml(composeYaml);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return composeYaml;
+    }
+    const { "x-docker-agent": _meta, ...rest } = parsed as Record<string, unknown>;
+    return stringifyYaml(rest).trimEnd();
+  } catch {
+    return composeYaml;
+  }
 }

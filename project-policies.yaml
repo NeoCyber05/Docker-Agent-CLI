@@ -1,5 +1,0 @@
-
-project:
-  hardDeny:
-    - mount_docker_socket
-    - mount_host_root

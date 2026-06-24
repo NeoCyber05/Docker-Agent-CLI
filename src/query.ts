@@ -1,3 +1,5 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import type { LoopContext } from "src/loopContext";
 import type { Provider } from "src/services/api/types";
 import { captureKnownGood, planRollback } from "src/state/rollback";
@@ -5,7 +7,9 @@ import { scrubLine } from "src/state/secretRedactor";
 import type { LoopEvent } from "src/types/events";
 import type { AssistantBlock, Message } from "src/types/message";
 import { type Tool, findToolByName } from "./Tool";
+import { loadUserConfig } from "./config";
 import { buildSystemPrompt } from "./context";
+import { PolicyEngine } from "./policy/PolicyEngine";
 import { isDestroyAllPrompt, parseDirectDestroyStack } from "./slashDispatch";
 import { getAgentTools } from "./tools";
 import { applyStack } from "./tools/applyStack";
@@ -21,10 +25,6 @@ import {
   writeConfigFiles,
 } from "./tools/shared/configFiles";
 import { collectSecretKeys } from "./tools/shared/secretKeys";
-import * as path from "node:path";
-import * as fs from "node:fs";
-import { PolicyEngine } from "./policy/PolicyEngine";
-import { loadUserConfig } from "./config";
 
 export interface QueryParams {
   messages: Message[];
@@ -238,26 +238,52 @@ async function* applyWithRollback(
   };
 }
 
-function formatPlanBlocker(result: PlanStackResultBlocked): string {
+export function formatPlanBlocker(result: PlanStackResultBlocked): string {
   switch (result.reason) {
     case "invalid_spec":
-      return `plan_stack blocked: ${JSON.stringify(result.issues)}`;
-    case "invalid_dependency":
-      return `plan_stack blocked: ${JSON.stringify(result.dependency)}`;
-    case "port_conflict":
-      return `plan_stack blocked: ${JSON.stringify(result.portCheck)}`;
+      return `plan_stack blocked: Specification is invalid:\n${result.issues.map((i) => `- [${i.path}] ${i.message}`).join("\n")}`;
+    case "invalid_dependency": {
+      const dep = result.dependency;
+      const parts: string[] = ["plan_stack blocked: Invalid dependency order."];
+      for (const m of dep.missing) {
+        parts.push(`- Service '${m.service}' depends on missing service '${m.dependency}'.`);
+      }
+      for (const c of dep.cycles) {
+        parts.push(`- Circular dependency detected: ${c.join(" -> ")}.`);
+      }
+      return parts.join("\n");
+    }
+    case "port_conflict": {
+      const pc = result.portCheck;
+      const parts: string[] = ["plan_stack blocked: Port conflict detected."];
+      for (const c of pc.conflicts) {
+        parts.push(`- Port ${c.hostPort}/${c.protocol} published by service '${c.service}' conflicts with ${c.conflictsWith} (${c.source === "running" ? "running container" : "other service"}).`);
+      }
+      for (const inv of pc.invalid) {
+        parts.push(`- Service '${inv.service}' has invalid port mapping '${inv.value}': ${inv.message}`);
+      }
+      if (pc.dockerError) {
+        parts.push(`- Docker Engine error: ${pc.dockerError.message}`);
+      }
+      return parts.join("\n");
+    }
     case "missing_config_file":
-      return `plan_stack blocked: ${JSON.stringify(result.missingFiles)}`;
-    case "missing_required_env":
-      return `plan_stack blocked: ${JSON.stringify(result.missingByService)}`;
+      return `plan_stack blocked: Missing content for config file(s): ${result.missingFiles.join(", ")}.`;
+    case "missing_required_env": {
+      const parts: string[] = ["plan_stack blocked: Missing required environment variables."];
+      for (const [svc, keys] of Object.entries(result.missingByService)) {
+        parts.push(`- Service '${svc}' requires: ${keys.join(", ")}`);
+      }
+      return parts.join("\n");
+    }
     case "resource_limit":
-      return `plan_stack blocked: ${JSON.stringify(result.issues)}`;
+      return `plan_stack blocked: Resource limit exceeded:\n${result.issues.map((i) => `- [${i.path}] ${i.message}`).join("\n")}`;
     case "db_port_exposed":
-      return `plan_stack blocked: ${JSON.stringify(result.issues)}`;
+      return `plan_stack blocked: Database port publicly exposed:\n${result.issues.map((i) => `- [${i.service}] ${i.message}`).join("\n")}`;
     case "unsafe_volume":
-      return `plan_stack blocked: ${JSON.stringify(result.issues)}`;
+      return `plan_stack blocked: Unsafe volume mount detected:\n${result.issues.map((i) => `- [${i.service}] ${i.message}`).join("\n")}`;
     case "undeclared_network":
-      return `plan_stack blocked: ${JSON.stringify(result.issues)}`;
+      return `plan_stack blocked: Undeclared network reference:\n${result.issues.map((i) => `- [${i.service}] ${i.message}`).join("\n")}`;
     case "invalid_yaml":
       return `plan_stack blocked: ${result.error}`;
   }
@@ -326,9 +352,7 @@ async function* handlePlanStackToolUse(
     const violations = policyEngine.evaluate(planResult.composeYaml);
     const denyViolations = violations.filter((v) => v.severity === "deny");
     if (denyViolations.length > 0) {
-      const msgs = denyViolations
-        .map((v) => `[${v.service}] ${v.rule}: ${v.message}`)
-        .join("\n");
+      const msgs = denyViolations.map((v) => `[${v.service}] ${v.rule}: ${v.message}`).join("\n");
       return {
         isError: true,
         resultMessage: `Policy violation(s) detected. Deployment is blocked:\n${msgs}`,
@@ -396,9 +420,7 @@ async function* handleRemediateDriftToolUse(
   const violations = policyEngine.evaluate(result.desiredYaml);
   const denyViolations = violations.filter((v) => v.severity === "deny");
   if (denyViolations.length > 0) {
-    const msgs = denyViolations
-      .map((v) => `[${v.service}] ${v.rule}: ${v.message}`)
-      .join("\n");
+    const msgs = denyViolations.map((v) => `[${v.service}] ${v.rule}: ${v.message}`).join("\n");
     return {
       isError: true,
       resultMessage: `Policy violation(s) detected. Remediation is blocked:\n${msgs}`,
@@ -486,7 +508,10 @@ async function* runDirectDestroyStack(
       `This will destroy the stack ${stackName} and delete all its volumes.`,
     );
     if (typed.kind !== "typed_confirm_value" || typed.value !== phrase) {
-      yield { type: "assistant_text", delta: "destroy_stack aborted: typed confirmation did not match" };
+      yield {
+        type: "assistant_text",
+        delta: "destroy_stack aborted: typed confirmation did not match",
+      };
       return;
     }
   } else if (!ctx.allowSet.has("destroy_stack")) {
@@ -506,7 +531,38 @@ export async function* query(params: QueryParams): AsyncGenerator<LoopEvent, voi
 
   const rootPolicyPath = path.join(ctx.cwd, "project-policies.yaml");
   const legacyPolicyPath = path.join(ctx.cwd, ".docker-agent", "policies.yaml");
-  const projectPolicyPath = fs.existsSync(rootPolicyPath) ? rootPolicyPath : legacyPolicyPath;
+  let projectPolicyPath = fs.existsSync(rootPolicyPath) ? rootPolicyPath : legacyPolicyPath;
+
+  if (!fs.existsSync(rootPolicyPath) && !fs.existsSync(legacyPolicyPath)) {
+    const mode = userConfig.defaults?.missingProjectPolicy ?? "deny";
+    if (mode === "deny") {
+      const defaultContent = `project:
+  hardDeny: []
+  require: []
+`;
+      const resp = await ctx.requestPermission("initialize_project_policy", {
+        reason:
+          "Project policy file (project-policies.yaml) is missing but required by configuration.",
+        path: rootPolicyPath,
+        content: defaultContent,
+      });
+      if (resp.kind === "approve" || resp.kind === "always_allow_in_session") {
+        try {
+          fs.writeFileSync(rootPolicyPath, defaultContent, "utf-8");
+          projectPolicyPath = rootPolicyPath;
+          yield {
+            type: "assistant_text",
+            delta: `[docker-agent] Initialized default project policy at ${rootPolicyPath}\n`,
+          };
+        } catch (err) {
+          yield {
+            type: "assistant_text",
+            delta: `[docker-agent] Failed to initialize project policy: ${(err as Error).message}\n`,
+          };
+        }
+      }
+    }
+  }
 
   const policyEngine = new PolicyEngine({
     userConfig,

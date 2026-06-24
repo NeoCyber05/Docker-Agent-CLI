@@ -29,6 +29,7 @@ When planning services:
   - Do NOT specify `catalogId`.
 - **High-level Abstractions**:
   - Do NOT specify raw compose `ports`, `volumes`, `networks`, `restart`, `deploy.resources`, or `logging` settings. The system automatically configures secure and policy-compliant defaults for these.
+  - If the user explicitly requests a specific network name (e.g. "wp-net"), specify it in the `networkName` property of the stack plan (e.g. `networkName: "wp-net"`).
   - For persistent storage, specify a `persistence: { size: "10Gi" }` block. For custom services, also specify the container target path: `persistence: { path: "/app/data", size: "10Gi" }`.
   - For resource sizing, use `resources: "small" | "medium" | "large"`.
   - For exposure, use `exposure: "public"` to make a service accessible. You may optionally request a specific host port with `hostPort: <port>` and container port with `containerPort: <port>`. If `hostPort` is omitted, a free port in the range 8000-9000 is automatically allocated.

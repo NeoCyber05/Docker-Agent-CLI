@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { stackStateYamlPath, stackStatesDir } from "src/config";
 import type { Tool, ToolProgress } from "src/Tool";
 import type { BoundComposeRunner, ComposePsRow } from "src/services/docker/composeRunner";
 import { checkEnvFileGitStatus } from "src/services/docker/gitGuard";
@@ -12,6 +13,7 @@ import { z } from "zod";
 import { findInvalidFileBinds } from "./shared/configFiles";
 import { validateImagesForTool } from "./shared/imageValidation";
 import { validateYamlRoundTrip } from "./shared/yamlRoundTrip";
+import { parsePublishedPorts } from "./checkPortConflict";
 
 export const ApplyStackInputSchema = z.object({
   stackName: z.string(),
@@ -160,6 +162,103 @@ function stackSecretKeys(def: StackDefinition, cwd: string): Set<string> {
   return keys;
 }
 
+const POPULAR_HTTP_PORTS = new Set([80, 8080, 3000, 3001, 5000, 8000, 9000, 9001]);
+
+async function probeHttpPort(
+  url: string,
+  abort: AbortSignal,
+): Promise<{ success: boolean; message?: string }> {
+  const maxRetries = 3;
+  const timeoutMs = 3000;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    if (abort.aborted) {
+      return { success: false, message: "Aborted" };
+    }
+
+    try {
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), timeoutMs);
+
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers: { "User-Agent": "Docker-Agent-HTTP-Probe" },
+      });
+
+      const fullText = await response.text();
+      const bodyText = fullText.slice(0, 10240); // Cap body at 10KB
+
+      clearTimeout(id);
+
+      const loweredBody = bodyText.toLowerCase();
+
+      if (response.status === 500) {
+        if (
+          loweredBody.includes("database connection") ||
+          loweredBody.includes("connection refused") ||
+          loweredBody.includes("access denied") ||
+          loweredBody.includes("establishing a database connection")
+        ) {
+          return { success: false, message: "HTTP 500: Database connection error detected" };
+        }
+        return { success: false, message: "HTTP status 500" };
+      }
+
+      if (
+        loweredBody.includes("error establishing a database connection") ||
+        loweredBody.includes("database connection error") ||
+        loweredBody.includes("connection refused")
+      ) {
+        return { success: false, message: "Database connection error page detected" };
+      }
+
+      return { success: true };
+    } catch (err) {
+      if (attempt === maxRetries) {
+        // TCP timeout/connection refused is treated as inconclusive, not causing deployment failure
+        return { success: true, message: `Inconclusive: ${err instanceof Error ? err.message : String(err)}` };
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, 2000));
+    }
+  }
+
+  return { success: true, message: "Inconclusive: max retries reached without success" };
+}
+
+async function verifyHttpServices(
+  def: StackDefinition,
+  abort: AbortSignal,
+): Promise<{ ok: boolean; failedServices: string[]; error?: string }> {
+  const failedServices: string[] = [];
+  let lastError: string | undefined;
+
+  for (const [serviceName, spec] of Object.entries(def.services)) {
+    if (!spec.ports || spec.ports.length === 0) continue;
+
+    for (const portMapping of spec.ports) {
+      const published = parsePublishedPorts(portMapping);
+      const portBind = published[0];
+      if (!portBind) continue;
+
+      if (portBind.protocol === "tcp" && POPULAR_HTTP_PORTS.has(portBind.containerPort)) {
+        const hostPort = portBind.hostPort;
+        const url = `http://localhost:${hostPort}`;
+        const probe = await probeHttpPort(url, abort);
+        if (!probe.success) {
+          failedServices.push(serviceName);
+          lastError = probe.message;
+        }
+      }
+    }
+  }
+
+  return {
+    ok: failedServices.length === 0,
+    failedServices,
+    error: lastError,
+  };
+}
+
 export const applyStack: Tool<ApplyStackInput, ApplyStackResult> = {
   name: "apply_stack",
   description: "Apply a planned stack: write YAML, run Compose up via ComposeRunner.",
@@ -167,7 +266,7 @@ export const applyStack: Tool<ApplyStackInput, ApplyStackResult> = {
   category: "high-level",
   needsPermission: () => true,
   call: async function* (input, ctx): AsyncGenerator<ToolProgress, ApplyStackResult> {
-    const yamlPath = path.join(ctx.cwd, ".docker-agent", "stacks", `${input.stackName}.yaml`);
+    const yamlPath = stackStateYamlPath(ctx.cwd, input.stackName);
 
     let def: StackDefinition;
     try {
@@ -230,8 +329,8 @@ export const applyStack: Tool<ApplyStackInput, ApplyStackResult> = {
 
     yield { type: "progress", msg: `Writing stack YAML for ${input.stackName}...` };
 
-    const stacksDir = path.join(ctx.cwd, ".docker-agent", "stacks");
-    fs.mkdirSync(stacksDir, { recursive: true });
+    const statesDir = stackStatesDir(ctx.cwd);
+    fs.mkdirSync(statesDir, { recursive: true });
     ctx.stateStore.write(input.stackName, def);
 
     const yamlCheck = validateYamlRoundTrip(stringifyYaml(def));
@@ -323,6 +422,34 @@ export const applyStack: Tool<ApplyStackInput, ApplyStackResult> = {
               yamlPath,
               healthy: false,
               unhealthyServices: healthResult.unhealthy.map((u) => `${u.service} (${u.status})`),
+              ...(runningServices ? { runningServices } : {}),
+              ...(logs ? { errorOutput: logs } : {}),
+            };
+          }
+
+          // Post-apply HTTP verification for public services
+          yield { type: "progress", msg: "Running post-deploy HTTP probe verification..." };
+          const httpCheck = await verifyHttpServices(def, ctx.abortSignal);
+          if (!httpCheck.ok) {
+            const logs = await collectFailureLogs(bound, httpCheck.failedServices, secretKeys);
+            let runningServices: string[] | undefined;
+            try {
+              const rows = await bound.ps({ json: true });
+              const running = rows.filter((row) => row.State === "running");
+              if (running.length > 0) {
+                runningServices = running.map((row) => row.Service);
+              }
+            } catch {
+              // ps is diagnostic-only; swallow errors
+            }
+            return {
+              ok: false,
+              exitCode: 0,
+              yamlPath,
+              healthy: false,
+              unhealthyServices: httpCheck.failedServices.map(
+                (s) => `${s} (HTTP probe failed: ${httpCheck.error})`,
+              ),
               ...(runningServices ? { runningServices } : {}),
               ...(logs ? { errorOutput: logs } : {}),
             };

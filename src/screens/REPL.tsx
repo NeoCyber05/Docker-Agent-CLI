@@ -24,7 +24,7 @@ import { ThinkingIndicator } from "../components/ThinkingIndicator";
 import { ToolDetailsPanel } from "../components/ToolDetailsPanel";
 import { TypedConfirmDialog } from "../components/TypedConfirmDialog";
 import { WelcomeBanner } from "../components/WelcomeBanner";
-import { PROVIDER_NAMES, type ProviderName } from "../config";
+import { PROVIDER_NAMES, stackStateYamlPath, type ProviderName } from "../config";
 import {
   type ApiKeyProviderName,
   type ApiKeyStatus,
@@ -152,7 +152,7 @@ export function REPL({
   };
 
   const startLogPane = (stackName: string, service?: string) => {
-    const yamlPath = path.join(deps.cwd, ".docker-agent", "stacks", `${stackName}.yaml`);
+    const yamlPath = stackStateYamlPath(deps.cwd, stackName);
     if (!fs.existsSync(yamlPath)) {
       session.dispatchActivity({
         type: "user_text",
@@ -307,7 +307,8 @@ export function REPL({
   const handleSubmit = async (input: string) => {
     const targetPrompt = input.trim();
     const lowered = targetPrompt.toLowerCase();
-    if (lowered === "exit" || lowered === "quit") {
+    if (lowered === "exit" || lowered === "/exit") {
+      session.cancelCurrent();
       setImmediate(() => setImmediate(() => setImmediate(() => exit())));
       return;
     }

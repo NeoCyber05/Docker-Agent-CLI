@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { STACK_STATES_DIR_NAME } from "src/config";
 import { StateStore } from "src/state/StateStore";
 import type { StackDefinition } from "src/types/stack";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
@@ -44,7 +45,7 @@ describe("StateStore", () => {
   });
 
   test("read throws a clear error for invalid stack YAML", () => {
-    fs.writeFileSync(path.join(tmpRoot, "stacks", "bad.yaml"), "services: {}\n");
+    fs.writeFileSync(path.join(tmpRoot, STACK_STATES_DIR_NAME, "bad.yaml"), "services: {}\n");
 
     expect(() => store.read("bad")).toThrow(/Invalid stack state.*bad\.yaml/);
   });
@@ -63,7 +64,7 @@ describe("StateStore", () => {
     const warnings: string[] = [];
     store = new StateStore(tmpRoot, { warn: (message) => warnings.push(message) });
     store.write("good", makeDef("good"));
-    fs.writeFileSync(path.join(tmpRoot, "stacks", "bad.yaml"), "not: a stack\n");
+    fs.writeFileSync(path.join(tmpRoot, STACK_STATES_DIR_NAME, "bad.yaml"), "not: a stack\n");
 
     expect(store.list()).toEqual([{ name: "good", serviceCount: 1, lastApplied: null }]);
     expect(warnings.join("\n")).toMatch(/Skipping invalid stack state.*bad\.yaml/);
@@ -73,7 +74,7 @@ describe("StateStore", () => {
     store.write("doomed", makeDef("doomed"));
     store.remove("doomed");
     expect(store.read("doomed")).toBeNull();
-    const archive = path.join(tmpRoot, "stacks", ".archive");
+    const archive = path.join(tmpRoot, STACK_STATES_DIR_NAME, ".archive");
     expect(fs.readdirSync(archive)).toContain("doomed.yaml");
   });
 
@@ -125,5 +126,17 @@ describe("StateStore", () => {
     const release = await store.acquireLock("stale", { timeoutMs: 0 });
 
     release();
+  });
+
+  test("migrates legacy stacks/ directory to states/", () => {
+    const legacyRoot = fs.mkdtempSync(path.join(os.tmpdir(), "docker-agent-legacy-"));
+    fs.mkdirSync(path.join(legacyRoot, "stacks"), { recursive: true });
+    fs.writeFileSync(path.join(legacyRoot, "stacks", "legacy.yaml"), "services: {}\n");
+
+    new StateStore(legacyRoot);
+
+    expect(fs.existsSync(path.join(legacyRoot, "stacks"))).toBe(false);
+    expect(fs.existsSync(path.join(legacyRoot, STACK_STATES_DIR_NAME, "legacy.yaml"))).toBe(true);
+    fs.rmSync(legacyRoot, { recursive: true, force: true });
   });
 });

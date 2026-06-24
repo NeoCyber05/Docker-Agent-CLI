@@ -11,7 +11,7 @@ export interface ListStacksResult {
 
 export const listStacks: Tool<ListStacksInput, ListStacksResult> = {
   name: "list_stacks",
-  description: "List all stacks defined under .docker-agent/stacks/.",
+  description: "List all stacks defined under .docker-agent/states/.",
   inputSchema: ListStacksInputSchema,
   category: "read-only",
   needsPermission: () => false,

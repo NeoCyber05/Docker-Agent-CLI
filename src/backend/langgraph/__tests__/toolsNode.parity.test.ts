@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { nanoid } from "nanoid";
 import type { LoopContext } from "src/loopContext";
 import type { Provider, ProviderEvent } from "src/services/api/types";
 import type { ComposeRunner } from "src/services/docker/composeRunner";
@@ -39,7 +40,7 @@ function makeContext(
     composeRunner: new MockComposeRunner(tmp) as unknown as ComposeRunner,
     abortSignal: new AbortController().signal,
     requestPermission: async (tool, input) => {
-      opts.emit?.({ type: "permission_request", id: "perm-req", tool, input });
+      opts.emit?.({ type: "permission_request", id: nanoid(), tool, input });
       return opts.permissionResponse ?? { kind: "approve" as const };
     },
     requestConfirm: async () => ({ kind: "approve" as const }),
@@ -240,7 +241,7 @@ describe("toolsNode negative paths", () => {
   });
   afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
-  test("permission denied emits tool_result with user denial and no tool_call", async () => {
+  test("permission denied emits permission_request but no tool_call or tool_result", async () => {
     const events: LoopEvent[] = [];
     const ctx = makeContext(tmp, {
       emit: (ev) => events.push(ev),
@@ -252,16 +253,7 @@ describe("toolsNode negative paths", () => {
     const types = events.map((e) => e.type);
     expect(types).toContain("permission_request");
     expect(types).not.toContain("tool_call");
-    expect(types).toContain("tool_result");
-
-    const toolResult = events.find(
-      (e): e is LoopEvent & { type: "tool_result" } => e.type === "tool_result",
-    );
-    expect(toolResult).toBeDefined();
-    if (!toolResult) {
-      throw new Error("expected tool_result event to be present");
-    }
-    expect(toolResult.output).toBe("User denied permission.");
+    expect(types).not.toContain("tool_result");
   });
 
   test("always_allow_in_session skips permission_request on second call", async () => {
@@ -287,56 +279,25 @@ describe("toolsNode negative paths", () => {
     expect(second.map((e) => e.type)).toContain("tool_result");
   });
 
-  test("mutating tool outside allowlist emits tool_call then refusal tool_result", async () => {
+  test("mutating tool outside allowlist emits no tool_call or tool_result", async () => {
     const events = await runBackend(tmp, "destroy_stack", { stackName: "test" });
     const types = events.map((e) => e.type);
-    expect(types).toContain("tool_call");
-    expect(types).toContain("tool_result");
+    expect(types).not.toContain("tool_call");
+    expect(types).not.toContain("tool_result");
     expect(types).not.toContain("permission_request");
-
-    expectEventOrder(events, "tool_call", "tool_result");
-
-    const toolResult = events.find(
-      (e): e is LoopEvent & { type: "tool_result" } => e.type === "tool_result",
-    );
-    expect(toolResult).toBeDefined();
-    if (!toolResult) {
-      throw new Error("expected tool_result event to be present");
-    }
-    expect(typeof toolResult.output).toBe("string");
-    expect(toolResult.output).toContain("not supported");
   });
 
-  test("unknown tool emits tool_result without tool_call", async () => {
+  test("unknown tool emits no tool_call or tool_result", async () => {
     const events = await runBackend(tmp, "unknown_tool_xyz", {});
     const types = events.map((e) => e.type);
     expect(types).not.toContain("tool_call");
-    expect(types).toContain("tool_result");
-
-    const toolResult = events.find(
-      (e): e is LoopEvent & { type: "tool_result" } => e.type === "tool_result",
-    );
-    expect(toolResult).toBeDefined();
-    if (!toolResult) {
-      throw new Error("expected tool_result event to be present");
-    }
-    expect(toolResult.output).toBe("unknown tool: unknown_tool_xyz");
+    expect(types).not.toContain("tool_result");
   });
 
-  test("schema validation failure emits tool_result without tool_call", async () => {
+  test("schema validation failure emits no tool_call or tool_result", async () => {
     const events = await runBackend(tmp, "get_health", {});
     const types = events.map((e) => e.type);
     expect(types).not.toContain("tool_call");
-    expect(types).toContain("tool_result");
-
-    const toolResult = events.find(
-      (e): e is LoopEvent & { type: "tool_result" } => e.type === "tool_result",
-    );
-    expect(toolResult).toBeDefined();
-    if (!toolResult) {
-      throw new Error("expected tool_result event to be present");
-    }
-    expect(typeof toolResult.output).toBe("string");
-    expect(toolResult.output).toContain("validation failed:");
+    expect(types).not.toContain("tool_result");
   });
 });

@@ -37,11 +37,7 @@ export const toolsNode =
 
       const tool = findToolByName(getAgentTools(), tu.name as string);
       if (!tool) {
-        emit({
-          type: "tool_result",
-          name: tu.name as string,
-          output: `unknown tool: ${tu.name}`,
-        });
+        // No LoopEvent emitted for unknown tools; only push the tool message.
         results.push({
           toolUseId: tu.id as string,
           name: tu.name as string,
@@ -57,12 +53,7 @@ export const toolsNode =
         parsed = tool.inputSchema.parse(tu.input);
       } catch (err) {
         const msg = `validation failed: ${err instanceof Error ? err.message : String(err)}`;
-        // NO tool_call emitted for validation failure (matches CurrentBackend)
-        emit({
-          type: "tool_result",
-          name: tool.name,
-          output: msg,
-        });
+        // No LoopEvent emitted for validation failures; only push the tool message.
         results.push({
           toolUseId: tu.id as string,
           name: tool.name,
@@ -75,12 +66,7 @@ export const toolsNode =
 
       // Phase 3 read-only allowlist: only read-only/escape-hatch tools supported in LangGraph backend
       if (!READ_ONLY_ALLOWLIST.has(tool.name)) {
-        emit({ type: "tool_call", name: tool.name, input: parsed });
-        emit({
-          type: "tool_result",
-          name: tool.name,
-          output: "tool not supported in langgraph backend (phase 3)",
-        });
+        // No LoopEvent emitted for unsupported tools; only push the tool message.
         results.push({
           toolUseId: tu.id as string,
           name: tool.name,
@@ -95,11 +81,7 @@ export const toolsNode =
       if (tool.needsPermission(parsed) && !ctx.allowSet.has(tool.name)) {
         const resp = await ctx.requestPermission(tool.name, parsed);
         if (resp.kind === "deny") {
-          emit({
-            type: "tool_result",
-            name: tool.name,
-            output: "User denied permission.",
-          });
+          // No LoopEvent emitted for permission denials; only push the tool message.
           results.push({
             toolUseId: tu.id as string,
             name: tool.name,

@@ -28,7 +28,7 @@ export function buildGraph(deps: GraphDeps) {
         Array.isArray(last.content) &&
         (last.content as Array<{ type: string }>).some((b) => b.type === "tool_use");
       if (!hasToolUse) return END;
-      if (state.iter >= MAX_ITERATIONS) return END;
+      if (state.iter > MAX_ITERATIONS) return END;
       return "tools";
     })
     .addEdge("tools", "agent");

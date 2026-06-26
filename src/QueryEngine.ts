@@ -14,7 +14,7 @@ import type { LoopEvent } from "src/types/events";
 import type { Message } from "src/types/message";
 import type { PermissionResponse } from "src/types/permissions";
 import type { StackDiff } from "src/types/stack";
-import { query } from "./query";
+import { createBackend } from "./backend/AgentBackend";
 import { AsyncQueue } from "./utils/AsyncQueue";
 
 export interface QueryEngineDeps {
@@ -143,9 +143,10 @@ export class QueryEngine {
       ...(this.logger ? { logger: this.logger } : {}),
     };
 
+    const backend = createBackend();
     const loopPromise = (async () => {
       try {
-        for await (const ev of query({
+        for await (const ev of backend.query({
           messages: this.messages,
           ctx,
           provider: this.provider,

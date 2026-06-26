@@ -9,17 +9,8 @@ export interface ToolRun {
 
 export async function runTool(tool: Tool, input: unknown, ctx: LoopContext): Promise<ToolRun> {
   const progress: ToolProgress[] = [];
-  let parsed: unknown = input;
-  try {
-    parsed = tool.inputSchema.parse(input);
-  } catch (err) {
-    return {
-      progress: [{ type: "progress", msg: `validation failed: ${(err as Error).message}` }],
-      output: `validation failed: ${(err as Error).message}`,
-      isError: true,
-    };
-  }
-  const gen = tool.call(parsed, ctx);
+  // `input` is already validated by the caller (toolsNode).
+  const gen = tool.call(input, ctx);
   let output: unknown;
   while (true) {
     const r = await gen.next();

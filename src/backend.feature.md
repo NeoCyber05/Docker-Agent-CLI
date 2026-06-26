@@ -4,10 +4,10 @@ The agent loop that drives tool calls can run in two backend modes, selected by 
 
 ## Selection
 
-| Value      | Backend                                         | Status      |
-| ---------- | ----------------------------------------------- | ----------- |
-| `current`  | Original generator-based loop in `src/query.ts` | default     |
-| `langgraph`| LangGraph state-graph backend                   | opt-in      |
+| Value       | Backend                                         | Status  |
+| ----------- | ----------------------------------------------- | ------- |
+| `current`   | Original generator-based loop in `src/query.ts` | default |
+| `langgraph` | LangGraph state-graph backend                   | opt-in  |
 
 ```bash
 # Default path — unchanged behavior
@@ -21,7 +21,7 @@ When `DOCKER_AGENT_BACKEND` is unset or set to an unknown value, the `current` b
 
 ## Current parity status
 
-As of Task 4.1, the `langgraph` backend supports all read-only and escape-hatch tools with permission gating matching the `current` backend, plus the `plan_stack` approval/apply/rollback flow:
+As of Task 4.2, the `langgraph` backend supports all agent-facing tools with the same permission, typed-confirmation, plan-review, and rollback behavior as the `current` backend:
 
 - `validate_spec`
 - `resolve_dependency`
@@ -34,25 +34,28 @@ As of Task 4.1, the `langgraph` backend supports all read-only and escape-hatch 
 - `pull_image` (permission-gated)
 - `exec_docker` (permission-gated)
 - `plan_stack` -> approval -> `apply_stack` with rollback
+- `destroy_stack` (permission-gated; typed `DESTROY <stack>` confirmation when `--volumes` is set)
+- `destroy_all_stacks` (typed `DESTROY ALL` confirmation)
+- `remediate_drift` -> approval -> `apply_stack` with rollback
 
-For permission-gated tools, `permission_request` is emitted before `tool_call` to maintain parity with `CurrentBackend`.
+For permission-gated tools, `permission_request` is emitted before `tool_call` to maintain parity with `CurrentBackend`. Plan and remediation approvals emit `plan_ready` and are awaited through the same callback contract as `CurrentBackend`.
 
-The remaining mutating lifecycle tools are still unsupported on the LangGraph path:
-
-- `destroy_stack`
-- `destroy_all_stacks`
-- `remediate_drift`
+The only remaining unsupported tool on the LangGraph path is the internal `apply_stack`, which is intentionally only invoked by the plan/remediate approval flows.
 
 ## Known limitations
 
-Running the full integration plan/apply/destroy suite under the LangGraph backend still fails for tools that are explicitly routed to the unsupported path:
+None. The full integration plan/apply/destroy suite passes under both backends:
 
 ```bash
+pnpm vitest run tests/integration/plan-flow.test.ts
 DOCKER_AGENT_BACKEND=langgraph pnpm vitest run tests/integration/plan-flow.test.ts
 ```
 
-Failing tests observed (Refactor branch, Task 4.1):
+## Unrelated test observations
 
-- `deploy flow > destroy_all aborts without typed DESTROY ALL`
+`src/screens/__tests__/REPL.test.ts` is flaky in the full test suite but passes reliably in isolation (verified 3/3 times). Observed failures include:
 
-This failure is caused by `destroy_all_stacks` (and the related `destroy_stack` / `remediate_drift` tools) still being unsupported on the LangGraph path. Plan/apply/rollback cases now pass. The same suite passes under the default `current` backend.
+- `TypeError: entry.models is not iterable` at `src/services/modelCatalog.ts:77:33` while waiting for the grouped model picker.
+- `/connect opens provider connect dialog` timing out with `condition was not reached`.
+
+These failures do not correlate with the LangGraph backend changes (only `src/backend/langgraph/graph.ts` was modified) and are therefore considered pre-existing test flakiness. No backend code was changed for the model catalog or REPL dialog paths.

@@ -279,8 +279,8 @@ describe("toolsNode negative paths", () => {
     expect(second.map((e) => e.type)).toContain("tool_result");
   });
 
-  test("mutating tool outside allowlist emits no tool_call or tool_result", async () => {
-    const events = await runBackend(tmp, "destroy_stack", { stackName: "test" });
+  test("internal apply_stack tool emits no tool_call or tool_result", async () => {
+    const events = await runBackend(tmp, "apply_stack", { stackName: "test" });
     const types = events.map((e) => e.type);
     expect(types).not.toContain("tool_call");
     expect(types).not.toContain("tool_result");

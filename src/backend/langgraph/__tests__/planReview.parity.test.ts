@@ -29,6 +29,13 @@ function planStackEvents(input: object): ProviderEvent[] {
   ];
 }
 
+function textDone(): ProviderEvent[] {
+  return [
+    { type: "text_delta", text: "done" },
+    { type: "message_stop", stopReason: "end_turn" },
+  ];
+}
+
 function makeEngine({
   tmp,
   stateStore,
@@ -112,7 +119,7 @@ describe("LangGraph plan_review parity", () => {
     expect(fs.existsSync(path.join(tmp, "docker-stacks", "nginx.yaml"))).toBe(true);
   });
 
-  test("deny plan -> no apply", async () => {
+  test("deny plan -> no apply and graph ends", async () => {
     const engine = makeEngine({
       tmp,
       stateStore,
@@ -132,11 +139,14 @@ describe("LangGraph plan_review parity", () => {
             },
           ],
         }),
+        textDone(),
       ],
     });
     let planReadySeen = false;
+    const events: string[] = [];
 
     for await (const ev of engine.query("deny plan")) {
+      events.push(ev.type);
       if (ev.type === "plan_ready") {
         planReadySeen = true;
         engine.respondTo(ev.id, { kind: "deny" });
@@ -145,6 +155,7 @@ describe("LangGraph plan_review parity", () => {
 
     expect(planReadySeen).toBe(true);
     expect(composeRunner.forStackCalls).toHaveLength(0);
+    expect(events).not.toContain("text_delta");
   });
 
   test("invalid spec -> plan blocked, no apply", async () => {

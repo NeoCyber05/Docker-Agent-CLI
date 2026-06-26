@@ -68,6 +68,7 @@ export class LangGraphBackend implements AgentBackend {
           allowSet: params.ctx.allowSet,
           pendingToolResults: [],
           progress: [],
+          aborted: false,
         };
         const stream = await graph.stream(initialState, {
           streamMode: "values",

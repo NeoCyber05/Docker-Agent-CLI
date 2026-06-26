@@ -34,6 +34,11 @@ const spec = {
     reducer: (a, b) => [...a, ...b],
     default: () => [],
   }),
+  // set when a user declines a plan/remediation, ending the graph
+  aborted: Annotation<boolean>({
+    reducer: (_a, b) => b,
+    default: () => false,
+  }),
 };
 
 export const AgentState = Object.assign(Annotation.Root(spec), spec);

@@ -209,6 +209,7 @@ export const planReviewNode =
             isError: false,
           } satisfies Message,
         ],
+        aborted: true,
       };
     }
 

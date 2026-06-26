@@ -1,5 +1,4 @@
 import { Annotation } from "@langchain/langgraph";
-import type { ToolProgress } from "src/Tool";
 import type { Message } from "src/types/message";
 
 export interface PendingToolResult {
@@ -26,11 +25,6 @@ const spec = {
   }),
   // tool results produced by toolsNode, drained into messages each loop
   pendingToolResults: Annotation<PendingToolResult[]>({
-    reducer: (a, b) => [...a, ...b],
-    default: () => [],
-  }),
-  // progress lines produced by toolsNode for streaming
-  progress: Annotation<ToolProgress[]>({
     reducer: (a, b) => [...a, ...b],
     default: () => [],
   }),

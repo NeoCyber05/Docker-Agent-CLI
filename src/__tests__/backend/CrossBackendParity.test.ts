@@ -194,5 +194,61 @@ for (const backendName of ["current", "langgraph"] as const) {
       const iterationStarts = events.filter((e) => e.type === "iteration_start");
       expect(iterationStarts.length).toBeLessThanOrEqual(24);
     });
+
+    test("direct destroy all dispatch with matching typed confirm invokes destroy_all_stacks", async () => {
+      const ctx = createTestContext(tmp);
+      ctx.requestTypedConfirm = async () => ({
+        kind: "typed_confirm_value" as const,
+        value: "DESTROY ALL",
+      });
+      const events = await runBackend({
+        messages: [{ role: "user", content: "destroy all stacks" }],
+        ctx,
+        provider: fakeProvider([]),
+      });
+      const toolResult = events.find(
+        (e): e is LoopEvent & { type: "tool_result" } => e.type === "tool_result",
+      );
+      expect(toolResult).toBeDefined();
+      if (!toolResult) throw new Error("expected tool_result event");
+      expect(toolResult.name).toBe("destroy_all_stacks");
+      expect(Array.isArray((toolResult.output as { destroyed: unknown[] }).destroyed)).toBe(true);
+    });
+
+    test("direct destroy all dispatch with mismatched typed confirm aborts", async () => {
+      const ctx = createTestContext(tmp);
+      const events = await runBackend({
+        messages: [{ role: "user", content: "destroy all stacks" }],
+        ctx,
+        provider: fakeProvider([]),
+      });
+      const types = events.map((e) => e.type);
+      expect(types).not.toContain("tool_call");
+      expect(types).not.toContain("tool_result");
+      expect(types).toContain("assistant_text");
+      expect(events.some((e) => e.type === "assistant_text" && e.delta.includes("aborted"))).toBe(
+        true,
+      );
+    });
+
+    test("direct destroy stack dispatch with volumes invokes destroy_stack", async () => {
+      const ctx = createTestContext(tmp);
+      ctx.requestTypedConfirm = async () => ({
+        kind: "typed_confirm_value" as const,
+        value: "DESTROY webapp",
+      });
+      const events = await runBackend({
+        messages: [{ role: "user", content: "Destroy stack webapp with volumes" }],
+        ctx,
+        provider: fakeProvider([]),
+      });
+      const toolResult = events.find(
+        (e): e is LoopEvent & { type: "tool_result" } => e.type === "tool_result",
+      );
+      expect(toolResult).toBeDefined();
+      if (!toolResult) throw new Error("expected tool_result event");
+      expect(toolResult.name).toBe("destroy_stack");
+      expect((toolResult.output as { ok: boolean }).ok).toBe(true);
+    });
   }, 20_000);
 }

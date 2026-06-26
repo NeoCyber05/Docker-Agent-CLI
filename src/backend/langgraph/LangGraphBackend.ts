@@ -1,11 +1,36 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { Tool } from "src/Tool";
 import { loadUserConfig } from "src/config";
+import type { LoopContext } from "src/loopContext";
+import { isDestroyAllPrompt, parseDirectDestroyStack } from "src/slashDispatch";
+import { destroyAllStacks } from "src/tools/destroyAllStacks";
+import { destroyStack } from "src/tools/destroyStack";
 import type { LoopEvent } from "src/types/events";
 import { AsyncQueue } from "src/utils/AsyncQueue";
 import { PolicyEngine } from "../../policy/PolicyEngine";
 import type { AgentBackend, BackendQueryParams } from "../AgentBackend";
 import type { AgentState } from "./state";
+
+async function* runTool<TIn, TOut>(
+  tool: Tool<TIn, TOut>,
+  input: TIn,
+  ctx: LoopContext,
+): AsyncGenerator<LoopEvent, TOut> {
+  yield { type: "tool_call", name: tool.name, input };
+  const gen = tool.call(input, ctx);
+  let result: TOut;
+  while (true) {
+    const r = await gen.next();
+    if (r.done) {
+      result = r.value;
+      break;
+    }
+    yield { type: "tool_progress", msg: r.value.msg };
+  }
+  yield { type: "tool_result", name: tool.name, output: result };
+  return result;
+}
 
 export class LangGraphBackend implements AgentBackend {
   readonly name = "langgraph" as const;
@@ -54,6 +79,66 @@ export class LangGraphBackend implements AgentBackend {
           projectPolicyPath,
         });
 
+        const messages = [...params.messages];
+        const lastUser = [...messages]
+          .reverse()
+          .find((m): m is { role: "user"; content: string } => m.role === "user");
+
+        if (lastUser && isDestroyAllPrompt(lastUser.content)) {
+          const typed = await params.ctx.requestTypedConfirm(
+            "DESTROY ALL",
+            `This will destroy ${params.ctx.stateStore.list().length} stacks.`,
+          );
+          if (typed.kind !== "typed_confirm_value" || typed.value !== "DESTROY ALL") {
+            queue.push({
+              type: "assistant_text",
+              delta: "destroy_all aborted: typed confirmation did not match",
+            });
+            return;
+          }
+          const parsed = destroyAllStacks.inputSchema.parse({});
+          for await (const ev of runTool(destroyAllStacks, parsed, params.ctx)) {
+            queue.push(ev);
+          }
+          return;
+        }
+
+        const directDestroy = lastUser ? parseDirectDestroyStack(lastUser.content) : null;
+        if (directDestroy) {
+          const input = destroyStack.inputSchema.parse({
+            stackName: directDestroy.stackName,
+            ...(directDestroy.removeVolumes ? { removeVolumes: true } : {}),
+          });
+          if (directDestroy.removeVolumes) {
+            const phrase = `DESTROY ${directDestroy.stackName}`;
+            const typed = await params.ctx.requestTypedConfirm(
+              phrase,
+              `This will destroy the stack ${directDestroy.stackName} and delete all its volumes.`,
+            );
+            if (typed.kind !== "typed_confirm_value" || typed.value !== phrase) {
+              queue.push({
+                type: "assistant_text",
+                delta: "destroy_stack aborted: typed confirmation did not match",
+              });
+              return;
+            }
+          } else if (!params.ctx.allowSet.has("destroy_stack")) {
+            const resp = await params.ctx.requestPermission("destroy_stack", input);
+            if (resp.kind === "deny") {
+              queue.push({
+                type: "assistant_text",
+                delta: "destroy_stack aborted: permission denied",
+              });
+              return;
+            }
+            if (resp.kind === "always_allow_in_session") params.ctx.allowSet.add("destroy_stack");
+          }
+          for await (const ev of runTool(destroyStack, input, params.ctx)) {
+            queue.push(ev);
+          }
+          return;
+        }
+
         const { buildGraph } = await import("./graph");
         const graph = buildGraph({
           provider: params.provider,
@@ -67,7 +152,6 @@ export class LangGraphBackend implements AgentBackend {
           iter: 0,
           allowSet: params.ctx.allowSet,
           pendingToolResults: [],
-          progress: [],
           aborted: false,
         };
         const stream = await graph.stream(initialState, {

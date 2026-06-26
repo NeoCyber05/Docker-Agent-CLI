@@ -2,12 +2,12 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { CurrentBackend } from "src/backend/CurrentBackend";
-import type { LoopEvent } from "src/types/events";
 import type { ProviderEvent } from "src/services/api/types";
 import { StateStore } from "src/state/StateStore";
+import type { LoopEvent } from "src/types/events";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { MockComposeRunner } from "../../../tests/mocks/mockComposeRunner";
 import { MockDockerEngine } from "../../../tests/mocks/mockDockerEngine";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 function fakeProvider(calls: ProviderEvent[][]) {
   let callIdx = 0;

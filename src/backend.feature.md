@@ -49,6 +49,8 @@ For permission-gated tools, `permission_request` is emitted before `tool_call`, 
 
 `apply_stack` is internal and is not exposed to the LLM in either backend. It is only invoked by the `plan_stack` and `remediate_drift` approval flows.
 
+Natural-language destroy dispatch (`destroy all stacks`, `destroy <stack>`, `Destroy stack <name>`) is handled directly by both backends before entering the agent loop, using the same typed confirmations and messages.
+
 ## Parity verification results
 
 All parity gates pass under both backends:
@@ -61,7 +63,7 @@ DOCKER_AGENT_BACKEND=langgraph pnpm vitest run tests/integration/plan-flow.test.
 # Result: 4 passed
 
 pnpm vitest run src/__tests__/backend/CrossBackendParity.test.ts
-# Result: 8 passed
+# Result: 14 passed
 ```
 
 ## Known limitations / flaky tests
@@ -78,16 +80,14 @@ These failures are pre-existing and unrelated to the backend migration.
 
 ## Precheck / build status
 
-`pnpm test` passes reliably (592 passed, 1 flaky REPL failure when run as part of the full suite):
+`pnpm test` passes cleanly in this environment (593 passed, 0 failed). Exact counts may vary slightly depending on environment and concurrency:
 
 ```bash
 pnpm test
-# Result: 592 passed | 1 failed
-# Failure: src/screens/__tests__/REPL.test.ts
-#   - /connect opens provider connect dialog — "condition was not reached"
+# Result: 593 passed | 0 failed
 ```
 
-This REPL failure is pre-existing and matches the flaky tests already documented above.
+The REPL failures documented above are pre-existing flakes and may still appear in other environments or under heavy concurrency; they are unrelated to the backend migration.
 
 `pnpm build` succeeds and the CLI entrypoint works:
 

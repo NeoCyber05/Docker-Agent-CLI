@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { AgentState } from "./state";
+import { AgentState } from "../state";
 
 describe("AgentState annotation", () => {
   test("exposes messages, iter, allowSet, pendingToolResults", () => {

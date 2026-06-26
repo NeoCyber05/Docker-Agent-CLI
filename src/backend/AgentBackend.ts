@@ -1,6 +1,6 @@
-import type { LoopEvent } from "src/types/events";
 import type { LoopContext } from "src/loopContext";
 import type { Provider } from "src/services/api/types";
+import type { LoopEvent } from "src/types/events";
 import type { Message } from "src/types/message";
 import { CurrentBackend } from "./CurrentBackend";
 
@@ -16,14 +16,10 @@ export interface AgentBackend {
   query(params: BackendQueryParams): AsyncGenerator<LoopEvent, void>;
 }
 
-export function createBackend(): AgentBackend {
+export async function createBackend(): Promise<AgentBackend> {
   const flag = process.env.DOCKER_AGENT_BACKEND ?? "current";
   if (flag === "langgraph") {
-    // Lazy import to keep startup fast when defaulting to current.
-    // Implementation added in Phase 2.
-    const { LangGraphBackend } = require("./langgraph/LangGraphBackend") as {
-      LangGraphBackend: new () => AgentBackend;
-    };
+    const { LangGraphBackend } = await import("./langgraph/LangGraphBackend");
     return new LangGraphBackend();
   }
   return new CurrentBackend();

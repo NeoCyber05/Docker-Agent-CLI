@@ -7,11 +7,7 @@ export interface ToolRun {
   isError: boolean;
 }
 
-export async function runTool(
-  tool: Tool,
-  input: unknown,
-  ctx: LoopContext,
-): Promise<ToolRun> {
+export async function runTool(tool: Tool, input: unknown, ctx: LoopContext): Promise<ToolRun> {
   const progress: ToolProgress[] = [];
   let parsed: unknown = input;
   try {

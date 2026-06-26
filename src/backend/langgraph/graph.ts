@@ -1,5 +1,5 @@
 import { END, StateGraph } from "@langchain/langgraph";
-import { type AgentNodeDeps, agentNode } from "./nodes/agentNode";
+import { type AgentNodeDeps, MAX_ITERATIONS, agentNode } from "./nodes/agentNode";
 import { type ToolsNodeDeps, toolsNode } from "./nodes/toolsNode";
 import { AgentState } from "./state";
 
@@ -28,7 +28,7 @@ export function buildGraph(deps: GraphDeps) {
         Array.isArray(last.content) &&
         (last.content as Array<{ type: string }>).some((b) => b.type === "tool_use");
       if (!hasToolUse) return END;
-      if (state.iter >= 24) return END;
+      if (state.iter >= MAX_ITERATIONS) return END;
       return "tools";
     })
     .addEdge("tools", "agent");

@@ -143,9 +143,10 @@ export class QueryEngine {
       ...(this.logger ? { logger: this.logger } : {}),
     };
 
-    const backend = createBackend();
+    const backendPromise = createBackend();
     const loopPromise = (async () => {
       try {
+        const backend = await backendPromise;
         for await (const ev of backend.query({
           messages: this.messages,
           ctx,

@@ -4,7 +4,7 @@ import type { LoopEvent } from "src/types/events";
 import { driveProvider } from "../adapters/providerAdapter";
 import type { AgentState } from "../state";
 
-const MAX_ITERATIONS = 24;
+export const MAX_ITERATIONS = 24;
 
 export interface AgentNodeDeps {
   provider: Provider;

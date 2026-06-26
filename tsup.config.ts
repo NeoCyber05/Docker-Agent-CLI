@@ -6,6 +6,7 @@ export default defineConfig({
   target: "node20",
   outDir: "dist",
   bundle: true,
+  external: ["@langchain/core", "@langchain/langgraph"],
   clean: true,
   splitting: false,
   sourcemap: true,

@@ -1,8 +1,8 @@
+import { buildSystemPrompt } from "src/context";
 import type { LoopContext } from "src/loopContext";
 import type { Provider, ProviderEvent } from "src/services/api/types";
-import type { Message } from "src/types/message";
 import { getAgentTools } from "src/tools";
-import { buildSystemPrompt } from "src/context";
+import type { Message } from "src/types/message";
 
 export interface ProviderTurn {
   text: string;
@@ -56,32 +56,37 @@ export async function driveProvider(params: {
       if (usage !== undefined) turn.usage = usage;
       return turn;
     }
-    switch ((ev as ProviderEvent).type) {
+    switch (ev.type) {
       case "text_delta":
-        text += (ev as { text: string }).text;
-        params.onEvent({ type: "assistant_text", text: (ev as { text: string }).text });
+        text += ev.text;
+        params.onEvent({ type: "assistant_text", text: ev.text });
         break;
       case "tool_use_start":
-        toolUses.push({ id: (ev as { id: string; name: string }).id, name: (ev as { id: string; name: string }).name, argsPartial: "" });
+        toolUses.push({
+          id: ev.id,
+          name: ev.name,
+          argsPartial: "",
+        });
         break;
       case "tool_use_delta": {
-        const d = ev as { id: string; argsPartialJson: string };
-        const u = toolUses.find((t) => t.id === d.id);
-        if (u) u.argsPartial += d.argsPartialJson;
+        const u = toolUses.find((t) => t.id === ev.id);
+        if (u) u.argsPartial += ev.argsPartialJson;
         break;
       }
       case "tool_use_stop":
         break;
       case "message_stop":
-        stopReason = (ev as { stopReason: ProviderTurn["stopReason"] }).stopReason;
+        stopReason = ev.stopReason;
         break;
       case "usage":
-        usage = { inputTokens: (ev as { inputTokens: number }).inputTokens, outputTokens: (ev as { outputTokens: number }).outputTokens };
+        usage = {
+          inputTokens: ev.inputTokens,
+          outputTokens: ev.outputTokens,
+        };
         params.onEvent({ type: "usage", ...usage });
         break;
       case "error": {
-        const err = (ev as { error: Error }).error;
-        params.onEvent({ type: "error", error: err });
+        params.onEvent({ type: "error", error: ev.error });
         const turn: ProviderTurn = { text, toolUses, stopReason: "end_turn" };
         if (usage !== undefined) turn.usage = usage;
         return turn;

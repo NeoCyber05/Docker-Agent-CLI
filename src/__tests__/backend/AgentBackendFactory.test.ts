@@ -1,27 +1,27 @@
+import { type AgentBackend, createBackend } from "src/backend/AgentBackend";
 import { describe, expect, test } from "vitest";
-import { createBackend, type AgentBackend } from "src/backend/AgentBackend";
 
 describe("createBackend", () => {
-  test("returns CurrentBackend by default", () => {
+  test("returns CurrentBackend by default", async () => {
     const prev = process.env.DOCKER_AGENT_BACKEND;
-    delete process.env.DOCKER_AGENT_BACKEND;
-    const b = createBackend();
+    process.env.DOCKER_AGENT_BACKEND = undefined;
+    const b = await createBackend();
     expect(b.name).toBe("current");
     process.env.DOCKER_AGENT_BACKEND = prev;
   });
 
-  test.skip("returns LangGraphBackend when DOCKER_AGENT_BACKEND=langgraph", () => {
+  test("returns LangGraphBackend when DOCKER_AGENT_BACKEND=langgraph", async () => {
     const prev = process.env.DOCKER_AGENT_BACKEND;
     process.env.DOCKER_AGENT_BACKEND = "langgraph";
-    const b = createBackend();
+    const b = await createBackend();
     expect(b.name).toBe("langgraph");
     process.env.DOCKER_AGENT_BACKEND = prev;
   });
 
-  test("falls back to current on unknown value", () => {
+  test("falls back to current on unknown value", async () => {
     const prev = process.env.DOCKER_AGENT_BACKEND;
     process.env.DOCKER_AGENT_BACKEND = "bogus";
-    const b = createBackend();
+    const b = await createBackend();
     expect(b.name).toBe("current");
     process.env.DOCKER_AGENT_BACKEND = prev;
   });
@@ -30,7 +30,7 @@ describe("createBackend", () => {
 describe("AgentBackend interface typing", () => {
   test("AgentBackend has name and query method", () => {
     const b: AgentBackend = {
-      name: "stub",
+      name: "stub" as unknown as "current",
       query: async function* () {},
     };
     expect(b.name).toBe("stub");

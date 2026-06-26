@@ -21,7 +21,7 @@ When `DOCKER_AGENT_BACKEND` is unset or set to an unknown value, the `current` b
 
 ## Current parity status
 
-As of Task 3.1, the `langgraph` backend supports all read-only and escape-hatch tools with permission gating matching the `current` backend:
+As of Task 4.1, the `langgraph` backend supports all read-only and escape-hatch tools with permission gating matching the `current` backend, plus the `plan_stack` approval/apply/rollback flow:
 
 - `validate_spec`
 - `resolve_dependency`
@@ -33,30 +33,26 @@ As of Task 3.1, the `langgraph` backend supports all read-only and escape-hatch 
 - `get_logs`
 - `pull_image` (permission-gated)
 - `exec_docker` (permission-gated)
+- `plan_stack` -> approval -> `apply_stack` with rollback
 
 For permission-gated tools, `permission_request` is emitted before `tool_call` to maintain parity with `CurrentBackend`.
 
-Mutating lifecycle tools remain unsupported until Phase 4:
+The remaining mutating lifecycle tools are still unsupported on the LangGraph path:
 
-- `plan_stack`
-- `apply_stack`
 - `destroy_stack`
 - `destroy_all_stacks`
 - `remediate_drift`
 
 ## Known limitations
 
-Running the integration plan/apply/destroy suite under the LangGraph backend is expected to fail until Phase 4 implements the `plan_review` node and apply subgraph.
+Running the full integration plan/apply/destroy suite under the LangGraph backend still fails for tools that are explicitly routed to the unsupported path:
 
 ```bash
 DOCKER_AGENT_BACKEND=langgraph pnpm vitest run tests/integration/plan-flow.test.ts
 ```
 
-Failing tests observed (Refactor branch, Task 3.1):
+Failing tests observed (Refactor branch, Task 4.1):
 
-- `deploy flow > nginx: plan -> confirm -> apply via ComposeRunner.forStack`
-- `deploy flow > postgres: auto-generates POSTGRES_PASSWORD secret file`
 - `deploy flow > destroy_all aborts without typed DESTROY ALL`
-- `deploy flow > rollback_started includes runningServices on partial failure`
 
-These failures are caused by `plan_stack`, `apply_stack`, `destroy_stack`, and `destroy_all_stacks` being unsupported on the LangGraph path. The same suite passes under the default `current` backend.
+This failure is caused by `destroy_all_stacks` (and the related `destroy_stack` / `remediate_drift` tools) still being unsupported on the LangGraph path. Plan/apply/rollback cases now pass. The same suite passes under the default `current` backend.

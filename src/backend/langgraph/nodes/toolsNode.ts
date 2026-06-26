@@ -30,7 +30,7 @@ export const toolsNode =
     if (!assistantMsg || assistantMsg.role !== "assistant") return {};
     const toolUses = (
       assistantMsg.content as Array<{ type: string; id?: string; name?: string; input?: unknown }>
-    ).filter((b) => b.type === "tool_use");
+    ).filter((b) => b.type === "tool_use" && b.name !== "plan_stack");
     const results: PendingToolResult[] = [];
     for (const tu of toolUses) {
       if (ctx.abortSignal.aborted) break;

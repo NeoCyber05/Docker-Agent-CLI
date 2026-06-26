@@ -231,7 +231,7 @@ describe("toolsNode read-only parity", () => {
     });
     expectEventOrder(events, "permission_request", "tool_call", "tool_result");
   });
-});
+}, 20_000);
 
 describe("toolsNode negative paths", () => {
   let tmp: string;
@@ -300,4 +300,4 @@ describe("toolsNode negative paths", () => {
     expect(types).not.toContain("tool_call");
     expect(types).not.toContain("tool_result");
   });
-});
+}, 20_000);

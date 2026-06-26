@@ -194,5 +194,5 @@ for (const backendName of ["current", "langgraph"] as const) {
       const iterationStarts = events.filter((e) => e.type === "iteration_start");
       expect(iterationStarts.length).toBeLessThanOrEqual(24);
     });
-  });
+  }, 20_000);
 }

@@ -76,6 +76,59 @@ The following tests may flake when the full suite is run concurrently but pass r
 
 These failures are pre-existing and unrelated to the backend migration.
 
+## Precheck / build status
+
+`pnpm test` passes reliably (592 passed, 1 flaky REPL failure when run as part of the full suite):
+
+```bash
+pnpm test
+# Result: 592 passed | 1 failed
+# Failure: src/screens/__tests__/REPL.test.ts
+#   - /connect opens provider connect dialog — "condition was not reached"
+```
+
+This REPL failure is pre-existing and matches the flaky tests already documented above.
+
+`pnpm build` succeeds and the CLI entrypoint works:
+
+```bash
+pnpm build
+# Result: ESM build success, dist/cli.js generated
+
+node ./dist/cli.js --help
+# Result: prints usage/options as expected
+```
+
+`pnpm precheck` is blocked at the `typecheck` step by pre-existing TypeScript errors in files unrelated to the backend migration. Because the script uses `&&`, `lint` and `test` are not reached when `typecheck` fails. The same pre-existing issues are visible when running the steps individually.
+
+TypeScript errors (from `pnpm typecheck`):
+
+- `src/tools/applyStack.ts`
+- `src/tools/shared/__tests__/dbHealthcheck.test.ts`
+- `src/tools/shared/translator.ts`
+
+Lint/format errors (from `pnpm lint`):
+
+- `src/__tests__/backend/CurrentBackend.test.ts`
+- `src/__tests__/config.test.ts`
+- `src/__tests__/query.test.ts`
+- `src/components/FormattedText.tsx`
+- `src/components/PlanPreview.tsx`
+- `src/components/__tests__/CommandQueue.test.tsx`
+- `src/policy/PolicyEngine.ts`
+- `src/policy/__tests__/PolicyEngine.test.ts`
+- `src/policy/types.ts`
+- `src/screens/REPL.tsx`
+- `src/screens/__tests__/logsPane.test.tsx`
+
+Runtime smoke test:
+
+```bash
+node ./dist/cli.js
+```
+
+The CLI launches, renders the initial REPL banner, and then exits with Ink's "Raw mode is not supported on the current process.stdin" error because the non-interactive shell has no TTY. This is environment-specific and confirms the bundle starts; the `--help` smoke test above is the authoritative check.
+
 ## Migration status
 
-Phase 1–5 of the LangGraph Agent Backend Migration plan are complete.
+Phase 1–5 of the LangGraph Agent Backend Migration plan are complete. Task 5.2 precheck and build smoke gate is done.

@@ -86,7 +86,7 @@ describe("apply_stack", () => {
       "x-docker-agent:\n  name: webapp\n  createdAt: '2026-05-26T00:00:00.000Z'\n  lastApplied: null\n  intent: test\n  provider: test\n  generatedBy: test\n  envFileSources: {}\nservices:\n  web:\n    image: nginx:1.27\n";
 
     // Pre-create the bound runner and configure it to return healthy services for the health gate
-    const yamlPath = path.join(tmpRoot, ".docker-agent/states/webapp.yaml");
+    const yamlPath = path.join(tmpRoot, "docker-stacks/webapp.yaml");
     const preCreated = runner.forStack("webapp", yamlPath);
     preCreated.setRunningServices(["web"]);
     // Reset forStackCalls so the test assertion sees the call from applyStack (index 0)
@@ -178,7 +178,7 @@ describe("apply_stack", () => {
     const runner = new MockComposeRunner(tmpRoot);
     const ctx = makeCtx(tmpRoot, runner);
 
-    const yamlPath = path.join(tmpRoot, ".docker-agent/states/partial.yaml");
+    const yamlPath = path.join(tmpRoot, "docker-stacks/partial.yaml");
     const preCreated = runner.forStack("partial", yamlPath);
     preCreated.up = async function* () {
       yield "Creating service web... done\n";
@@ -203,7 +203,7 @@ describe("apply_stack", () => {
     const ctx = makeCtx(tmpRoot, runner);
     ctx.healthCheckDeadlineMs = 0;
 
-    const yamlPath = path.join(tmpRoot, ".docker-agent/states/mixed.yaml");
+    const yamlPath = path.join(tmpRoot, "docker-stacks/mixed.yaml");
     const preCreated = runner.forStack("mixed", yamlPath);
     preCreated.psRows = [
       { Name: "mixed-web-1", Service: "web", State: "running" },
@@ -228,7 +228,7 @@ describe("apply_stack", () => {
     const yaml =
       "x-docker-agent:\n  name: ok\n  createdAt: '2026-05-26T00:00:00.000Z'\n  lastApplied: null\n  intent: test\n  provider: test\n  generatedBy: test\n  envFileSources: {}\nservices:\n  web:\n    image: nginx:1.27\n";
 
-    const yamlPath = path.join(tmpRoot, ".docker-agent/states/ok.yaml");
+    const yamlPath = path.join(tmpRoot, "docker-stacks/ok.yaml");
     const preCreated = runner.forStack("ok", yamlPath);
     preCreated.setRunningServices(["web"]);
     runner.forStackCalls.length = 0;
@@ -245,7 +245,7 @@ describe("apply_stack", () => {
     const yaml =
       "x-docker-agent:\n  name: webapp\n  createdAt: '2026-05-26T00:00:00.000Z'\n  lastApplied: null\n  intent: test\n  provider: test\n  generatedBy: test\n  envFileSources: {}\nservices:\n  web:\n    image: nginx:1.27\n    ports:\n      - \"8080:80\"\n";
 
-    const yamlPath = path.join(tmpRoot, ".docker-agent/states/webapp.yaml");
+    const yamlPath = path.join(tmpRoot, "docker-stacks/webapp.yaml");
     const preCreated = runner.forStack("webapp", yamlPath);
     preCreated.setRunningServices(["web"]);
     runner.forStackCalls.length = 0;
@@ -270,7 +270,7 @@ describe("apply_stack", () => {
     const yaml =
       "x-docker-agent:\n  name: webapp\n  createdAt: '2026-05-26T00:00:00.000Z'\n  lastApplied: null\n  intent: test\n  provider: test\n  generatedBy: test\n  envFileSources: {}\nservices:\n  web:\n    image: nginx:1.27\n    ports:\n      - \"8080:80\"\n";
 
-    const yamlPath = path.join(tmpRoot, ".docker-agent/states/webapp.yaml");
+    const yamlPath = path.join(tmpRoot, "docker-stacks/webapp.yaml");
     const preCreated = runner.forStack("webapp", yamlPath);
     preCreated.setRunningServices(["web"]);
     runner.forStackCalls.length = 0;
@@ -295,7 +295,7 @@ describe("apply_stack", () => {
     const yaml =
       "x-docker-agent:\n  name: webapp\n  createdAt: '2026-05-26T00:00:00.000Z'\n  lastApplied: null\n  intent: test\n  provider: test\n  generatedBy: test\n  envFileSources: {}\nservices:\n  web:\n    image: nginx:1.27\n    ports:\n      - \"8080:80\"\n";
 
-    const yamlPath = path.join(tmpRoot, ".docker-agent/states/webapp.yaml");
+    const yamlPath = path.join(tmpRoot, "docker-stacks/webapp.yaml");
     const preCreated = runner.forStack("webapp", yamlPath);
     preCreated.setRunningServices(["web"]);
     runner.forStackCalls.length = 0;

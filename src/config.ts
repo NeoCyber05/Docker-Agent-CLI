@@ -27,11 +27,11 @@ export function projectStateDir(): string {
   return path.join(process.cwd(), ".docker-agent");
 }
 
-/** Subdirectory under `.docker-agent` holding desired-state YAML per stack. */
-export const STACK_STATES_DIR_NAME = "states";
+/** Directory holding desired-state YAML per stack at the project root. */
+export const STACK_STATES_DIR_NAME = "docker-stacks";
 
 export function stackStatesDir(cwd = process.cwd()): string {
-  return path.join(cwd, ".docker-agent", STACK_STATES_DIR_NAME);
+  return path.join(cwd, STACK_STATES_DIR_NAME);
 }
 
 export function stackStateYamlPath(cwd: string, stackName: string): string {

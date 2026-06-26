@@ -25,7 +25,7 @@ describe("get_stack_status logTail redaction", () => {
   });
 
   test("scrubs secret values appearing in logTail", async () => {
-    const dir = path.join(tmpRoot, ".docker-agent", "states");
+    const dir = path.join(tmpRoot, "docker-stacks");
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, "web.yaml"), "services: {}\n");
     store.write("web", {

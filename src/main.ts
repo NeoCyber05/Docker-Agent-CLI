@@ -5,7 +5,7 @@ import { render } from "ink";
 import React from "react";
 import { QueryEngine, type QueryEngineDeps } from "./QueryEngine";
 import { WelcomeBanner } from "./components/WelcomeBanner";
-import { loadUserConfig, projectStateDir, resolveProvider } from "./config";
+import { loadUserConfig, projectStateDir, resolveProvider, stackStatesDir } from "./config";
 import { REPL } from "./screens/REPL";
 import { type ApiKeyStore, createApiKeyStore } from "./secrets/apiKeyStore";
 import { resolveProviderForRequest } from "./services/api";
@@ -106,7 +106,7 @@ async function createDeps(args: ParsedArgs) {
   });
   const model = args.model ?? userConfig.model;
   const cwd = process.cwd();
-  const stateStore = new StateStore(projectStateDir());
+  const stateStore = new StateStore(projectStateDir(), { statesDir: stackStatesDir(cwd) });
   const composeRunner = new ComposeRunner(cwd);
   const dockerEngine = createEngineClient();
   const apiKeyStore = createApiKeyStore();

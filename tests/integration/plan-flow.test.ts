@@ -119,11 +119,11 @@ describe("deploy flow", () => {
     expect(events).toContain("plan_ready");
     expect(composeRunner.forStackCalls[0]).toMatchObject({
       stackName: "nginx",
-      yamlPath: path.join(tmp, ".docker-agent", "states", "nginx.yaml"),
+      yamlPath: path.join(tmp, "docker-stacks", "nginx.yaml"),
     });
     expect(composeRunner.boundFor("nginx").cwd).toBe(tmp);
     expect(composeRunner.boundFor("nginx").upCalls[0]).toEqual({ detach: true });
-    expect(fs.existsSync(path.join(tmp, ".docker-agent", "states", "nginx.yaml"))).toBe(true);
+    expect(fs.existsSync(path.join(tmp, "docker-stacks", "nginx.yaml"))).toBe(true);
   });
 
   test("postgres: auto-generates POSTGRES_PASSWORD secret file", async () => {
@@ -167,7 +167,7 @@ describe("deploy flow", () => {
 
   test("destroy_all aborts without typed DESTROY ALL", async () => {
     seedStack(stateStore, "webapp");
-    const stackPath = path.join(tmp, ".docker-agent", "states", "webapp.yaml");
+    const stackPath = path.join(tmp, "docker-stacks", "webapp.yaml");
     const engine = makeEngine({
       tmp,
       stateStore,

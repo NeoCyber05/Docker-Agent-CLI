@@ -33,3 +33,6 @@ terminals/
 CLAUDE.md
 
 project-policies.yaml
+
+# Docker Agent Desired States (GitOps)
+!docker-stacks/

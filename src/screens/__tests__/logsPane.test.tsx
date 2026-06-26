@@ -103,9 +103,12 @@ describe("REPL /logs pane", () => {
   });
 
   function setupStack(tmp: string): void {
-    const dir = path.join(tmp, ".docker-agent", "states");
+    const dir = path.join(tmp, "docker-stacks");
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, "web.yaml"), "services: {}\n");
+    fs.writeFileSync(
+      path.join(dir, "web.yaml"),
+      "x-docker-agent:\n  name: web\n  createdAt: '2026-05-26T00:00:00.000Z'\n  lastApplied: null\n  intent: test\n  provider: test\n  generatedBy: test\n  envFileSources: {}\nservices: {}\n"
+    );
   }
 
   test("/logs opens a pane, hides the prompt, and renders streamed lines; Esc aborts the follow", async () => {

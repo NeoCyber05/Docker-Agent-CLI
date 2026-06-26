@@ -51,11 +51,11 @@ describe("config resolution", () => {
     expect(projectStateDir()).toBe(path.join(process.cwd(), ".docker-agent"));
   });
 
-  test("stackStatesDir and stackStateYamlPath resolve under .docker-agent/states", () => {
+  test("stackStatesDir and stackStateYamlPath resolve under docker-stacks at project root", () => {
     const cwd = path.join(tmpDir, "project");
-    expect(stackStatesDir(cwd)).toBe(path.join(cwd, ".docker-agent", "states"));
+    expect(stackStatesDir(cwd)).toBe(path.join(cwd, "docker-stacks"));
     expect(stackStateYamlPath(cwd, "webapp")).toBe(
-      path.join(cwd, ".docker-agent", "states", "webapp.yaml"),
+      path.join(cwd, "docker-stacks", "webapp.yaml"),
     );
   });
 

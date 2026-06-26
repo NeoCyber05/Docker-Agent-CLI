@@ -74,7 +74,7 @@ describe("StateStore", () => {
     store.write("doomed", makeDef("doomed"));
     store.remove("doomed");
     expect(store.read("doomed")).toBeNull();
-    const archive = path.join(tmpRoot, STACK_STATES_DIR_NAME, ".archive");
+    const archive = path.join(tmpRoot, "archive");
     expect(fs.readdirSync(archive)).toContain("doomed.yaml");
   });
 

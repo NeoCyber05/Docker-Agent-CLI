@@ -6,127 +6,118 @@ Tài liệu này trình bày kiến trúc tổng thể của dự án **Docker A
 
 ## 1. Sơ đồ Kiến trúc tổng quan (Architecture Overview)
 
-Dưới đây là sơ đồ Mermaid mô tả luồng hoạt động và sự tương tác giữa các lớp (layers) trong hệ thống:
+Sơ đồ dưới đây mô tả kiến trúc tổng thể theo phong cách học thuật, tập trung vào các khái niệm và luồng hoạt động chính thay vì chi tiết triển khai cụ thể.
 
 ```mermaid
-graph TD
-    subgraph UI_Layer["Giao diện Người dùng (User Interface Layer)"]
-        User["Người dùng (Terminal/Shell)"]
-        CLI["CLI Entrypoint (cli.ts / commander)"]
-        REPL["Interactive REPL Loop (REPL.tsx / Ink UI)"]
-        Approval["Hệ thống Phê duyệt Quyền (Permissions API)"]
-    end
-
-    subgraph Agent_Core["Bộ não AI Agent (Agent Core Layer)"]
-        QE["QueryEngine (Quản lý Session và Events)"]
-        ReAct["ReAct Loop (query.ts)"]
-        LLM["LLM Providers (Gemini, OpenAI, Ollama, OpenRouter)"]
-        Prompts["Hệ thống Prompt Templates"]
-    end
-
-    subgraph Tools_Layer["Lớp Công cụ (Agent Tools Layer)"]
+flowchart TD
+    subgraph UI["User Interface Layer"]
         direction TB
-        PlanTool["plan_stack (Lập kế hoạch)"]
-        ApplyTool["apply_stack (Triển khai)"]
-        DestructTool["destroy_stack / destroy_all_stacks"]
-        DriftTool["inspect_drift / remediate_drift"]
-        PreflightTool["validate_spec / resolve_dependency / check_port_conflict"]
-        ReadTool["list_stacks / get_stack_status / get_logs / get_health"]
-        EscapeTool["pull_image / exec_docker"]
-        PolicyTool["PolicyEngine (policies.yaml)"]
+        User["End User<br/>(Natural Language Commands)"]
+        TerminalUI["Interactive Terminal Interface<br/>(REPL-style TUI with preview and confirmation dialogs)"]
     end
 
-    subgraph Docker_Layer["Lớp Tương tác Docker (Docker Services Layer)"]
-        Compose["ComposeRunner (Chạy docker compose CLI)"]
-        Engine["EngineClient (Docker Engine API)"]
-        Registry["RegistryClient và ImageValidator"]
+    subgraph Coordination["Agent Coordination Layer"]
+        direction TB
+        Orchestrator["Agent Orchestrator<br/>(Manages session turns, event flow, and permission enforcement)"]
+        Permission["Human-in-the-Loop Approval Gate<br/>(Explicit user confirmation for destructive or high-impact operations)"]
     end
 
-    subgraph Storage_Layer["Lớp Trạng thái và Lưu trữ (State and Storage Layer)"]
-        State["StateStore (states/, history.json)"]
-        Session["SessionStore (sessions/)"]
-        Keys["API Key Store (OS Keychain / api-keys)"]
-        Secrets["Secrets Manager (secrets/.env)"]
+    subgraph Reasoning["Reasoning and Decision Layer"]
+        direction TB
+        ReAct["ReAct Reasoning Engine<br/>(Iterative Reason → Act → Observe cycle)"]
+        LLM["Large Language Model Integration<br/>(Tool-calling capable models across multiple providers)"]
     end
-    User <-->|"Nhập lệnh và xác nhận"| REPL
-    CLI -->|"Khởi tạo dependencies và REPL"| REPL
-    REPL <-->|"Gửi input và nhận event"| QE
-    QE <-->|"Điều phối luồng ReAct"| ReAct
-    ReAct <-->|"Gửi prompt và nhận tool call"| LLM
-    Prompts -.-> ReAct
-    ReAct -->|"Yêu cầu gọi tool"| QE
-    QE -->|"Kiểm tra quyền an toàn"| Approval
-    Approval -->|"Hỏi ý kiến người dùng - Destructive Tools"| REPL
-    ReAct -->|"Preflight"| PreflightTool
-    ReAct -->|"Lập kế hoạch"| PlanTool
-    ReAct -->|"Hủy stack"| DestructTool
-    ReAct -->|"Kiểm tra drift"| DriftTool
-    ReAct -->|"Đọc trạng thái"| ReadTool
-    ReAct -->|"Thao tác nâng cao"| EscapeTool
-    PlanTool -->|"Sau duyệt plan_ready"| ApplyTool
-    PlanTool --> PolicyTool
-    PlanTool --> Compose
-    ApplyTool --> Compose
-    DestructTool --> Compose
-    DriftTool --> Compose
-    ReadTool --> Compose
 
-    DriftTool --> Engine
-    ReadTool --> Engine
-    EscapeTool --> Engine
-    EscapeTool --> Registry
-    QE <-->|"Lưu và phục hồi phiên chat"| Session
-    QE <-->|"Lấy API key"| Keys
+    subgraph Tools["Tool Execution Layer"]
+        direction TB
+        PlanningTool["Planning Tool<br/>(Synthesizes infrastructure specification and change preview)"]
+        ExecutionTool["Execution Tool<br/>(Applies approved configuration with safety checks)"]
+        InspectionTools["Inspection and Remediation Tools<br/>(Status, logs, drift detection, drift remediation)"]
+        PolicyEngine["Policy Validation Engine<br/>(Enforces organizational constraints on generated configurations)"]
+    end
 
-    PlanTool -.-> Secrets
-    ApplyTool -.-> Secrets
+    subgraph Infra["Infrastructure Interaction Layer"]
+        direction TB
+        ContainerOrchestrator["Container Orchestration Adapter<br/>(Manages multi-service deployments)"]
+        ContainerEngine["Container Runtime Interface<br/>(Direct access to container status, health, and logs)"]
+    end
 
-    DriftTool <-->|"Kiểm tra lệch cấu hình và audit"| State
-    PlanTool <-->|"Kiểm tra lệch cấu hình và audit"| State
-    ApplyTool <-->|"Kiểm tra lệch cấu hình và audit"| State
+    subgraph State["State Management Layer"]
+        direction TB
+        DesiredState["Desired State Repository<br/>(Persisted infrastructure specifications and change history)"]
+        ConversationState["Conversation and Session Persistence<br/>(Enables session resumption and audit trail)"]
+    end
+
+    %% Control Flow
+    User -->|"Natural language request"| TerminalUI
+    TerminalUI <-->|"User messages and system events"| Orchestrator
+
+    Orchestrator -->|"Initiate reasoning turn"| ReAct
+    ReAct <-->|"Prompts and tool calls"| LLM
+
+    ReAct -->|"Tool invocation request"| Orchestrator
+    Orchestrator -->|"Route through approval gate"| Permission
+    Permission -->|"Require confirmation for destructive actions"| TerminalUI
+    TerminalUI -->|"User decision"| Orchestrator
+    Orchestrator -->|"Execute approved tool"| Tools
+
+    %% Key tool flows (conceptual)
+    PlanningTool -->|"Proposed configuration and diff"| Orchestrator
+    Orchestrator -->|"Present plan for approval"| TerminalUI
+    TerminalUI -->|"User approves plan"| Orchestrator
+    Orchestrator -->|"Trigger execution (internal)"| ExecutionTool
+
+    PlanningTool --> PolicyEngine
+    InspectionTools -->|"Read current state"| ContainerOrchestrator & ContainerEngine
+
+    ExecutionTool --> ContainerOrchestrator
+    InspectionTools --> ContainerEngine
+    ExecutionTool -->|"Update after successful deployment"| DesiredState
+
+    Orchestrator <--> ConversationState
+    PlanningTool & ExecutionTool & InspectionTools -->|"Record operations and state changes"| DesiredState
 ```
+
+**Đặc điểm của sơ đồ (dành cho bài báo học thuật):**
+
+- Sử dụng tên khái niệm và vai trò học thuật thay vì tên lớp hay file cụ thể trong mã nguồn.
+- Làm rõ vòng lặp **ReAct** (Reason → Act → Observe) và vai trò của **Human-in-the-Loop Approval**.
+- Phân biệt rõ ràng giữa giai đoạn lập kế hoạch và giai đoạn thực thi.
+- Giữ mức chi tiết phù hợp để đưa trực tiếp vào hình minh họa của bài báo.
 
 
 ---
 
 ## 2. Chi tiết các thành phần chính
 
-### A. Lớp Giao diện Người dùng (User Interface Layer)
-- **`cli.ts` (Entrypoint):** Điểm đầu vào phân tích các tùy chọn dòng lệnh (`--provider`, `--model`, `-y`, `--resume`).
-- **`REPL.tsx`:** Xây dựng trên thư viện **Ink** (React cho terminal) mang lại trải nghiệm CLI phong phú với giao diện tương tác cao, hỗ trợ command palette, hiển thị trạng thái xử lý hàng đợi (queue) và bảng thông tin công cụ trực quan.
-- **Hệ thống phê duyệt quyền:** Đảm bảo an toàn bằng cách yêu cầu người dùng xác nhận rõ ràng trước khi chạy các tác vụ phá hủy (destructive) hoặc thay đổi cấu hình hệ thống (như triển khai hoặc xóa hạ tầng).
+### A. User Interface Layer (Giao diện người dùng)
+- Điểm vào dòng lệnh tiếp nhận tham số cấu hình và khởi tạo giao diện tương tác.
+- Giao diện terminal tương tác hỗ trợ hiển thị kế hoạch, hộp thoại xác nhận, bảng lệnh nhanh và theo dõi tiến trình.
+- Cơ chế phê duyệt bắt buộc đối với các thao tác phá hủy hoặc có tác động lớn đến hạ tầng.
 
-### B. Bộ não AI Agent (Agent Core Layer)
-- **`QueryEngine.ts`:** Lớp quản lý vòng đời phiên chat, trung chuyển dữ liệu giữa UI và ReAct Loop, đồng thời quản lý cơ chế phê duyệt quyền của người dùng (permissions).
-- **`query.ts` (ReAct Loop):** Vận hành mô hình suy luận **ReAct (Reasoning + Acting)**:
-  1. **Reason (Suy luận):** LLM phân tích yêu cầu của người dùng kết hợp với ngữ cảnh hiện tại.
-  2. **Act (Hành động):** LLM quyết định gọi một công cụ (tool call) phù hợp.
-  3. **Observe (Quan sát):** Hệ thống thực thi công cụ và trả kết quả về cho LLM.
-  4. Lặp lại cho đến khi đạt được mục tiêu cuối cùng.
-- **LLM Providers:** Hỗ trợ linh hoạt các mô hình thông qua API chính thức (Gemini 2.0 Flash, GPT-4o-mini) hoặc chạy local thông qua Ollama.
+### B. Agent Coordination and Reasoning Layer (Lớp điều phối và suy luận)
+- Thành phần điều phối quản lý vòng đời phiên làm việc, điều phối luồng sự kiện và thực thi chính sách phê duyệt.
+- Động cơ suy luận ReAct thực hiện chu trình lặp: **Suy luận (Reason)** → **Hành động (Act)** → **Quan sát (Observe)** cho đến khi hoàn thành mục tiêu.
+- Tích hợp với nhiều nhà cung cấp mô hình ngôn ngữ lớn thông qua giao diện thống nhất hỗ trợ gọi công cụ (tool calling).
 
-### C. Lớp Công cụ (Agent Tools Layer)
-Các công cụ chuyên biệt hóa để Agent tương tác với hạ tầng. Registry gồm **14 tool** expose cho LLM (`getAgentTools()`) và **`apply_stack`** chỉ dispatch nội bộ sau khi user duyệt `plan_ready`.
+### C. Tool Execution Layer (Lớp thực thi công cụ)
+Lớp này cung cấp các công cụ chuyên biệt cho tác tử tương tác với hạ tầng. Một số công cụ được mô hình ngôn ngữ gọi trực tiếp, trong khi công cụ triển khai chỉ được kích hoạt nội bộ sau khi người dùng phê duyệt kế hoạch.
 
-- **Preflight (khuyến nghị trước `plan_stack`):** `validate_spec`, `resolve_dependency`, `check_port_conflict`.
-- **Quản lý Vòng đời Stack:** `plan_stack` (sinh YAML qua translator, auto-inject healthcheck DB, qua Policy Engine), `apply_stack` *(nội bộ — health gate 120s + HTTP probe)*, `destroy_stack` / `destroy_all_stacks`.
-- **Giám sát & Khắc phục:** `inspect_drift`, `remediate_drift`, `get_stack_status` (ps + log tail), `get_logs` (snapshot 16 KiB, secrets redacted), `get_health` (CPU/mem/restart/crash-loop qua Engine API).
-- **Cơ chế thoát hiểm (Escape hatches):** `exec_docker` và `pull_image` cho phép chạy các lệnh Docker thuần túy khi cần thiết dưới sự giám sát an toàn.
-- **Policy Engine:** Đánh giá YAML độc lập LLM — global (`~/.docker-agent/policies.yaml`) + project (`project-policies.yaml`).
+- Công cụ tiền kiểm tra (preflight): xác thực đặc tả, giải quyết phụ thuộc, kiểm tra xung đột cổng.
+- Công cụ quản lý vòng đời: công cụ lập kế hoạch (sinh cấu hình và bản xem trước thay đổi), công cụ thực thi (áp dụng sau khi duyệt), công cụ hủy.
+- Công cụ giám sát và khắc phục: kiểm tra lệch cấu hình (drift), khắc phục lệch, truy vấn trạng thái, nhật ký và tình trạng sức khỏe.
+- Công cụ chính sách: đánh giá cấu hình theo quy tắc tổ chức trước khi triển khai.
+- Công cụ dự phòng: cho phép thực thi một số lệnh hạ tầng trực tiếp dưới sự kiểm soát an toàn.
 
-### D. Lớp Tương tác Docker (Docker Services Layer)
-- **`ComposeRunner`:** Đóng gói giao tiếp CLI với `docker compose` để quản lý các nhóm container phức tạp một cách nhất quán.
-- **`EngineClient`:** Kết nối trực tiếp với Docker Engine API để truy xuất thông tin chi tiết về container, networks, volumes và healthchecks mà không cần phụ thuộc hoàn toàn vào compose CLI.
-- **`RegistryClient` / `ImageValidator`:** Kiểm tra tính hợp lệ của Docker image trước khi triển khai để tránh lỗi thời hoặc image không tồn tại.
+### D. Infrastructure Interaction Layer (Lớp tương tác hạ tầng)
+- Bộ điều hợp điều phối container: chịu trách nhiệm triển khai và quản lý các nhóm dịch vụ phức tạp.
+- Giao diện thời gian chạy container: truy vấn trực tiếp trạng thái, thống kê tài nguyên, kiểm tra sức khỏe và nhật ký từ engine.
 
-### E. Lớp Trạng thái & Lưu trữ (State & Storage Layer)
-Duy trì trạng thái của toàn bộ hệ thống dưới thư mục ẩn cục bộ `.docker-agent/`:
-- **`states/`:** Lưu trữ phiên bản Compose YAML mong muốn hiện tại cùng lịch sử (`.archive/`). Project cũ có thể còn `stacks/` — CLI tự đổi tên sang `states/` khi khởi tạo `StateStore` nếu `states/` chưa tồn tại.
-- **`sessions/`:** Lưu trữ toàn bộ lịch sử tin nhắn đã redact secret (`***`) để hỗ trợ `--resume` / `/resume`.
-- **`secrets/`:** Chứa tệp `.env` bảo mật theo pattern `<stack>-<service>.env` (mode `0700`).
-- **`locks/`:** File lock theo stack, tránh ghi đồng thời khi apply/destroy.
-- **`logs/`:** Log có cấu trúc của agent (`StructuredLogger`), không phải log container.
-- **`history.json`:** Audit log (plan, apply, destroy, drift_detected, rollback, remediate).
+### E. State & Persistence Layer (Lớp trạng thái và lưu trữ)
+Hệ thống duy trì hai loại trạng thái chính:
+- Trạng thái mong muốn của hạ tầng (các đặc tả cấu hình đã được phê duyệt) cùng lịch sử thay đổi.
+- Lịch sử phiên hội thoại (đã loại bỏ thông tin nhạy cảm) nhằm hỗ trợ tiếp tục phiên làm việc và tạo dấu vết kiểm toán.
+- Ngoài ra, hệ thống quản lý thông tin xác thực và bí mật theo cách riêng biệt với các hạn chế truy cập phù hợp.
 
 ---
 
@@ -135,34 +126,33 @@ Duy trì trạng thái của toàn bộ hệ thống dưới thư mục ẩn c�
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as Người dùng
-    participant REPL as REPL Interface (Ink UI)
-    participant QE as QueryEngine
-    participant LLM as LLM Provider
-    participant Plan as tool: plan_stack
-    participant Apply as apply_stack (nội bộ)
-    participant Docker as Docker / Compose Service
+    actor User as End User
+    participant UI as User Interface<br/>(Interactive Terminal)
+    participant Coordinator as Agent Orchestrator
+    participant LLM as Large Language Model
+    participant Planner as Planning Tool
+    participant Executor as Execution Tool
+    participant Infra as Infrastructure Layer
     
-    User->>REPL: Nhập "Tạo wordpress app"
-    REPL->>QE: Chuyển chuỗi prompt
-    QE->>LLM: Gửi context & prompt (ReAct Loop bắt đầu)
-    Note over LLM: Suy luận: Cần tạo plan trước
-    LLM-->>QE: Tool Call: plan_stack(name="wordpress", ...)
-    QE->>Plan: Thực thi plan_stack
-    Plan->>Plan: Translator + injectDbHealthchecks + PolicyEngine
-    Plan-->>QE: Trả về YAML phác thảo & bảng Diff
-    QE-->>REPL: plan_ready — hiển thị YAML & Diff
-    REPL->>User: Hiển thị màn hình chờ xác nhận
-    User->>REPL: Nhấn "Approve"
-    REPL->>QE: respondTo(id, Approved)
-    QE->>Apply: Gọi apply_stack nội bộ (LLM không gọi trực tiếp)
-    Apply->>Docker: docker compose up -d
-    Apply->>Docker: Health gate — poll ps (120s)
-    Apply->>Docker: HTTP probe cổng public
-    Docker-->>Apply: Mọi service healthy
-    Apply-->>QE: ok + cập nhật states/wordpress.yaml
-    QE->>LLM: Trả về kết quả triển khai
-    LLM-->>QE: Tin nhắn kết quả cuối cùng
-    QE-->>REPL: Render thông điệp hoàn tất
-    REPL->>User: Hiển thị kết quả thành công!
+    User->>UI: "Deploy a wordpress app"
+    UI->>Coordinator: Submit user request
+    Coordinator->>LLM: Start ReAct reasoning turn
+    Note over LLM: Reason: planning is required first
+    LLM-->>Coordinator: Request to invoke Planning Tool
+    Coordinator->>Planner: Execute planning
+    Planner->>Planner: Validate against policies and generate specification
+    Planner-->>Coordinator: Return proposed configuration + preview diff
+    Coordinator-->>UI: Present plan for user approval
+    UI->>User: Display plan preview and request confirmation
+    User->>UI: Approve the plan
+    UI->>Coordinator: Forward approval
+    Coordinator->>Executor: Dispatch execution (internal, not exposed to LLM)
+    Executor->>Infra: Deploy services via container orchestration
+    Executor->>Infra: Perform health verification (timeout + probes)
+    Infra-->>Executor: All services reported healthy
+    Executor-->>Coordinator: Execution completed successfully
+    Coordinator->>LLM: Provide tool result and continue reasoning
+    LLM-->>Coordinator: Final response message
+    Coordinator-->>UI: Render completion status
+    UI->>User: Deployment finished
 ```

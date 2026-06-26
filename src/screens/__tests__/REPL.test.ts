@@ -607,9 +607,9 @@ describe("REPL slash command direct dispatch", () => {
     apps.push(rendered.app);
     tmpDirs.push(rendered.tmp);
 
-    fs.mkdirSync(path.join(rendered.tmp, "states"), { recursive: true });
+    fs.mkdirSync(path.join(rendered.tmp, "docker-stacks"), { recursive: true });
     fs.writeFileSync(
-      path.join(rendered.tmp, "states", "webapp.yaml"),
+      path.join(rendered.tmp, "docker-stacks", "webapp.yaml"),
       `x-docker-agent:\n  name: webapp\n  createdAt: "2026-05-26T00:00:00Z"\n  lastApplied: null\n  intent: test\n  provider: gemini\n  generatedBy: test\n  envFileSources: {}\nservices:\n  web:\n    image: nginx:1.27-alpine\n    environment:\n      POSTGRES_PASSWORD: hidden\n      PORT: "8080"\n`,
     );
 

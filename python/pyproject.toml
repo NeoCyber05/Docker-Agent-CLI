@@ -16,6 +16,7 @@ dependencies = [
     "google-generativeai>=0.8",
     "ollama>=0.4",
     "keyring>=25.0",
+    "langgraph>=0.2",
 ]
 
 [project.scripts]
@@ -36,6 +37,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/docker_agent"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/docker_agent/prompts" = "docker_agent/prompts"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -108,4 +112,12 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "keyring"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "langgraph.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "langgraph"
 ignore_missing_imports = true

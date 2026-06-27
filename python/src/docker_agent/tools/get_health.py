@@ -58,10 +58,7 @@ def _compute_cpu_percent(raw: ContainerStats) -> float | None:
     )
     percpu = cpu_usage.get("percpu_usage")
     num_cpus_raw = cpu_stats.get("online_cpus")
-    if num_cpus_raw is None:
-        num_cpus = len(percpu) if percpu else 1
-    else:
-        num_cpus = int(num_cpus_raw)
+    num_cpus = (len(percpu) if percpu else 1) if num_cpus_raw is None else int(num_cpus_raw)
     return (cpu_delta / system_delta) * num_cpus * 100
 
 

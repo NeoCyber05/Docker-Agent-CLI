@@ -11,7 +11,6 @@ from typing import Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict
 
-from docker_agent.services.api.types import Provider
 from docker_agent.types.events import LoopEvent
 from docker_agent.types.message import Message
 
@@ -20,7 +19,7 @@ class BackendQueryParams(BaseModel):
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
     messages: list[Message]
     ctx: Any  # LoopContext
-    provider: Provider
+    provider: Any  # Provider protocol — Any so test fakes validate
     model: str | None = None
 
 

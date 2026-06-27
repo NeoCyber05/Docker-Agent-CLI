@@ -5,6 +5,7 @@ Parity: ``src/services/api/types.ts``.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from typing import Any, Protocol, runtime_checkable
 
@@ -80,11 +81,12 @@ class ToolSchema(BaseModel):
 
 
 class CallModelParams(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
     messages: list[Message]
     tools: list[ToolSchema]
     system: str
     model: str | None = None
+    signal: asyncio.Event | None = None
 
 
 @runtime_checkable

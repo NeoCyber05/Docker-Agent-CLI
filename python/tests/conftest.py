@@ -1,1 +1,3 @@
-"""Pytest configuration — empty for now; shared fixtures land in Phase 2."""
+"""Shared pytest fixtures."""
+
+pytest_plugins = ["unit.backend.langgraph.conftest"]

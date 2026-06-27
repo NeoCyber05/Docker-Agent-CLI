@@ -1,11 +1,13 @@
 # Docker Agent CLI
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python](https://img.shields.io/badge/python-%3E%3D3.11-blue.svg)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![LangGraph](https://img.shields.io/badge/LangGraph-AI%20Agent-orange?logo=langchain&logoColor=white)](https://github.com/langchain-ai/langgraph)
+[![Textual](https://img.shields.io/badge/Textual-TUI%20Framework-blueviolet?logo=python&logoColor=white)](https://github.com/Textualize/textual)
+[![Docker](https://img.shields.io/badge/Docker-Infrastructure-blue?logo=docker&logoColor=white)](https://www.docker.com/)
+[![Pydantic](https://img.shields.io/badge/Pydantic-Validation-red?logo=pydantic&logoColor=white)](https://docs.pydantic.dev/)
 
 An advanced, natural-language Command Line Interface (CLI) powered by an LLM agent using the **ReAct** (Reasoning + Acting) pattern to autonomously manage and provision Docker infrastructure.
-
-> **Note:** The CLI is now implemented in Python under [`python/`](python/). The TypeScript `src/` tree has been removed after functional parity was verified.
 
 Instead of writing complex `docker-compose.yaml` files, configuring networks, volumes, and secrets manually, you can simply ask the Docker Agent in plain English (or Vietnamese) to orchestrate it for you.
 
@@ -31,12 +33,12 @@ Before running the Docker Agent CLI, ensure you have:
 
 ```bash
 git clone https://github.com/NeoCyber05/Docker-Agent-CLI.git
-cd Docker-Agent-CLI/python
+cd Docker-Agent-CLI
 uv sync
 uv run docker-agent
 ```
 
-See [`python/README.md`](python/README.md) for development commands and backend configuration.
+See below for development commands and engine configuration.
 
 ---
 
@@ -205,17 +207,11 @@ Chat with the agent in plain language:
 ## Development
 
 ```bash
-npm run dev          # interactive REPL with hot reload
-npm run build        # bundle to dist/cli.js (copies prompts/)
-```
-
-Install globally after building:
-
-```bash
-npm run build
-npm link
-# Now `docker-agent` is available globally
-node dist/cli.js     # or run the built bundle directly
+uv sync                  # Cài đặt môi trường ảo và dependencies
+uv run docker-agent      # Chạy CLI ở chế độ interactive REPL
+uv run pytest            # Chạy toàn bộ tests
+uv run ruff check src    # Kiểm tra cú pháp (linter)
+uv run mypy docker_agent # Kiểm tra kiểu dữ liệu (type checker)
 ```
 
 ---

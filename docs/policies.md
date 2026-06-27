@@ -2,7 +2,7 @@
 
 Docker Agent CLI áp dụng **policy dạng khai báo (YAML)** để kiểm soát stack Docker Compose trước khi deploy. Policy chặn cấu hình không an toàn hoặc không tuân chuẩn **trước** khi chạy `docker compose up`.
 
-Policy được đánh giá bởi `PolicyEngine` khi:
+Policy được đánh giá bởi `policy_engine` khi:
 
 - Agent gọi `plan_stack` (sau khi sinh YAML, trước khi user approve)
 - Agent gọi `remediate_drift` (trước khi apply bản khắc phục)
@@ -62,7 +62,7 @@ Khi cả global và project đều có rule có tham số, project chỉ đượ
 | `healthcheck` | Không tắt `required` nếu global bật; interval/timeout project ≤ global |
 | `untrusted_registry` | `allowedRegistries` project phải là **tập con** của global |
 
-Vi phạm hierarchy → `PolicyEngine` throw lỗi khi khởi tạo (CLI không chạy được với config sai).
+Vi phạm hierarchy → `policy_engine` throw lỗi khi khởi tạo (CLI không chạy được với config sai).
 
 ---
 
@@ -183,13 +183,12 @@ require:
 
 Mỗi vi phạm có dạng:
 
-```typescript
-{
-  service: string;      // tên service, hoặc "*" cho lỗi toàn cục
-  rule: string;         // tên rule
-  message: string;      // mô tả lỗi
-  severity: "deny" | "warn";
-}
+```python
+class PolicyViolation(BaseModel):
+    service: str                 # tên service, hoặc "*" cho lỗi toàn cục
+    rule: str                    # tên rule
+    message: str                 # mô tả lỗi
+    severity: Literal["deny", "warn"]
 ```
 
 ### Rule đặc biệt (không khai báo trong YAML)
@@ -269,7 +268,7 @@ project:
 
 ```mermaid
 flowchart TD
-  A[plan_stack sinh composeYaml] --> B[PolicyEngine.evaluate]
+  A[plan_stack sinh composeYaml] --> B[policy_engine.evaluate]
   B --> C{project_policy_missing?}
   C -->|Yes + deny mode| D[Chặn deploy]
   C -->|No| E[Duyệt từng service]
@@ -283,7 +282,7 @@ flowchart TD
   J --> K[User approve → apply_stack]
 ```
 
-`plan_stack` còn có các guard **không thuộc policy YAML** (port conflict, volume safety, DB port exposure, missing secrets, resource limits, v.v.) — chạy **trước** bước `PolicyEngine.evaluate`. Ngoài ra, `injectDbHealthchecks` tự động thêm healthcheck cho DB (postgres, mysql, mariadb, mongo, redis) và nâng `depends_on` lên `service_healthy` trước khi đánh giá policy. Policy là lớp kiểm soát **sau** khi YAML đã hợp lệ về mặt cấu trúc.
+`plan_stack` còn có các guard **không thuộc policy YAML** (port conflict, volume safety, DB port exposure, missing secrets, resource limits, v.v.) — chạy **trước** bước `policy_engine.evaluate`. Ngoài ra, `injectDbHealthchecks` tự động thêm healthcheck cho DB (postgres, mysql, mariadb, mongo, redis) và nâng `depends_on` lên `service_healthy` trước khi đánh giá policy. Policy là lớp kiểm soát **sau** khi YAML đã hợp lệ về mặt cấu trúc.
 
 ---
 
@@ -311,7 +310,7 @@ Trong `~/.docker-agent/config.json`:
 
 | File | Nội dung |
 |------|----------|
-| `src/policy/PolicyEngine.ts` | Load, merge, validate, evaluate policy |
-| `src/policy/types.ts` | Type definitions |
-| `src/query.ts` | Gọi `evaluate()` trong `plan_stack` và `remediate_drift` |
-| `src/policy/__tests__/PolicyEngine.test.ts` | Test cases cho từng rule |
+| `src/policy/policy_engine.py` | Load, merge, validate, evaluate policy |
+| `src/policy/types.py` | Type definitions |
+| `src/query.py` | Gọi `evaluate()` trong `plan_stack` và `remediate_drift` |
+| `src/policy/__tests__/policy_engine.test.py` | Test cases cho từng rule |

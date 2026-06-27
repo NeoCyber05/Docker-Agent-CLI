@@ -21,7 +21,7 @@ Thư mục này là nơi lưu **trạng thái mong muốn** (desired state) củ
 └── history.json         # Audit log dạng JSONL
 ```
 
-Thư mục được tạo tự động khi `StateStore` hoặc `SessionStore` khởi tạo — thường là lần đầu bạn chạy `docker-agent` trong project.
+Thư mục được tạo tự động khi `state_store` hoặc `session_store` khởi tạo — thường là lần đầu bạn chạy `docker-agent` trong project.
 
 ---
 
@@ -49,7 +49,7 @@ File này là **bản thiết kế Compose mong muốn** hiện tại, kèm meta
 
 Phần `services` tuân theo schema Docker Compose (image, ports, volumes, healthcheck, `deploy.resources`, v.v.).
 
-**Ai đọc/ghi:** `StateStore`, các tool `plan_stack` / `apply_stack` / `destroy_stack`, và slash commands như `/yaml`, `/status`, `/logs`.
+**Ai đọc/ghi:** `state_store`, các tool `plan_stack` / `apply_stack` / `destroy_stack`, và slash commands như `/yaml`, `/status`, `/logs`.
 
 #### `states/.archive/`
 
@@ -94,7 +94,7 @@ Mỗi lượt tương tác trong REPL được lưu sau khi hoàn thành. Cấu 
 
 ### `locks/` — Khóa theo stack
 
-File `<stack-name>.lock` chứa PID process đang giữ lock. `StateStore.acquireLock()` dùng để tránh hai thao tác `apply`/`destroy` đồng thời trên cùng stack.
+File `<stack-name>.lock` chứa PID process đang giữ lock. `state_store.acquireLock()` dùng để tránh hai thao tác `apply`/`destroy` đồng thời trên cùng stack.
 
 Lock **stale** (process không còn sống) được tự động dọn.
 
@@ -229,5 +229,5 @@ flowchart LR
 | `projectStateDir()` | Trả về `<cwd>/.docker-agent` |
 | `stackStatesDir(cwd)` | Trả về `<cwd>/.docker-agent/states` |
 | `stackStateYamlPath(cwd, name)` | Đường dẫn file YAML của một stack |
-| `StateStore` | CRUD states, locks, history, summary cho system prompt |
-| `SessionStore` | Lưu/đọc/resume sessions |
+| `state_store` | CRUD states, locks, history, summary cho system prompt |
+| `session_store` | Lưu/đọc/resume sessions |

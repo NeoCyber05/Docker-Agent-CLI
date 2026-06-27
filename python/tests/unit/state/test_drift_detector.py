@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from docker_agent.services.docker.types import ContainerInspect, EngineClient
+from docker_agent.services.docker.types import ContainerInspect, ContainerSummary, EngineClient
 from docker_agent.state.drift_detector import detect_drift
 from docker_agent.state.state_store import StateStore
 from docker_agent.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
@@ -30,27 +30,33 @@ def _make_store(tmp_path: Path, stack_name: str, spec: ServiceSpec) -> StateStor
     return store
 
 
-class FakeContainerInspect(ContainerInspect):
-    def __init__(
-        self,
-        *,
-        image: str,
-        cmd: list[str] | None,
-        env: list[str],
-        binds: list[str] | None,
-        ports: dict,
-        service: str,
-        status: str,
-    ) -> None:
-        self.Config = type("Config", (), {
-            "Image": image,
-            "Cmd": cmd,
-            "Env": env,
-            "Labels": {"com.docker.compose.service": service},
-        })
-        self.HostConfig = type("HostConfig", (), {"Binds": binds})
-        self.NetworkSettings = type("NetworkSettings", (), {"Ports": ports})
-        self.State = type("State", (), {"Status": status})
+def _fake_container_inspect(
+    *,
+    image: str,
+    cmd: list[str] | None,
+    env: list[str],
+    binds: list[str] | None,
+    ports: dict[str, list[dict[str, str]] | None],
+    service: str,
+    status: str,
+    container_id: str = "abc",
+) -> ContainerInspect:
+    return ContainerInspect.model_validate(
+        {
+            "Id": container_id,
+            "Name": f"/{service}-1",
+            "State": {"Status": status},
+            "Config": {
+                "Image": image,
+                "Cmd": cmd,
+                "Env": env,
+                "Labels": {"com.docker.compose.service": service},
+            },
+            "HostConfig": {"Binds": binds, "PortBindings": {}},
+            "NetworkSettings": {"Ports": ports},
+            "RestartCount": 0,
+        }
+    )
 
 
 class FakeEngineClient(EngineClient):
@@ -59,8 +65,18 @@ class FakeEngineClient(EngineClient):
 
     async def list_containers(
         self, *, all: bool = False, filters: dict | None = None
-    ) -> list[dict]:
-        return [{"Id": f"id-{i}"} for i in range(len(self._containers))]
+    ) -> list[ContainerSummary]:
+        return [
+            ContainerSummary.model_validate(
+                {
+                    "Id": f"id-{i}",
+                    "Names": [f"/svc-{i}"],
+                    "State": "running",
+                    "Labels": {},
+                }
+            )
+            for i in range(len(self._containers))
+        ]
 
     async def inspect(self, container_id: str) -> ContainerInspect:
         idx = int(container_id.split("-")[-1])
@@ -81,7 +97,7 @@ async def test_detect_drift_in_sync(tmp_path: Path) -> None:
     store = _make_store(tmp_path, "web", ServiceSpec(image="nginx:1.27", scale=1))
     engine = FakeEngineClient(
         [
-            FakeContainerInspect(
+            _fake_container_inspect(
                 image="nginx:1.27",
                 cmd=None,
                 env=[],
@@ -101,7 +117,7 @@ async def test_detect_drift_image_changed(tmp_path: Path) -> None:
     store = _make_store(tmp_path, "web", ServiceSpec(image="nginx:1.28"))
     engine = FakeEngineClient(
         [
-            FakeContainerInspect(
+            _fake_container_inspect(
                 image="nginx:1.27",
                 cmd=None,
                 env=[],
@@ -122,7 +138,7 @@ async def test_detect_drift_extra_service(tmp_path: Path) -> None:
     store = _make_store(tmp_path, "web", ServiceSpec(image="nginx:1.27"))
     engine = FakeEngineClient(
         [
-            FakeContainerInspect(
+            _fake_container_inspect(
                 image="nginx:1.27",
                 cmd=None,
                 env=[],

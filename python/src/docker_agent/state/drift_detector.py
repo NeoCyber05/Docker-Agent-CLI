@@ -190,13 +190,11 @@ async def detect_drift(
         all=True,
         filters={"label": [f"com.docker.compose.project={stack_name}"]},
     )
-    inspects = await asyncio.gather(
-        *[engine.inspect(s["Id"]) for s in summaries]
-    )
+    inspects = await asyncio.gather(*[engine.inspect(s.id) for s in summaries])
 
     by_service: dict[str, list[ContainerInspect]] = {}
     for insp in inspects:
-        service = insp.Config.Labels.get("com.docker.compose.service")
+        service = insp.config.labels.get("com.docker.compose.service")
         if not service:
             continue
         by_service.setdefault(service, []).append(insp)
@@ -228,19 +226,19 @@ async def detect_drift(
 
         if containers:
             first = containers[0]
-            actual_env = _env_array_to_map(first.Config.Env or [])
+            actual_env = _env_array_to_map(first.config.env or [])
             actual_snap = _snapshot(
-                image=first.Config.Image,
-                command=first.Config.Cmd,
-                ports=_parse_actual_ports(first.NetworkSettings.Ports or {}),
+                image=first.config.image,
+                command=first.config.cmd,
+                ports=_parse_actual_ports(first.network_settings.ports or {}),
                 env=actual_env,
                 volumes=[
                     _normalize_volume(v, stack_name)
-                    for v in (first.HostConfig.Binds or [])
+                    for v in (first.host_config.binds or [])
                 ],
                 replica_count=len(containers),
                 stack_name=stack_name,
-                state=first.State.Status,
+                state=first.state.status,
             )
 
         if desired_snap is not None and actual_snap is not None:

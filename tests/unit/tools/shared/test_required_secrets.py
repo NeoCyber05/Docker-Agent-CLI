@@ -1,6 +1,6 @@
 """Parity tests for required_secrets — mirrors requiredSecrets.test.ts."""
 
-from src.tools.shared.required_secrets import (
+from docker_agent.tools.shared.required_secrets import (
     GENERIC_WEAK_VALUES,
     find_required_secrets,
     is_weak_secret_value,

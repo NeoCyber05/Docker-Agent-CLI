@@ -7,9 +7,9 @@ from typing import Any
 
 import pytest
 
-from src.query_engine import QueryEngine
-from src.services.api.types import MessageStopEvent, TextDeltaEvent
-from src.types.permissions import Approve, Deny
+from docker_agent.query_engine import QueryEngine
+from docker_agent.services.api.types import MessageStopEvent, TextDeltaEvent
+from docker_agent.types.permissions import Approve, Deny
 from tests.integration.conftest import fake_provider, plan_stack_events
 from tests.mocks.mock_compose_runner import MockComposeRunner
 from tests.mocks.mock_docker_engine import MockDockerEngine
@@ -40,7 +40,7 @@ def text_done() -> list[Any]:
 def plan_review_project(tmp_path: Any):
     (tmp_path / ".docker-agent").mkdir(parents=True)
     (tmp_path / ".docker-agent" / "policies.yaml").write_text("project: {}", encoding="utf-8")
-    from src.state.state_store import StateStore
+    from docker_agent.state.state_store import StateStore
 
     state_store = StateStore(str(tmp_path / ".docker-agent"))
     compose_runner = MockComposeRunner(str(tmp_path))
@@ -162,7 +162,7 @@ async def test_invalid_spec_plan_blocked(plan_review_project) -> None:
 
 @pytest.mark.asyncio
 async def test_apply_failure_rollback_events(plan_review_project) -> None:
-    from src.services.docker.compose_runner import ComposePsRow
+    from docker_agent.services.docker.compose_runner import ComposePsRow
 
     tmp_project, state_store, compose_runner = plan_review_project
 

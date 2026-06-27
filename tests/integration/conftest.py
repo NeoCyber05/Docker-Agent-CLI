@@ -9,14 +9,14 @@ from typing import Any
 
 import pytest
 
-from src.query_engine import QueryEngine
-from src.services.api.types import (
+from docker_agent.query_engine import QueryEngine
+from docker_agent.services.api.types import (
     MessageStopEvent,
     ToolUseDeltaEvent,
     ToolUseStartEvent,
     ToolUseStopEvent,
 )
-from src.state.state_store import StateStore
+from docker_agent.state.state_store import StateStore
 from tests.mocks.mock_compose_runner import MockComposeRunner
 from tests.mocks.mock_docker_engine import MockDockerEngine
 

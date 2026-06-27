@@ -6,7 +6,7 @@ import pytest
 from mocks.mock_compose_runner import MockComposeRunner
 from mocks.mock_docker_engine import MockDockerEngine
 
-from src.tools.inspect_drift import inspect_drift
+from docker_agent.tools.inspect_drift import inspect_drift
 from tests.unit.tools.conftest import drain_with_progress, make_ctx
 
 

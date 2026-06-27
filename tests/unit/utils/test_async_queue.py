@@ -1,6 +1,6 @@
 import pytest
 
-from src.utils.async_queue import AsyncQueue
+from docker_agent.utils.async_queue import AsyncQueue
 
 
 @pytest.mark.asyncio

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from src.config import (
+from docker_agent.config import (
     UserConfig,
     is_valid_provider,
     load_user_config,
@@ -71,8 +71,23 @@ def test_load_user_config_merges_existing_values(tmp_path: Path) -> None:
     cfg = load_user_config(p)
     assert cfg.provider == "openai"
     assert cfg.model == "gpt-4o"
+    assert cfg.theme == "dark"
     # defaults still filled
     assert cfg.defaults.auto_approve_non_destructive is False
+
+
+def test_load_user_config_accepts_theme(tmp_path: Path) -> None:
+    p = tmp_path / "config.json"
+    p.write_text(json.dumps({"provider": "ollama", "theme": "light"}))
+    cfg = load_user_config(p)
+    assert cfg.theme == "light"
+
+
+def test_load_user_config_ignores_unknown_top_level_keys(tmp_path: Path) -> None:
+    p = tmp_path / "config.json"
+    p.write_text(json.dumps({"provider": "gemini", "legacyField": "keep-working"}))
+    cfg = load_user_config(p)
+    assert cfg.provider == "gemini"
 
 
 def test_load_user_config_ignores_invalid_provider(tmp_path: Path) -> None:

@@ -7,12 +7,12 @@ from typing import Any
 
 import pytest
 
-from src.query_engine import QueryEngine
-from src.services.api.types import CallModelParams, ProviderEvent
-from src.state.session_store import SessionStore
-from src.state.state_store import StateStore
-from src.types.permissions import Approve
-from src.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
+from docker_agent.query_engine import QueryEngine
+from docker_agent.services.api.types import CallModelParams, ProviderEvent
+from docker_agent.state.session_store import SessionStore
+from docker_agent.state.state_store import StateStore
+from docker_agent.types.permissions import Approve
+from docker_agent.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
 from tests.mocks.mock_compose_runner import MockComposeRunner
 from tests.mocks.mock_docker_engine import MockDockerEngine
 

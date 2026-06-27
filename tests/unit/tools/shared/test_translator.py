@@ -7,15 +7,15 @@ from typing import Any
 
 import pytest
 
-from src.state.state_store import StateStore
-from src.tool import ToolContext
-from src.tools.shared.spec_schemas import StackDraft
-from src.tools.shared.translator import (
+from docker_agent.state.state_store import StateStore
+from docker_agent.tool import ToolContext
+from docker_agent.tools.shared.spec_schemas import StackDraft
+from docker_agent.tools.shared.translator import (
     calculate_canonical_hash,
     extract_host_port,
     prepare_stack_draft,
 )
-from src.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
+from docker_agent.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
 
 
 class FakeDockerEngine:
@@ -182,7 +182,7 @@ def test_extract_host_port() -> None:
 
 
 def test_calculate_canonical_hash_is_stable() -> None:
-    from src.tools.shared.translator import PreparedStack
+    from docker_agent.tools.shared.translator import PreparedStack
 
     prepared = PreparedStack(
         stack_name="demo",

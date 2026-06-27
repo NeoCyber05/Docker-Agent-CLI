@@ -5,9 +5,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic import BaseModel
 
-from src.services.api.providers.openrouter import OpenRouterProvider
-from src.services.api.types import CallModelParams, ToolSchema
-from src.types.message import UserMessage
+from docker_agent.services.api.providers.openrouter import OpenRouterProvider
+from docker_agent.services.api.types import CallModelParams, ToolSchema
+from docker_agent.types.message import UserMessage
 from tests.unit.services.api.conftest import drain_events
 
 

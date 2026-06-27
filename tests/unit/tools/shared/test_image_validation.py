@@ -7,9 +7,9 @@ from typing import Any
 
 import pytest
 
-from src.services.docker.image_validator import ImageValidationResult
-from src.tool import ToolContext
-from src.tools.shared.image_validation import validate_images_for_tool
+from docker_agent.services.docker.image_validator import ImageValidationResult
+from docker_agent.tool import ToolContext
+from docker_agent.tools.shared.image_validation import validate_images_for_tool
 
 
 class FakeValidator:

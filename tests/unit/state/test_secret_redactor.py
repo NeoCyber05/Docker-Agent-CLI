@@ -2,7 +2,7 @@
 
 import re
 
-from src.state.secret_redactor import (
+from docker_agent.state.secret_redactor import (
     SECRET_KEY_PATTERN,
     hash_secret,
     redact_env,

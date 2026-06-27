@@ -6,16 +6,16 @@ from unittest.mock import patch
 
 import pytest
 
-from src.config import UserConfig
-from src.query import query
-from src.services.api.types import (
+from docker_agent.config import UserConfig
+from docker_agent.query import query
+from docker_agent.services.api.types import (
     MessageStopEvent,
     TextDeltaEvent,
     ToolUseDeltaEvent,
     ToolUseStartEvent,
     ToolUseStopEvent,
 )
-from src.types.message import UserMessage
+from docker_agent.types.message import UserMessage
 
 
 def _fake_provider(calls: list[list[object]]):
@@ -50,7 +50,7 @@ async def test_query_text_only_turn(make_loop_ctx, tmp_project) -> None:
 
     events = []
     with patch(
-        "src.query.load_user_config",
+        "docker_agent.query.load_user_config",
         return_value=UserConfig(),
     ):
         async for ev in query(
@@ -85,7 +85,7 @@ async def test_query_tool_call_turn(make_loop_ctx, tmp_project) -> None:
 
     events = []
     with patch(
-        "src.query.load_user_config",
+        "docker_agent.query.load_user_config",
         return_value=UserConfig(),
     ):
         async for ev in query(

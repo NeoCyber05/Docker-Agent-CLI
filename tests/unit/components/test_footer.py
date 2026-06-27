@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from textual.app import App, ComposeResult
 
-from src.components.footer import StatusFooter, build_footer_content
+from docker_agent.components.footer import StatusFooter, build_footer_content
 
 
 class FooterApp(App):
@@ -29,3 +29,18 @@ async def test_footer_shows_session_tokens_tool_queue() -> None:
 def test_footer_hides_zero_queue() -> None:
     content = build_footer_content(queue_count=0)
     assert "queue:" not in str(content)
+
+
+def test_footer_shows_model_and_provider() -> None:
+    content = build_footer_content(
+        provider="openai",
+        model="gpt-4o-mini",
+        session_id="sess-1",
+    )
+    rendered = str(content)
+    assert "gpt-4o-mini (openai)" in rendered
+
+
+def test_footer_shows_default_model_when_unset() -> None:
+    content = build_footer_content(provider="ollama", model=None)
+    assert "default (ollama)" in str(content)

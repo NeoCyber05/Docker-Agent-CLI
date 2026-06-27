@@ -10,9 +10,9 @@ from typing import Any
 import httpx
 import pytest
 
-from src.config import stack_state_yaml_path
-from src.services.docker.image_validator import ImageValidationResult
-from src.tools.apply_stack import ApplyStackInput, apply_stack, verify_health
+from docker_agent.config import stack_state_yaml_path
+from docker_agent.services.docker.image_validator import ImageValidationResult
+from docker_agent.tools.apply_stack import ApplyStackInput, apply_stack, verify_health
 from tests.mocks.mock_compose_runner import MockBoundRunner, MockComposeRunner
 from tests.mocks.mock_docker_engine import MockDockerEngine
 from tests.unit.tools.conftest import drain, drain_with_progress, make_ctx
@@ -212,7 +212,7 @@ async def test_apply_stack_returns_running_services_on_partial_up_failure(
 
     pre_created.up = failing_up  # type: ignore[method-assign, assignment]
     pre_created.ps_rows = [pre_created.ps_rows[0]] if pre_created.ps_rows else []
-    from src.services.docker.compose_runner import ComposePsRow
+    from docker_agent.services.docker.compose_runner import ComposePsRow
 
     pre_created.ps_rows = [
         ComposePsRow(name="partial-web-1", service="web", state="running")
@@ -242,7 +242,7 @@ async def test_apply_stack_returns_running_services_when_unhealthy(tmp_project: 
     ctx.health_check_deadline_ms = 0
     yaml_path = stack_state_yaml_path("mixed", str(tmp_project))
     pre_created = runner.for_stack("mixed", yaml_path)
-    from src.services.docker.compose_runner import ComposePsRow
+    from docker_agent.services.docker.compose_runner import ComposePsRow
 
     pre_created.ps_rows = [
         ComposePsRow(name="mixed-web-1", service="web", state="running"),
@@ -409,7 +409,7 @@ async def test_apply_stack_http_probe_inconclusive_does_not_fail(tmp_project: Pa
 async def test_verify_health_reports_running_service() -> None:
     class FakeBound:
         async def ps(self, *, json: bool = False):
-            from src.services.docker.compose_runner import ComposePsRow
+            from docker_agent.services.docker.compose_runner import ComposePsRow
 
             return [ComposePsRow(name="s-web-1", service="web", state="running")]
 
@@ -422,7 +422,7 @@ async def test_verify_health_reports_running_service() -> None:
 async def test_verify_health_fails_fast_on_exited_container() -> None:
     class FakeBound:
         async def ps(self, *, json: bool = False):
-            from src.services.docker.compose_runner import ComposePsRow
+            from docker_agent.services.docker.compose_runner import ComposePsRow
 
             return [
                 ComposePsRow(name="s-web-1", service="web", state="running"),

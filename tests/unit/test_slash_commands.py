@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from src.slash_commands import SLASH_COMMANDS, get_slash_command_suggestions
-from src.slash_router import SLASH_COMMAND_DEFS
+from docker_agent.slash_commands import SLASH_COMMANDS, get_slash_command_suggestions
+from docker_agent.slash_router import SLASH_COMMAND_DEFS
 
 
 def test_slash_commands_matches_defs() -> None:

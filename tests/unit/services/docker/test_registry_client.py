@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.services.docker.registry_client import (
+from docker_agent.services.docker.registry_client import (
     RegistryCheckStatusValues,
     create_registry_client,
 )

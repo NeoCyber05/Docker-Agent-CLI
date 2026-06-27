@@ -3,7 +3,7 @@ from __future__ import annotations
 from textual.app import App, ComposeResult
 from textual.widgets import Static
 
-from src.components.log_pane import LogPane
+from docker_agent.components.log_pane import LogPane
 
 
 class Host(App):

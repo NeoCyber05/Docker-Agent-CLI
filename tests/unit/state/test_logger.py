@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from src.state.logger import LogEntry, StructuredLogger
+from docker_agent.state.logger import LogEntry, StructuredLogger
 
 
 @pytest.fixture

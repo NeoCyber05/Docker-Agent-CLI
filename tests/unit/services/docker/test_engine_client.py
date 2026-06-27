@@ -5,8 +5,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.services.docker.engine_client import _load_docker_py, create_engine_client
-from src.services.docker.types import ImageInspect
+from docker_agent.services.docker.engine_client import _load_docker_py, create_engine_client
+from docker_agent.services.docker.types import ImageInspect
 
 
 class FakeDockerClient:

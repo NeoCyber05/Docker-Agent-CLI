@@ -3,7 +3,7 @@ from __future__ import annotations
 from textual.app import App, ComposeResult
 from textual.widgets import Static
 
-from src.components.queue_panel import QueuePanel
+from docker_agent.components.queue_panel import QueuePanel
 
 
 class Host(App):

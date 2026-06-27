@@ -1,4 +1,4 @@
-from src.engine.state import AgentState
+from docker_agent.engine.state import AgentState
 
 
 def test_agent_state_defaults() -> None:

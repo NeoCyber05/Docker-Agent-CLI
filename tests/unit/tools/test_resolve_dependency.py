@@ -1,7 +1,7 @@
 """Parity tests for resolve_dependency — mirrors resolveDependency.test.ts."""
 
-from src.tools.resolve_dependency import resolve_dependencies
-from src.types.stack import ServiceSpec
+from docker_agent.tools.resolve_dependency import resolve_dependencies
+from docker_agent.types.stack import ServiceSpec
 
 
 def test_orders_dependencies_before_dependents() -> None:

@@ -6,8 +6,8 @@ import pytest
 from mocks.mock_compose_runner import MockComposeRunner
 from mocks.mock_docker_engine import MockDockerEngine
 
-from src.tools.list_stacks import list_stacks
-from src.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
+from docker_agent.tools.list_stacks import list_stacks
+from docker_agent.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
 from tests.unit.tools.conftest import drain_with_progress, make_ctx
 
 

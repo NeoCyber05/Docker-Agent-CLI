@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.engine.nodes.tools_node import ToolsNodeDeps, tools_node
-from src.engine.state import AgentState
-from src.types.message import AssistantBlock, AssistantMessage
+from docker_agent.engine.nodes.tools_node import ToolsNodeDeps, tools_node
+from docker_agent.engine.state import AgentState
+from docker_agent.types.message import AssistantBlock, AssistantMessage
 
 
 def _assistant_with_tool(name: str, input_data: object, tool_id: str = "t1") -> AgentState:
@@ -55,7 +55,7 @@ async def test_tools_node_allowlist_blocks_unsupported_tool(make_loop_ctx) -> No
             yield
 
     with patch(
-        "src.engine.nodes.tools_node.get_agent_tools",
+        "docker_agent.engine.nodes.tools_node.get_agent_tools",
         return_value=[FakeApplyTool()],
     ):
         result = await tools_node(deps, state)

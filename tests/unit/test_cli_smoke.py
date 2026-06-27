@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typer.testing import CliRunner
 
-from src.cli import cli
+from docker_agent.cli import cli
 
 runner = CliRunner()
 

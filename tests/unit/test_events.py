@@ -3,7 +3,7 @@
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from src.types.events import (
+from docker_agent.types.events import (
     AssistantText,
     Error,
     IterationStart,

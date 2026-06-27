@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from src.types.message import (
+from docker_agent.types.message import (
     AssistantBlock,
     AssistantMessage,
     ToolResultMessage,
     UserMessage,
 )
-from src.ui.activity import (
+from docker_agent.ui.activity import (
     ActivityState,
     activity_reducer,
     project_messages_to_activities,

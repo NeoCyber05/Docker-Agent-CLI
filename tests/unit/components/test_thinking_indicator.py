@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from textual.app import App, ComposeResult
 
-from src.components.thinking_indicator import ThinkingIndicator
+from docker_agent.components.thinking_indicator import ThinkingIndicator
 
 
 class ThinkingApp(App):

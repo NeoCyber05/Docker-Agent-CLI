@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from src.state.state_store import HistoryEvent, StateStore
-from src.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
+from docker_agent.state.state_store import HistoryEvent, StateStore
+from docker_agent.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
 
 
 def _make_stack(name: str = "web") -> StackDefinition:

@@ -6,11 +6,11 @@ from typing import Any
 
 import pytest
 
-from src.agent import BackendQueryParams
-from src.engine.langgraph_backend import LangGraphBackend
-from src.types.events import LoopEvent
-from src.types.message import UserMessage
-from src.types.permissions import AlwaysAllowInSession, Deny
+from docker_agent.agent import BackendQueryParams
+from docker_agent.engine.langgraph_backend import LangGraphBackend
+from docker_agent.types.events import LoopEvent
+from docker_agent.types.message import UserMessage
+from docker_agent.types.permissions import AlwaysAllowInSession, Deny
 from tests.parity.conftest import fake_provider, output_field, text_done, tool_use_call
 
 
@@ -49,7 +49,7 @@ async def _run_tool_test(
 ) -> tuple[list[LoopEvent], LoopEvent]:
     from pydantic import TypeAdapter
 
-    from src.types.events import LoopEvent as LoopEventType
+    from docker_agent.types.events import LoopEvent as LoopEventType
 
     events: list[LoopEvent] = []
     ctx = make_context(
@@ -199,7 +199,7 @@ async def test_exec_docker(tmp_project, make_context) -> None:
 async def test_permission_denied_no_tool_events(make_context) -> None:
     from pydantic import TypeAdapter
 
-    from src.types.events import LoopEvent as LoopEventType
+    from docker_agent.types.events import LoopEvent as LoopEventType
 
     events: list[LoopEvent] = []
     ctx = make_context(
@@ -219,7 +219,7 @@ async def test_permission_denied_no_tool_events(make_context) -> None:
 async def test_always_allow_in_session_skips_second_permission(make_context) -> None:
     from pydantic import TypeAdapter
 
-    from src.types.events import LoopEvent as LoopEventType
+    from docker_agent.types.events import LoopEvent as LoopEventType
 
     events: list[LoopEvent] = []
     allow_set: set[str] = set()

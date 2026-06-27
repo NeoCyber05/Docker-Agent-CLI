@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from src.state.state_store import StateStore
-from src.tools.destroy_stack import DestroyStackInput, destroy_stack
-from src.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
+from docker_agent.state.state_store import StateStore
+from docker_agent.tools.destroy_stack import DestroyStackInput, destroy_stack
+from docker_agent.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
 from tests.mocks.mock_compose_runner import MockComposeRunner
 from tests.mocks.mock_docker_engine import MockDockerEngine
 from tests.unit.tools.conftest import drain, make_ctx

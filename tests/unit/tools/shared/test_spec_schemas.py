@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from src.tools.shared.spec_schemas import (
+from docker_agent.tools.shared.spec_schemas import (
     APPROVED_CATALOG_IDS,
     HybridServiceIntent,
     StackDraft,

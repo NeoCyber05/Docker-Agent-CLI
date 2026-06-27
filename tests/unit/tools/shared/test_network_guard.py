@@ -1,7 +1,7 @@
 """Parity tests for network_guard — mirrors src/tools/shared/__tests__/networkGuard.test.ts."""
 
-from src.tools.shared.network_guard import check_network_references
-from src.types.stack import ServiceSpec
+from docker_agent.tools.shared.network_guard import check_network_references
+from docker_agent.types.stack import ServiceSpec
 
 
 def _svc(networks: list[str]) -> ServiceSpec:

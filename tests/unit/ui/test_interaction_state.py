@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.ui.interaction_state import InteractionState, interaction_reducer
+from docker_agent.ui.interaction_state import InteractionState, interaction_reducer
 
 
 def make_state(**overrides: object) -> InteractionState:

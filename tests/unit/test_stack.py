@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from src.types.stack import (
+from docker_agent.types.stack import (
     DockerAgentMeta,
     EnvFileSource,
     EnvSnapshot,

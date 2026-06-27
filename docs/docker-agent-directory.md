@@ -175,7 +175,7 @@ Phiên bản cũ lưu policy project tại:
 
 Hiện tại **khuyến nghị** dùng `project-policies.yaml` ở **root project**. Nếu vẫn còn file legacy, CLI vẫn đọc được nhưng in cảnh báo migration.
 
-Chi tiết policy: xem [policies.md](./policies.md).
+Chi tiết policy: xem [policies.md](./policies.md). Agent tools và session persistence: xem [agent-tools.md](./agent-tools.md).
 
 ---
 

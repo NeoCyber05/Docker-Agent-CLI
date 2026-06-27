@@ -6,9 +6,9 @@ import asyncio
 
 import pytest
 
-from src.services.docker.image_validator import ImageValidationResult
-from src.tool import ToolContext
-from src.tools.pull_image import PullImageInput, pull_image
+from docker_agent.services.docker.image_validator import ImageValidationResult
+from docker_agent.tool import ToolContext
+from docker_agent.tools.pull_image import PullImageInput, pull_image
 from tests.mocks.mock_compose_runner import MockComposeRunner
 from tests.mocks.mock_docker_engine import MockDockerEngine
 from tests.unit.tools.conftest import drain_with_progress

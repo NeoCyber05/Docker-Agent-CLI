@@ -8,14 +8,14 @@ from typing import Any
 
 import pytest
 
-from src.screens.use_interaction_session import InteractionSession
-from src.types.events import (
+from docker_agent.screens.use_interaction_session import InteractionSession
+from docker_agent.types.events import (
     AssistantText,
     PermissionRequest,
     ToolCall,
     ToolResult,
 )
-from src.types.permissions import Approve
+from docker_agent.types.permissions import Approve
 
 
 class MockQueryEngine:

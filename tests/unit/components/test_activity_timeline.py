@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from textual.app import App, ComposeResult
 
-from src.components.activity_timeline import ActivityTimeline, render_activity_timeline
-from src.ui.activity import TextActivity, ToolActivity
+from docker_agent.components.activity_timeline import ActivityTimeline, render_activity_timeline
+from docker_agent.ui.activity import TextActivity, ToolActivity
 
 
 class TimelineApp(App):

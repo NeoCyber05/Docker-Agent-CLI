@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from src.types.permissions import (
+from docker_agent.types.permissions import (
     AlwaysAllowInSession,
     Approve,
     Deny,

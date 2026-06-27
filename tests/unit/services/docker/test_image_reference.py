@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.services.docker.image_reference import parse_image_reference
+from docker_agent.services.docker.image_reference import parse_image_reference
 
 
 def test_simple_docker_hub_image() -> None:

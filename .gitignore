@@ -6,12 +6,12 @@ coverage/
 .env.*
 !.env.example
 .docker-agent/
-.DS_Store
+agent-tools/
+docker_agent.egg-info/
 docs/plans
 claude-code/
 docs/superpowers/
 .cursor
-short_description_plan.md 
 AGENTS.md
 docker_agent_cli_report_template.md
 .claude

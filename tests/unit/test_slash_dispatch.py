@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.slash_dispatch import (
+from docker_agent.slash_dispatch import (
     SlashDispatchContext,
     destroy_stack_prompt,
     dispatch_secrets_list,
@@ -12,8 +12,8 @@ from src.slash_dispatch import (
     is_destroy_all_prompt,
     parse_direct_destroy_stack,
 )
-from src.state.state_store import StateStore
-from src.types.stack import DockerAgentMeta, EnvFileSource, ServiceSpec, StackDefinition
+from docker_agent.state.state_store import StateStore
+from docker_agent.types.stack import DockerAgentMeta, EnvFileSource, ServiceSpec, StackDefinition
 
 
 def make_def(

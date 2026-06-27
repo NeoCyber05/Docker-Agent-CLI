@@ -6,15 +6,15 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.engine.nodes.remediate_drift_node import (
+from docker_agent.engine.nodes.remediate_drift_node import (
     RemediateDriftNodeDeps,
     remediate_drift_node,
 )
-from src.engine.state import AgentState
-from src.policy.policy_engine import PolicyEngine
-from src.tools.remediate_drift import RemediateDriftResult
-from src.types.message import AssistantBlock, AssistantMessage
-from src.types.stack import (
+from docker_agent.engine.state import AgentState
+from docker_agent.policy.policy_engine import PolicyEngine
+from docker_agent.tools.remediate_drift import RemediateDriftResult
+from docker_agent.types.message import AssistantBlock, AssistantMessage
+from docker_agent.types.stack import (
     EnvSnapshot,
     FieldChange,
     ServiceDiff,
@@ -51,13 +51,13 @@ async def test_remediate_drift_not_remediable(make_loop_ctx, tmp_project) -> Non
     )
 
     async def _gen(*_args, **_kwargs):
-        from src.tool import ToolDone, ToolProgress
+        from docker_agent.tool import ToolDone, ToolProgress
 
         yield ToolProgress(msg="checking")
         yield ToolDone(tool_result)
 
     with patch(
-        "src.engine.nodes.remediate_drift_node.remediate_drift.call",
+        "docker_agent.engine.nodes.remediate_drift_node.remediate_drift.call",
         _gen,
     ):
         result = await remediate_drift_node(deps, _remediate_state())
@@ -80,25 +80,25 @@ async def test_remediate_drift_success(make_loop_ctx, tmp_project) -> None:
         remediable=True,
     )
 
-    from src.engine.nodes.apply_with_rollback import ApplyWithRollbackResult
+    from docker_agent.engine.nodes.apply_with_rollback import ApplyWithRollbackResult
 
     async def _gen(*_args, **_kwargs):
-        from src.tool import ToolDone, ToolProgress
+        from docker_agent.tool import ToolDone, ToolProgress
 
         yield ToolProgress(msg="checking")
         yield ToolDone(tool_result)
 
     with (
         patch(
-            "src.engine.nodes.remediate_drift_node.remediate_drift.call",
+            "docker_agent.engine.nodes.remediate_drift_node.remediate_drift.call",
             _gen,
         ),
         patch(
-            "src.engine.nodes.remediate_drift_node.interrupt",
+            "docker_agent.engine.nodes.remediate_drift_node.interrupt",
             return_value={"kind": "approve"},
         ),
         patch(
-            "src.engine.nodes.remediate_drift_node.run_apply_with_rollback",
+            "docker_agent.engine.nodes.remediate_drift_node.run_apply_with_rollback",
             new=AsyncMock(
                 return_value=ApplyWithRollbackResult(ok=True, result_message="Stack applied.")
             ),
@@ -141,25 +141,25 @@ async def test_remediate_drift_orphan_warning(make_loop_ctx, tmp_project) -> Non
         remediable=True,
     )
 
-    from src.engine.nodes.apply_with_rollback import ApplyWithRollbackResult
+    from docker_agent.engine.nodes.apply_with_rollback import ApplyWithRollbackResult
 
     async def _gen(*_args, **_kwargs):
-        from src.tool import ToolDone, ToolProgress
+        from docker_agent.tool import ToolDone, ToolProgress
 
         yield ToolProgress(msg="checking")
         yield ToolDone(tool_result)
 
     with (
         patch(
-            "src.engine.nodes.remediate_drift_node.remediate_drift.call",
+            "docker_agent.engine.nodes.remediate_drift_node.remediate_drift.call",
             _gen,
         ),
         patch(
-            "src.engine.nodes.remediate_drift_node.interrupt",
+            "docker_agent.engine.nodes.remediate_drift_node.interrupt",
             return_value={"kind": "approve"},
         ),
         patch(
-            "src.engine.nodes.remediate_drift_node.run_apply_with_rollback",
+            "docker_agent.engine.nodes.remediate_drift_node.run_apply_with_rollback",
             new=AsyncMock(
                 return_value=ApplyWithRollbackResult(ok=True, result_message="Stack applied.")
             ),

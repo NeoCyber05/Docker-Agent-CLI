@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from src.agent import AgentBackend, BackendQueryParams, create_backend
+from docker_agent.agent import AgentBackend, BackendQueryParams, create_backend
 
 
 def test_returns_langgraph_backend_by_default(monkeypatch: pytest.MonkeyPatch) -> None:

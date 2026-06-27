@@ -1,10 +1,10 @@
 """Parity tests for resource_limits — mirrors src/tools/shared/__tests__/resourceLimits.test.ts."""
 
-from src.tools.shared.resource_limits import (
+from docker_agent.tools.shared.resource_limits import (
     MAX_SERVICES_PER_STACK,
     check_resource_limits,
 )
-from src.types.stack import ServiceSpec
+from docker_agent.types.stack import ServiceSpec
 
 
 def _svc(image: str = "nginx:1.27-alpine") -> ServiceSpec:

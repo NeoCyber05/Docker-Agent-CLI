@@ -9,9 +9,9 @@ from pathlib import Path
 import pytest
 import yaml
 
-from src.services.docker.image_validator import ImageValidationResult
-from src.tools.plan_stack import plan_stack
-from src.tools.shared.spec_schemas import StackDraft
+from docker_agent.services.docker.image_validator import ImageValidationResult
+from docker_agent.tools.plan_stack import plan_stack
+from docker_agent.tools.shared.spec_schemas import StackDraft
 from tests.mocks.mock_docker_engine import MockDockerEngine
 from tests.unit.tools.conftest import drain_with_progress, make_ctx
 

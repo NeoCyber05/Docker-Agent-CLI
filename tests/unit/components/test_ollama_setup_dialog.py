@@ -3,7 +3,7 @@ from __future__ import annotations
 from textual.app import App, ComposeResult
 from textual.widgets import Static
 
-from src.components.ollama_setup_dialog import OllamaSetupDialog
+from docker_agent.components.ollama_setup_dialog import OllamaSetupDialog
 
 
 class Host(App):

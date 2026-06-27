@@ -3,7 +3,7 @@
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from src.types.message import (
+from docker_agent.types.message import (
     AssistantBlock,
     AssistantMessage,
     Message,

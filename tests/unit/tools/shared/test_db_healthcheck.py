@@ -1,7 +1,7 @@
 """Parity tests for db_healthcheck — mirrors src/tools/shared/__tests__/dbHealthcheck.test.ts."""
 
-from src.tools.shared.db_healthcheck import inject_db_healthchecks
-from src.types.stack import HealthcheckSpec, ServiceSpec
+from docker_agent.tools.shared.db_healthcheck import inject_db_healthchecks
+from docker_agent.types.stack import HealthcheckSpec, ServiceSpec
 
 
 def test_injects_healthcheck_to_custom_db_images_when_missing() -> None:

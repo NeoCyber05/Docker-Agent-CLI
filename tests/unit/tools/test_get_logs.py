@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from src.config import stack_states_dir
-from src.tools.get_logs import get_logs
-from src.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
+from docker_agent.config import stack_states_dir
+from docker_agent.tools.get_logs import get_logs
+from docker_agent.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
 from tests.mocks.mock_compose_runner import MockComposeRunner
 from tests.unit.tools.conftest import drain_with_progress, make_ctx
 

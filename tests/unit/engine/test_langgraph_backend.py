@@ -6,17 +6,17 @@ from unittest.mock import patch
 
 import pytest
 
-from src.agent import BackendQueryParams
-from src.config import UserConfig
-from src.engine.langgraph_backend import LangGraphBackend
-from src.services.api.types import (
+from docker_agent.agent import BackendQueryParams
+from docker_agent.config import UserConfig
+from docker_agent.engine.langgraph_backend import LangGraphBackend
+from docker_agent.services.api.types import (
     MessageStopEvent,
     TextDeltaEvent,
     ToolUseDeltaEvent,
     ToolUseStartEvent,
     ToolUseStopEvent,
 )
-from src.types.message import UserMessage
+from docker_agent.types.message import UserMessage
 
 
 def _fake_provider(calls: list[list[object]]):
@@ -58,7 +58,7 @@ async def test_smoke_streams_expected_events(make_loop_ctx, tmp_project) -> None
     backend = LangGraphBackend()
     events = []
     with patch(
-        "src.engine.langgraph_backend.load_user_config",
+        "docker_agent.engine.langgraph_backend.load_user_config",
         return_value=UserConfig(),
     ):
         async for ev in backend.query(

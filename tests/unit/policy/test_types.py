@@ -1,6 +1,6 @@
 """Parity tests for policy types — mirrors src/policy/types.ts."""
 
-from src.policy.types import (
+from docker_agent.policy.types import (
     DenyRule,
     PolicyConfig,
     RequireRule,

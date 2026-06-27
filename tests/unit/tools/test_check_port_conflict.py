@@ -6,9 +6,9 @@ import pytest
 from mocks.mock_compose_runner import MockComposeRunner
 from mocks.mock_docker_engine import MockDockerEngine
 
-from src.services.docker.types import ContainerSummary
-from src.tool import ToolContext
-from src.tools.check_port_conflict import (
+from docker_agent.services.docker.types import ContainerSummary
+from docker_agent.tool import ToolContext
+from docker_agent.tools.check_port_conflict import (
     PublishedPort,
     check_port_conflicts,
     parse_published_ports,
@@ -104,7 +104,7 @@ async def test_reports_draft_and_running_container_conflicts(tmp_project) -> Non
         "existing", "80/tcp", "8080"
     )
 
-    from src.types.stack import ServiceSpec
+    from docker_agent.types.stack import ServiceSpec
 
     result = await check_port_conflicts(
         "app",
@@ -127,7 +127,7 @@ async def test_ignores_bindings_owned_by_stack_being_updated(tmp_project) -> Non
         host_port="8080",
         container_port="80/tcp",
     )
-    from src.types.stack import ServiceSpec
+    from docker_agent.types.stack import ServiceSpec
 
     result = await check_port_conflicts(
         "app",
@@ -140,7 +140,7 @@ async def test_ignores_bindings_owned_by_stack_being_updated(tmp_project) -> Non
 
 @pytest.mark.asyncio
 async def test_tcp_and_udp_on_same_host_port_do_not_conflict(tmp_project) -> None:
-    from src.types.stack import ServiceSpec
+    from docker_agent.types.stack import ServiceSpec
 
     result = await check_port_conflicts(
         "dns",
@@ -165,7 +165,7 @@ async def test_returns_actionable_result_when_docker_engine_unavailable(
         "connect ENOENT //./pipe/docker_engine"
     )
 
-    from src.types.stack import ServiceSpec
+    from docker_agent.types.stack import ServiceSpec
 
     result = await check_port_conflicts(
         "app",

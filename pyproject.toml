@@ -23,10 +23,10 @@ dependencies = [
 ]
 
 [project.scripts]
-docker-agent = "src.cli:main"
+docker-agent = "docker_agent.cli:main"
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.23",
     "pytest-httpx>=0.30",
@@ -39,13 +39,13 @@ requires = ["setuptools>=61.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["src"]
+packages = ["docker_agent"]
 
 [tool.setuptools.package-dir]
-"src" = "src"
+"docker_agent" = "src/docker_agent"
 
 [tool.setuptools.package-data]
-"src" = ["prompts/**/*"]
+"docker_agent" = ["prompts/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -71,7 +71,7 @@ select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
 # C4 = comprehensions
 
 [tool.ruff.lint.isort]
-known-first-party = ["src"]
+known-first-party = ["docker_agent"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -142,10 +142,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = [
-    "src.components",
-    "src.components.*",
-    "src.screens",
-    "src.screens.*",
+    "docker_agent.components",
+    "docker_agent.components.*",
+    "docker_agent.screens",
+    "docker_agent.screens.*",
 ]
 disallow_untyped_defs = false
 

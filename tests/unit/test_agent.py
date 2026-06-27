@@ -1,6 +1,6 @@
 """Agent backend factory smoke tests (full parity in tests/parity/)."""
 
-from src.agent import create_backend
+from docker_agent.agent import create_backend
 
 
 def test_default_backend_is_langgraph(monkeypatch) -> None:

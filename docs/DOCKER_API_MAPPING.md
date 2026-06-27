@@ -3,6 +3,8 @@
 
 Tài liệu này mô tả chi tiết sự tương quan và ánh xạ giữa các **Công cụ của Agent (Tools)**, các hàm Python tương ứng trong mã nguồn, và các lệnh **Docker CLI / Docker Engine API** được thực thi dưới nền tảng của dự án **Docker Agent CLI**.
 
+Tổng quan tool, phê duyệt và session: xem [agent-tools.md](./agent-tools.md). Cấu trúc `.docker-agent/`: xem [docker-agent-directory.md](./docker-agent-directory.md).
+
 ---
 
 ## 1. Tổng quan kiến trúc tương tác Docker

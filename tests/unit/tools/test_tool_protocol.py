@@ -2,8 +2,8 @@
 
 from dataclasses import fields
 
-from src.tool import ToolContext, ToolProgress, find_tool_by_name
-from src.tools import get_agent_tools
+from docker_agent.tool import ToolContext, ToolProgress, find_tool_by_name
+from docker_agent.tools import get_agent_tools
 
 
 def test_tool_progress_defaults() -> None:

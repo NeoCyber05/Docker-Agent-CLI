@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from src.services.docker.types import ContainerInspect, ContainerSummary
-from src.state.state_store import StateStore
-from src.tools.remediate_drift import RemediateDriftInput, remediate_drift
-from src.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
+from docker_agent.services.docker.types import ContainerInspect, ContainerSummary
+from docker_agent.state.state_store import StateStore
+from docker_agent.tools.remediate_drift import RemediateDriftInput, remediate_drift
+from docker_agent.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
 from tests.mocks.mock_compose_runner import MockComposeRunner
 from tests.unit.tools.conftest import drain, make_ctx
 

@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from typer.testing import CliRunner
 
-from src.cli import _RESUME_LATEST, _normalize_resume_argv, cli
+from docker_agent.cli import _RESUME_LATEST, _normalize_resume_argv, cli
 
 runner = CliRunner()
 
@@ -18,8 +18,8 @@ def invoke_and_capture(argv: list[str]) -> dict[str, object]:
         captured["args"] = args
 
     with (
-        patch("src.cli.run_chat_session", fake_run),
-        patch("src.cli._normalize_resume_argv", side_effect=lambda a: a),
+        patch("docker_agent.cli.run_chat_session", fake_run),
+        patch("docker_agent.cli._normalize_resume_argv", side_effect=lambda a: a),
     ):
         result = runner.invoke(cli, argv)
     return {"result": result, "captured": captured}

@@ -2,13 +2,13 @@
 
 from pathlib import Path
 
-from src.state.session_store import (
+from docker_agent.state.session_store import (
     SessionStore,
     format_sessions_list,
     redact_messages,
     session_cwd_mismatch_warning,
 )
-from src.types.message import (
+from docker_agent.types.message import (
     AssistantBlock,
     AssistantMessage,
     Message,

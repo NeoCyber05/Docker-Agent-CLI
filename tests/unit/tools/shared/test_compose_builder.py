@@ -2,13 +2,13 @@
 
 import yaml
 
-from src.tools.shared.compose_builder import (
+from docker_agent.tools.shared.compose_builder import (
     PlanInput,
     build_stack_definition,
     compose_yaml_for_preview,
     stack_to_yaml,
 )
-from src.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
+from docker_agent.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
 
 
 def _previous() -> StackDefinition:

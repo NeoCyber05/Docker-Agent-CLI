@@ -9,10 +9,10 @@ from typing import Any, TypeVar
 
 import pytest
 
-from src.services.docker.compose_runner import ComposeRunner
-from src.services.docker.engine_client import create_engine_client
-from src.state.state_store import StateStore
-from src.tool import ToolContext, ToolDone
+from docker_agent.services.docker.compose_runner import ComposeRunner
+from docker_agent.services.docker.engine_client import create_engine_client
+from docker_agent.state.state_store import StateStore
+from docker_agent.tool import ToolContext, ToolDone
 
 T = TypeVar("T")
 

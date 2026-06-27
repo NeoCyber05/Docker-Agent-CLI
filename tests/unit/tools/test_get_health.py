@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from src.services.docker.types import ContainerStats, ContainerSummary
-from src.tool import ToolContext
-from src.tools.get_health import compute_stats, get_health
+from docker_agent.services.docker.types import ContainerStats, ContainerSummary
+from docker_agent.tool import ToolContext
+from docker_agent.tools.get_health import compute_stats, get_health
 from tests.unit.tools.conftest import drain_with_progress, make_ctx
 
 _MB = 1024 * 1024
@@ -441,7 +441,7 @@ class _SingleContainerEngine:
         return [self.summary]
 
     async def inspect(self, _container_id: str):
-        from src.services.docker.types import ContainerInspect
+        from docker_agent.services.docker.types import ContainerInspect
 
         return ContainerInspect.model_validate(self.inspect_data)
 
@@ -496,7 +496,7 @@ class _DualContainerEngine:
         ]
 
     async def inspect(self, container_id: str):
-        from src.services.docker.types import ContainerInspect
+        from docker_agent.services.docker.types import ContainerInspect
 
         if container_id == "bad":
             raise RuntimeError("container vanished")

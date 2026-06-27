@@ -2,9 +2,9 @@
 
 from pathlib import Path
 
-from src.state.state_store import StateStore
-from src.tools.shared.secret_keys import SecretKeysContext, collect_secret_keys
-from src.types.stack import DockerAgentMeta, EnvFileSource, ServiceSpec, StackDefinition
+from docker_agent.state.state_store import StateStore
+from docker_agent.tools.shared.secret_keys import SecretKeysContext, collect_secret_keys
+from docker_agent.types.stack import DockerAgentMeta, EnvFileSource, ServiceSpec, StackDefinition
 
 
 def test_collect_secret_keys_merges_sources(tmp_path: Path) -> None:

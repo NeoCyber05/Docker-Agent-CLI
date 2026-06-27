@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from src.engine.nodes.agent_node import AgentNodeDeps, agent_node
-from src.engine.state import AgentState
-from src.services.api.types import (
+from docker_agent.engine.nodes.agent_node import AgentNodeDeps, agent_node
+from docker_agent.engine.state import AgentState
+from docker_agent.services.api.types import (
     MessageStopEvent,
     TextDeltaEvent,
     ToolUseDeltaEvent,
@@ -14,7 +14,7 @@ from src.services.api.types import (
     ToolUseStopEvent,
     UsageEvent,
 )
-from src.types.message import UserMessage
+from docker_agent.types.message import UserMessage
 
 
 class FakeProvider:

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from src.engine.graph import GraphDeps, build_graph
-from src.policy.policy_engine import PolicyEngine
+from docker_agent.engine.graph import GraphDeps, build_graph
+from docker_agent.policy.policy_engine import PolicyEngine
 
 
 def test_build_graph_compiles(make_loop_ctx, tmp_project) -> None:

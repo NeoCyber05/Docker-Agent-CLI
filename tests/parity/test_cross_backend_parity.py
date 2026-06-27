@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import pytest
 
-from src.services.api.types import (
+from docker_agent.services.api.types import (
     MessageStopEvent,
     TextDeltaEvent,
     ToolUseDeltaEvent,
     ToolUseStartEvent,
     ToolUseStopEvent,
 )
-from src.types.message import UserMessage
-from src.types.permissions import Deny, TypedConfirmValue
+from docker_agent.types.message import UserMessage
+from docker_agent.types.permissions import Deny, TypedConfirmValue
 from tests.parity.conftest import fake_provider, output_field, text_done, tool_use_call
 
 

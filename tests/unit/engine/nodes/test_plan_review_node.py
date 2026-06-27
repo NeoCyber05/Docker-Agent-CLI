@@ -6,15 +6,15 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.engine.nodes.plan_review_node import (
+from docker_agent.engine.nodes.plan_review_node import (
     PlanReviewNodeDeps,
     plan_review_node,
 )
-from src.engine.state import AgentState
-from src.policy.policy_engine import PolicyEngine
-from src.tools.plan_stack import PlanStackResultBlocked
-from src.tools.validate_spec import SpecIssue
-from src.types.message import AssistantBlock, AssistantMessage
+from docker_agent.engine.state import AgentState
+from docker_agent.policy.policy_engine import PolicyEngine
+from docker_agent.tools.plan_stack import PlanStackResultBlocked
+from docker_agent.tools.validate_spec import SpecIssue
+from docker_agent.types.message import AssistantBlock, AssistantMessage
 
 
 def _plan_state(input_data: dict[str, object]) -> AgentState:
@@ -38,7 +38,7 @@ async def test_plan_review_blocked_invalid_spec(make_loop_ctx, tmp_project) -> N
     )
 
     with patch(
-        "src.engine.nodes.plan_review_node._run_plan_stack",
+        "docker_agent.engine.nodes.plan_review_node._run_plan_stack",
         new=AsyncMock(return_value=blocked),
     ):
         result = await plan_review_node(
@@ -84,8 +84,8 @@ async def test_plan_review_policy_deny(make_loop_ctx, tmp_project) -> None:
     )()
     policy.evaluate = lambda _yaml: [violation]  # type: ignore[method-assign]
 
-    from src.tools.plan_stack import PlanStackResultOk
-    from src.types.stack import StackDiff
+    from docker_agent.tools.plan_stack import PlanStackResultOk
+    from docker_agent.types.stack import StackDiff
 
     ok_plan = PlanStackResultOk(
         compose_yaml="services:\n  web:\n    image: nginx\n    privileged: true\n",
@@ -94,7 +94,7 @@ async def test_plan_review_policy_deny(make_loop_ctx, tmp_project) -> None:
     )
 
     with patch(
-        "src.engine.nodes.plan_review_node._run_plan_stack",
+        "docker_agent.engine.nodes.plan_review_node._run_plan_stack",
         new=AsyncMock(return_value=ok_plan),
     ):
         result = await plan_review_node(
@@ -129,9 +129,9 @@ async def test_plan_review_success_with_apply(make_loop_ctx, tmp_project) -> Non
     policy = PolicyEngine(project_policy_path=str(policy_path))
     deps = PlanReviewNodeDeps(ctx=ctx, policy_engine=policy, emit=lambda _e: None)
 
-    from src.engine.nodes.apply_with_rollback import ApplyWithRollbackResult
-    from src.tools.plan_stack import PlanStackResultOk
-    from src.types.stack import StackDiff
+    from docker_agent.engine.nodes.apply_with_rollback import ApplyWithRollbackResult
+    from docker_agent.tools.plan_stack import PlanStackResultOk
+    from docker_agent.types.stack import StackDiff
 
     ok_plan = PlanStackResultOk(
         compose_yaml="services:\n  web:\n    image: nginx:1.27-alpine\n",
@@ -141,15 +141,15 @@ async def test_plan_review_success_with_apply(make_loop_ctx, tmp_project) -> Non
 
     with (
         patch(
-            "src.engine.nodes.plan_review_node._run_plan_stack",
+            "docker_agent.engine.nodes.plan_review_node._run_plan_stack",
             new=AsyncMock(return_value=ok_plan),
         ),
         patch(
-            "src.engine.nodes.plan_review_node.interrupt",
+            "docker_agent.engine.nodes.plan_review_node.interrupt",
             return_value={"kind": "approve"},
         ),
         patch(
-            "src.engine.nodes.plan_review_node.run_apply_with_rollback",
+            "docker_agent.engine.nodes.plan_review_node.run_apply_with_rollback",
             new=AsyncMock(
                 return_value=ApplyWithRollbackResult(ok=True, result_message="Stack applied.")
             ),

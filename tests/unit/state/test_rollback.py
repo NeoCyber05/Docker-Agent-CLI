@@ -4,13 +4,13 @@ from pathlib import Path
 
 import yaml
 
-from src.state.rollback import (
+from docker_agent.state.rollback import (
     KnownGood,
     capture_known_good,
     plan_rollback,
 )
-from src.state.state_store import StateStore
-from src.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
+from docker_agent.state.state_store import StateStore
+from docker_agent.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
 
 
 def _make_stack(name: str) -> StackDefinition:

@@ -6,14 +6,14 @@ from typing import Any
 
 import pytest
 
-from src.services.api.types import (
+from docker_agent.services.api.types import (
     MessageStopEvent,
     ToolUseDeltaEvent,
     ToolUseStartEvent,
     ToolUseStopEvent,
 )
-from src.types.permissions import Approve, TypedConfirmValue
-from src.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
+from docker_agent.types.permissions import Approve, TypedConfirmValue
+from docker_agent.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
 from tests.integration.conftest import plan_stack_events
 
 
@@ -140,7 +140,7 @@ async def test_destroy_all_aborts_without_typed_destroy_all(
 async def test_rollback_started_includes_running_services_on_partial_failure(
     make_engine, compose_runner
 ) -> None:
-    from src.services.docker.compose_runner import ComposePsRow
+    from docker_agent.services.docker.compose_runner import ComposePsRow
 
     def on_bound(runner: Any) -> None:
         async def failing_up(**_kwargs: object):

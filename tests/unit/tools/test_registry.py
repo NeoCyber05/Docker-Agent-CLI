@@ -1,6 +1,6 @@
 """Parity tests for tool registry — mirrors src/tools.ts."""
 
-from src.tools import get_agent_tools, get_all_tools
+from docker_agent.tools import get_agent_tools, get_all_tools
 
 AGENT_TOOL_NAMES = [
     "validate_spec",

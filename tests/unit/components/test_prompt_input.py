@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from textual.app import App, ComposeResult
 
-from src.components.prompt_input import PromptInput, PromptSubmitted
+from docker_agent.components.prompt_input import PromptInput, PromptSubmitted
 
 
 class PromptApp(App):

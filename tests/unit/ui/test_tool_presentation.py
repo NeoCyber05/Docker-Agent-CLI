@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.ui.tool_presentation import present_tool, sanitize_tool_text
+from docker_agent.ui.tool_presentation import present_tool, sanitize_tool_text
 
 
 @pytest.mark.parametrize(

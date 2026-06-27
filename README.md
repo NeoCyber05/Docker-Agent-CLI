@@ -29,13 +29,72 @@ Before running the Docker Agent CLI, ensure you have:
 
 ---
 
+## Installation
+
+Clone the repo and install dependencies:
+
+```bash
+git clone https://github.com/NeoCyber05/Docker-Agent-CLI.git
+cd Docker-Agent-CLI
+uv sync
+```
+
+### Run from the project (no global install)
+
+```bash
+uv run docker-agent
+```
+
+Or activate the virtualenv first, then use `docker-agent` directly in that shell:
+
+```bash
+# Windows (PowerShell)
+.\.venv\Scripts\Activate.ps1
+
+# macOS / Linux
+source .venv/bin/activate
+
+docker-agent
+```
+
+### Install globally (recommended)
+
+Install the CLI onto your PATH so you can run `docker-agent` from any directory:
+
+```bash
+uv tool install -e .
+```
+
+Open a new terminal, then:
+
+```bash
+docker-agent
+```
+
+To upgrade after pulling changes:
+
+```bash
+uv tool install --force -e .
+```
+
+To remove the global command:
+
+```bash
+uv tool uninstall docker-agent
+```
+
+> **Note:** If you previously installed the old TypeScript CLI via `npm link` or `npm install -g`, remove it first (`npm uninstall -g docker-agent`) so `docker-agent` resolves to the Python CLI.
+
+---
+
 ## Quick Start
 
 ```bash
 git clone https://github.com/NeoCyber05/Docker-Agent-CLI.git
 cd Docker-Agent-CLI
 uv sync
-uv run docker-agent
+uv tool install -e .
+docker-agent
 ```
 
 See below for development commands and engine configuration.
@@ -80,20 +139,7 @@ Save preferences in a JSON file:
 
 ### State Directory Structure
 
-The CLI maintains project-local state in `.docker-agent` under your current working directory:
-
-```text
-.docker-agent/
-├── states/              # Saved YAML definitions of desired stack state
-│   └── .archive/        # Archived configs of destroyed/previous stacks
-├── sessions/            # Persisted conversation transcripts
-│   ├── index.json       # Session index for /sessions and /resume
-│   └── <id>.json        # Individual session records (secrets redacted)
-├── locks/               # Process locks to prevent concurrent mutations
-├── secrets/             # Per-stack .env files (mode 0700)
-├── logs/                # Stack log artifacts
-└── history.json         # Audit log (plan, apply, destroy, drift, rollback)
-```
+Project-local state lives in `.docker-agent/` under your current working directory. See [docs/docker-agent-directory.md](docs/docker-agent-directory.md) for the full layout (`states/`, `sessions/`, `secrets/`, `locks/`, `logs/`, `history.json`), lifecycle, and security notes.
 
 API keys saved via `/connect` are stored separately under `~/.docker-agent/api-keys` (Windows) or the OS keychain/secret service (macOS/Linux). Override the Windows storage path with `DOCKER_AGENT_SECRET_DIR`.
 
@@ -151,34 +197,7 @@ Shortcut commands available inside the interactive shell:
 
 ## Agent Tools
 
-The LLM agent can call these tools during a session:
-
-| Tool | Category | Purpose |
-| :--- | :--- | :--- |
-| `plan_stack` | high-level | Design a stack and show a plan preview |
-| `apply_stack` | high-level | Apply an approved plan (runs after plan confirmation) |
-| `destroy_stack` | high-level | Tear down one stack |
-| `destroy_all_stacks` | high-level | Tear down all stacks (requires `DESTROY ALL`) |
-| `list_stacks` | read-only | List stacks in `.docker-agent/states/` |
-| `get_stack_status` | read-only | Container status for a stack |
-| `get_logs` | read-only | Fetch container logs |
-| `get_health` | read-only | Health-check status |
-| `inspect_drift` | read-only | Compare desired vs running state |
-| `remediate_drift` | high-level | Reconcile drift back to desired state |
-| `pull_image` | escape-hatch | Validate and pre-pull a Docker image |
-| `exec_docker` | escape-hatch | Run read-only `docker` subcommands (`ps`, `inspect`, `logs`, etc.) |
-
-Destructive tools (`apply_stack`, `destroy_stack`, `destroy_all_stacks`) require explicit approval in the REPL. `--yes` auto-approves only non-destructive permissions.
-
-### Session persistence
-
-- Transcripts are saved to `.docker-agent/sessions/<id>.json` after each turn (secrets redacted).
-- Each record stores `createdAt`, `updatedAt`, `cwd`, `provider`, optional `model`, `firstPrompt`, `stackNames`, and the full `messages[]` array.
-- `createdAt` is preserved across turns; only `updatedAt` changes on subsequent saves.
-- `stackNames` is populated from managed stacks in `.docker-agent/states/`.
-- Resume (`--resume` or `/resume`) reloads the transcript and restores the saved model override. Pending permission dialogs are **not** resumed.
-- If the saved `cwd` differs from the current working directory, a warning is shown in the REPL and on stderr.
-- The REPL footer shows the active `session: <id>` for reference.
+The LLM agent invokes tools during a session to plan, deploy, inspect, and tear down stacks. See [docs/agent-tools.md](docs/agent-tools.md) for the tool catalog, approval rules, and session persistence. Related docs are listed in [Documentation](#documentation) below.
 
 ---
 
@@ -213,6 +232,17 @@ uv run pytest            # Chạy toàn bộ tests
 uv run ruff check src    # Kiểm tra cú pháp (linter)
 uv run mypy docker_agent # Kiểm tra kiểu dữ liệu (type checker)
 ```
+
+---
+
+## Documentation
+
+| Doc | Contents |
+| :--- | :--- |
+| [docs/agent-tools.md](docs/agent-tools.md) | Agent tool catalog, approval, session persistence |
+| [docs/DOCKER_API_MAPPING.md](docs/DOCKER_API_MAPPING.md) | Tool → Docker CLI / Engine API mapping |
+| [docs/docker-agent-directory.md](docs/docker-agent-directory.md) | `.docker-agent/` state directory structure |
+| [docs/policies.md](docs/policies.md) | Deploy policy system (YAML) |
 
 ---
 

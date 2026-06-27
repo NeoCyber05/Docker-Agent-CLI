@@ -3,7 +3,7 @@ from __future__ import annotations
 from textual.app import App, ComposeResult
 from textual.widgets import Static
 
-from src.components.provider_connect_dialog import ProviderConnectDialog, ProviderStatus
+from docker_agent.components.provider_connect_dialog import ProviderConnectDialog, ProviderStatus
 
 
 class Host(App):

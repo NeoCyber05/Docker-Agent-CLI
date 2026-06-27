@@ -3,7 +3,7 @@ from __future__ import annotations
 from textual.app import App, ComposeResult
 from textual.widgets import Static
 
-from src.components.secrets_input_dialog import SecretsInputDialog
+from docker_agent.components.secrets_input_dialog import SecretsInputDialog
 
 
 class Host(App):

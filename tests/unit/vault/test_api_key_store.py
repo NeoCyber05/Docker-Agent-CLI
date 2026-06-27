@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.vault.api_key_store import (
+from docker_agent.vault.api_key_store import (
     MemoryApiKeyStore,
     describe_api_key_status,
     resolve_stored_api_key,

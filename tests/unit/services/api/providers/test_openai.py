@@ -7,10 +7,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic import BaseModel
 
-from src.services.api.providers.openai import OpenAIProvider
-from src.services.api.types import CallModelParams, ToolSchema
-from src.types.message import UserMessage
-from src.vault.api_key_store import MemoryApiKeyStore
+from docker_agent.services.api.providers.openai import OpenAIProvider
+from docker_agent.services.api.types import CallModelParams, ToolSchema
+from docker_agent.types.message import UserMessage
+from docker_agent.vault.api_key_store import MemoryApiKeyStore
 from tests.unit.services.api.conftest import drain_events
 
 

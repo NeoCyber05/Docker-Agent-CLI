@@ -7,12 +7,12 @@ from typing import Any
 
 import pytest
 
-from src.agent import BackendQueryParams
-from src.engine.langgraph_backend import LangGraphBackend
-from src.types.events import LoopEvent
-from src.types.message import UserMessage
-from src.types.permissions import Approve, Deny, TypedConfirmValue
-from src.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
+from docker_agent.agent import BackendQueryParams
+from docker_agent.engine.langgraph_backend import LangGraphBackend
+from docker_agent.types.events import LoopEvent
+from docker_agent.types.message import UserMessage
+from docker_agent.types.permissions import Approve, Deny, TypedConfirmValue
+from docker_agent.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
 from tests.mocks.mock_compose_runner import MockComposeRunner
 from tests.parity.conftest import fake_provider, output_field, text_done, tool_use_call
 
@@ -146,7 +146,7 @@ async def test_destroy_stack_without_remove_volumes_permission_denied(make_conte
 
 @pytest.mark.asyncio
 async def test_remediate_drift_approval_apply_succeeds(make_context, tmp_project) -> None:
-    from src.state.state_store import StateStore
+    from docker_agent.state.state_store import StateStore
 
     state_store = StateStore(str(tmp_project))
     compose_runner = MockComposeRunner(str(tmp_project))

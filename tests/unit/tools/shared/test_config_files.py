@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from src.tools.shared.config_files import (
+from docker_agent.tools.shared.config_files import (
     detect_missing_config_files,
     find_invalid_file_binds,
     is_file_like_bind,
@@ -15,7 +15,7 @@ from src.tools.shared.config_files import (
     stage_config_files,
     write_config_files,
 )
-from src.types.stack import ServiceSpec
+from docker_agent.types.stack import ServiceSpec
 
 
 def test_parse_bind_mount_relative() -> None:
@@ -152,7 +152,7 @@ def test_find_invalid_file_binds_ignores_directory_and_named_volumes(cwd: Path) 
 
 
 def test_write_config_files_replaces_directory_with_file(cwd: Path) -> None:
-    from src.tools.shared.config_files import StagedConfigFile
+    from docker_agent.tools.shared.config_files import StagedConfigFile
 
     (cwd / "nginx.conf").mkdir()
     write_config_files(
@@ -164,7 +164,7 @@ def test_write_config_files_replaces_directory_with_file(cwd: Path) -> None:
 
 
 def test_stage_config_files_stages_matching_bind(cwd: Path) -> None:
-    from src.tools.shared.config_files import StagedConfigFile
+    from docker_agent.tools.shared.config_files import StagedConfigFile
 
     nginx = {
         "nginx": ServiceSpec(
@@ -207,7 +207,7 @@ def test_stage_config_files_rejects_file_over_64_kib(cwd: Path) -> None:
 
 
 def test_write_then_restore_removes_newly_created_file(cwd: Path) -> None:
-    from src.tools.shared.config_files import StagedConfigFile
+    from docker_agent.tools.shared.config_files import StagedConfigFile
 
     staged = [StagedConfigFile(path="nginx.conf", content="events {}", bytes=9)]
     snaps = snapshot_config_files(cwd, staged)
@@ -218,7 +218,7 @@ def test_write_then_restore_removes_newly_created_file(cwd: Path) -> None:
 
 
 def test_write_then_restore_brings_back_overwritten_content(cwd: Path) -> None:
-    from src.tools.shared.config_files import StagedConfigFile
+    from docker_agent.tools.shared.config_files import StagedConfigFile
 
     (cwd / "nginx.conf").write_text("ORIGINAL", encoding="utf-8")
     staged = [StagedConfigFile(path="nginx.conf", content="NEW", bytes=3)]

@@ -3,8 +3,8 @@ from __future__ import annotations
 from textual.app import App, ComposeResult
 from textual.widgets import Static
 
-from src.commands.registry import Command
-from src.components.command_palette import CommandPalette
+from docker_agent.commands.registry import Command
+from docker_agent.components.command_palette import CommandPalette
 
 
 class Host(App):

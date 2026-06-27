@@ -12,19 +12,19 @@ from typing import Any
 
 import pytest
 
-from src.agent import BackendQueryParams, create_backend
-from src.loop_context import PlanReadyPayload
-from src.services.api.types import (
+from docker_agent.agent import BackendQueryParams, create_backend
+from docker_agent.loop_context import PlanReadyPayload
+from docker_agent.services.api.types import (
     MessageStopEvent,
     TextDeltaEvent,
     ToolUseDeltaEvent,
     ToolUseStartEvent,
     ToolUseStopEvent,
 )
-from src.state.state_store import StateStore
-from src.types.events import LoopEvent
-from src.types.message import Message
-from src.types.permissions import (
+from docker_agent.state.state_store import StateStore
+from docker_agent.types.events import LoopEvent
+from docker_agent.types.message import Message
+from docker_agent.types.permissions import (
     AlwaysAllowInSession,
     Approve,
     Deny,

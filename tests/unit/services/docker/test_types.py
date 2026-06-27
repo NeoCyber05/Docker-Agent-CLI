@@ -1,6 +1,6 @@
 """Parity tests for docker service types — mirrors engineClient.ts schema subset."""
 
-from src.services.docker.types import (
+from docker_agent.services.docker.types import (
     ContainerInspect,
     ContainerSummary,
     ImageInspect,

@@ -4,16 +4,16 @@ from __future__ import annotations
 
 import pytest
 
-from src.slash_router import (
+from docker_agent.slash_router import (
     SLASH_COMMAND_DEFS,
     SlashRouterContext,
     resolve_slash_key,
     route_slash_command,
 )
-from src.state.session_store import SessionStore
-from src.state.state_store import StateStore
-from src.types.stack import DockerAgentMeta, EnvFileSource, ServiceSpec, StackDefinition
-from src.vault.api_key_store import MemoryApiKeyStore
+from docker_agent.state.session_store import SessionStore
+from docker_agent.state.state_store import StateStore
+from docker_agent.types.stack import DockerAgentMeta, EnvFileSource, ServiceSpec, StackDefinition
+from docker_agent.vault.api_key_store import MemoryApiKeyStore
 
 
 def make_ctx(tmp_project) -> SlashRouterContext:

@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from src.services.docker.compose_runner import BoundComposeRunner
+from docker_agent.services.docker.compose_runner import BoundComposeRunner
 
 
 class FakeSpawner:

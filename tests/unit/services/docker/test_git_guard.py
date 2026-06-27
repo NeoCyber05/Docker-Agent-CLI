@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.services.docker.git_guard import (
+from docker_agent.services.docker.git_guard import (
     GitRunner,
     check_env_file_git_status,
 )

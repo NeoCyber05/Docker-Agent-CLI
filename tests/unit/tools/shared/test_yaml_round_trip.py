@@ -2,8 +2,8 @@
 
 import yaml
 
-from src.tools.shared.yaml_round_trip import validate_yaml_round_trip
-from src.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
+from docker_agent.tools.shared.yaml_round_trip import validate_yaml_round_trip
+from docker_agent.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
 
 
 def _valid_def() -> StackDefinition:

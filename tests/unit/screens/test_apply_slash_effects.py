@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.screens.apply_slash_effects import SlashEffectApplierDeps, apply_slash_effects
-from src.screens.use_interaction_session import InteractionSession
-from src.vault.api_key_store import MemoryApiKeyStore
+from docker_agent.screens.apply_slash_effects import SlashEffectApplierDeps, apply_slash_effects
+from docker_agent.screens.use_interaction_session import InteractionSession
+from docker_agent.vault.api_key_store import MemoryApiKeyStore
 
 
 def make_deps(**overrides: object) -> SlashEffectApplierDeps:

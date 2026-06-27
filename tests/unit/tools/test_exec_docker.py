@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from src.tools.exec_docker import ExecDockerInput
+from docker_agent.tools.exec_docker import ExecDockerInput
 
 
 def test_allowed_subcommand_passes_validation() -> None:

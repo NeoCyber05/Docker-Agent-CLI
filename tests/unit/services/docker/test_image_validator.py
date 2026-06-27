@@ -4,16 +4,16 @@ from typing import Any
 
 import pytest
 
-from src.services.docker.image_validator import (
+from docker_agent.services.docker.image_validator import (
     ImageValidationResult,
     create_image_validator,
     format_image_validation_error,
 )
-from src.services.docker.registry_client import (
+from docker_agent.services.docker.registry_client import (
     RegistryCheckResult,
     RegistryCheckStatusValues,
 )
-from src.services.docker.types import ImageInspect
+from docker_agent.services.docker.types import ImageInspect
 
 
 class FakeEngineClient:

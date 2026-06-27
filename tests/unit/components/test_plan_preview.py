@@ -3,8 +3,8 @@ from __future__ import annotations
 from textual.app import App, ComposeResult
 from textual.widgets import Static
 
-from src.components.plan_preview import PlanPreview
-from src.types.stack import FieldChange, ServiceDiff, ServiceSnapshot, StackDiff
+from docker_agent.components.plan_preview import PlanPreview
+from docker_agent.types.stack import FieldChange, ServiceDiff, ServiceSnapshot, StackDiff
 
 
 def _sample_diff() -> StackDiff:

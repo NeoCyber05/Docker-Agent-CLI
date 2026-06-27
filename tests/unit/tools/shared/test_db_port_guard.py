@@ -1,7 +1,7 @@
 """Parity tests for db_port_guard — mirrors src/tools/shared/__tests__/dbPortGuard.test.ts."""
 
-from src.tools.shared.db_port_guard import DB_PORT_MAP, check_db_port_exposure
-from src.types.stack import ServiceSpec
+from docker_agent.tools.shared.db_port_guard import DB_PORT_MAP, check_db_port_exposure
+from docker_agent.types.stack import ServiceSpec
 
 
 def test_db_port_map_covers_expected_labels() -> None:

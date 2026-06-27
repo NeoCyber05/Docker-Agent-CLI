@@ -1,7 +1,7 @@
 """Parity tests for volume_guard — mirrors src/tools/shared/__tests__/volumeGuard.test.ts."""
 
-from src.tools.shared.volume_guard import check_volume_safety
-from src.types.stack import ServiceSpec
+from docker_agent.tools.shared.volume_guard import check_volume_safety
+from docker_agent.types.stack import ServiceSpec
 
 
 def _svc(volumes: list[str]) -> ServiceSpec:

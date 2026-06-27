@@ -1,7 +1,7 @@
 """LoopContext shape smoke test."""
 
-from src.loop_context import PlanReadyPayload
-from src.types.stack import StackDiff
+from docker_agent.loop_context import PlanReadyPayload
+from docker_agent.types.stack import StackDiff
 
 
 def test_plan_ready_payload() -> None:

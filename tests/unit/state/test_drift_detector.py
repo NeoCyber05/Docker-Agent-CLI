@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from src.services.docker.types import ContainerInspect, ContainerSummary, EngineClient
-from src.state.drift_detector import detect_drift
-from src.state.state_store import StateStore
-from src.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
+from docker_agent.services.docker.types import ContainerInspect, ContainerSummary, EngineClient
+from docker_agent.state.drift_detector import detect_drift
+from docker_agent.state.state_store import StateStore
+from docker_agent.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
 
 
 def _make_store(tmp_path: Path, stack_name: str, spec: ServiceSpec) -> StateStore:

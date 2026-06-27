@@ -6,11 +6,11 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.engine.nodes.apply_with_rollback import (
+from docker_agent.engine.nodes.apply_with_rollback import (
     ApplyWithRollbackParams,
     run_apply_with_rollback,
 )
-from src.tools.apply_stack import ApplyStackResult
+from docker_agent.tools.apply_stack import ApplyStackResult
 
 
 @pytest.mark.asyncio
@@ -20,7 +20,7 @@ async def test_apply_with_rollback_success(make_loop_ctx) -> None:
     ok_result = ApplyStackResult(ok=True, exit_code=0, yaml_path="/tmp/x.yaml")
 
     with patch(
-        "src.engine.nodes.apply_with_rollback._run_apply_tool",
+        "docker_agent.engine.nodes.apply_with_rollback._run_apply_tool",
         new=AsyncMock(return_value=ok_result),
     ):
         result = await run_apply_with_rollback(
@@ -53,17 +53,17 @@ async def test_apply_with_rollback_failure_triggers_rollback(make_loop_ctx) -> N
 
     with (
         patch(
-            "src.engine.nodes.apply_with_rollback._run_apply_tool",
+            "docker_agent.engine.nodes.apply_with_rollback._run_apply_tool",
             new=AsyncMock(side_effect=[fail_result, restore_ok]),
         ),
         patch(
-            "src.engine.nodes.apply_with_rollback.capture_known_good",
+            "docker_agent.engine.nodes.apply_with_rollback.capture_known_good",
         ) as mock_known,
         patch(
-            "src.engine.nodes.apply_with_rollback.plan_rollback",
+            "docker_agent.engine.nodes.apply_with_rollback.plan_rollback",
         ) as mock_plan,
     ):
-        from src.state.rollback import KnownGood, RollbackPlan
+        from docker_agent.state.rollback import KnownGood, RollbackPlan
 
         mock_known.return_value = KnownGood(
             previous=None, existed_expected=True, recoverable=True, previous_yaml="s:"

@@ -1,6 +1,6 @@
 """Provider registry smoke tests."""
 
-from src.services.api import (
+from docker_agent.services.api import (
     GeminiProvider,
     OllamaProvider,
     OpenAIProvider,

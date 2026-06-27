@@ -3,7 +3,7 @@ from __future__ import annotations
 from textual.app import App, ComposeResult
 from textual.widgets import Static
 
-from src.components.api_key_input_dialog import ApiKeyInputDialog
+from docker_agent.components.api_key_input_dialog import ApiKeyInputDialog
 
 
 class Host(App):

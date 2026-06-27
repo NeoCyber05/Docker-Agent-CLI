@@ -8,7 +8,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
-from src.services.docker.compose_runner import ComposePsRow
+from docker_agent.services.docker.compose_runner import ComposePsRow
 
 
 class MockBoundRunner:

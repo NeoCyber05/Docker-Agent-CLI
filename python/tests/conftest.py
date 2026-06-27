@@ -1,0 +1,1 @@
+"""Pytest configuration — empty for now; shared fixtures land in Phase 2."""

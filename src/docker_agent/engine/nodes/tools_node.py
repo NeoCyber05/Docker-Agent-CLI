@@ -10,11 +10,15 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from pydantic import ValidationError
+
 from docker_agent.engine.adapters.tool_adapter import run_tool
 from docker_agent.engine.state import AgentState, PendingToolResult
 from docker_agent.tool import find_tool_by_name
 from docker_agent.tools import get_agent_tools
 from docker_agent.tools.destroy_stack import DestroyStackInput
+from docker_agent.tools.remove_container import RemoveContainerInput
+from docker_agent.tools.shared.spec_schemas import format_validation_error
 from docker_agent.types.events import ToolCall, ToolProgress, ToolResult
 from docker_agent.types.message import ToolResultMessage
 from docker_agent.types.permissions import permission_kind, permission_value
@@ -32,6 +36,13 @@ READ_ONLY_ALLOWLIST = {
     "exec_docker",
 }
 
+EXECUTABLE_TOOLS = READ_ONLY_ALLOWLIST | {
+    "destroy_stack",
+    "remove_container",
+}
+
+REPEAT_TOOL_THRESHOLD = 3
+
 
 def _block_type(block: Any) -> str | None:
     return getattr(block, "type", None)
@@ -39,6 +50,42 @@ def _block_type(block: Any) -> str | None:
 
 def _tool_use_blocks(content: list[Any]) -> list[Any]:
     return [b for b in content if _block_type(b) == "tool_use"]
+
+
+def _normalize_tool_input(tool_input: Any) -> str:
+    if hasattr(tool_input, "model_dump"):
+        data = tool_input.model_dump(by_alias=True, exclude_none=True)
+    elif isinstance(tool_input, dict):
+        data = tool_input
+    else:
+        return json.dumps(tool_input, default=str, sort_keys=True)
+    return json.dumps(data, sort_keys=True, default=str)
+
+
+def _count_matching_tool_uses(
+    messages: list[Any], tool_name: str, normalized_input: str
+) -> int:
+    count = 0
+    for msg in messages:
+        if msg.role != "assistant":
+            continue
+        for block in msg.content or []:
+            if _block_type(block) != "tool_use":
+                continue
+            if getattr(block, "name", None) != tool_name:
+                continue
+            block_input = getattr(block, "input", {})
+            if _normalize_tool_input(block_input) == normalized_input:
+                count += 1
+    return count
+
+
+def _loop_guard_message(tool_name: str, repeat_count: int) -> str:
+    return (
+        f"Loop guard: tool {tool_name} was already invoked {repeat_count} times with the "
+        "same parameters. Stop retrying silently — explain the situation to the user or "
+        "ask for guidance."
+    )
 
 
 @dataclass
@@ -98,6 +145,17 @@ async def tools_node(deps: ToolsNodeDeps, state: AgentState) -> dict[str, Any]:
 
         try:
             parsed = tool.input_schema.model_validate(tu.input)
+        except ValidationError as err:
+            results.append(
+                PendingToolResult(
+                    tool_use_id=tu.id,
+                    name=tool.name,
+                    input=tu.input,
+                    output=f"validation failed: {format_validation_error(err)}",
+                    is_error=True,
+                )
+            )
+            continue
         except Exception as err:
             results.append(
                 PendingToolResult(
@@ -106,6 +164,20 @@ async def tools_node(deps: ToolsNodeDeps, state: AgentState) -> dict[str, Any]:
                     input=tu.input,
                     output=f"validation failed: {err}",
                     is_error=True,
+                )
+            )
+            continue
+
+        normalized_input = _normalize_tool_input(parsed)
+        repeat_count = _count_matching_tool_uses(state.messages, tool.name, normalized_input)
+        if repeat_count >= REPEAT_TOOL_THRESHOLD:
+            results.append(
+                PendingToolResult(
+                    tool_use_id=tu.id,
+                    name=tool.name,
+                    input=parsed,
+                    output=_loop_guard_message(tool.name, repeat_count),
+                    is_error=False,
                 )
             )
             continue
@@ -159,7 +231,31 @@ async def tools_node(deps: ToolsNodeDeps, state: AgentState) -> dict[str, Any]:
                 results.append(await _execute_tool_use(tool, parsed, tu, deps))
                 continue
 
-        if tool.name not in READ_ONLY_ALLOWLIST and tool.name != "destroy_stack":
+        if tool.name == "remove_container":
+            remove_input = RemoveContainerInput.model_validate(parsed.model_dump())
+            count = len(remove_input.containers)
+            if count >= 3:
+                phrase = f"REMOVE {count} CONTAINERS"
+                resp = await deps.ctx.request_typed_confirm(
+                    phrase,
+                    f"This will force-remove {count} Docker containers.",
+                )
+                if (
+                    permission_kind(resp) != "typed_confirm_value"
+                    or permission_value(resp) != phrase
+                ):
+                    results.append(
+                        PendingToolResult(
+                            tool_use_id=tu.id,
+                            name=tool.name,
+                            input=parsed,
+                            output="remove_container aborted: typed confirmation did not match",
+                            is_error=False,
+                        )
+                    )
+                    continue
+
+        if tool.name not in EXECUTABLE_TOOLS:
             results.append(
                 PendingToolResult(
                     tool_use_id=tu.id,

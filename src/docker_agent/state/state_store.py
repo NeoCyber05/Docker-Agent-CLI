@@ -118,7 +118,10 @@ class StateStore:
         target = self._stack_path(name)
         tmp = Path(f"{target}.tmp")
         tmp.write_text(
-            yaml.safe_dump(definition.model_dump(by_alias=True), sort_keys=False),
+            yaml.safe_dump(
+                definition.model_dump(by_alias=True, exclude_none=True),
+                sort_keys=False,
+            ),
             encoding="utf-8",
         )
         os.chmod(tmp, 0o644)

@@ -51,10 +51,12 @@ class InteractionSession:
     _started_turn_id: int = field(default=-1, init=False)
 
     def __post_init__(self) -> None:
-        self.activity_state = ActivityState(
-            items=project_messages_to_activities(self.engine.get_messages()),
-            active_tool_activity_id=None,
-        )
+        snapshot = self.engine.get_activity_snapshot()
+        if snapshot is not None:
+            items = list(snapshot)
+        else:
+            items = project_messages_to_activities(self.engine.get_messages())
+        self.activity_state = ActivityState(items=items, active_tool_activity_id=None)
 
     @property
     def phase(self) -> InteractionPhase:
@@ -106,10 +108,16 @@ class InteractionSession:
         self.activity_state = activity_reducer(self.activity_state, action)
 
     def replace_activities(self, messages: list[Message]) -> None:
+        snapshot = self.engine.get_activity_snapshot()
+        items = (
+            snapshot
+            if snapshot is not None
+            else project_messages_to_activities(messages)
+        )
         self.dispatch_activity(
             {
                 "type": "replace",
-                "items": project_messages_to_activities(messages),
+                "items": items,
             }
         )
 
@@ -178,11 +186,23 @@ class InteractionSession:
                             "detail": ev.detail,
                         }
                     )
+                elif isinstance(ev, PlanReady):
+                    self.dispatch_activity(
+                        {
+                            "type": "plan_ready",
+                            "request_id": ev.id,
+                            "compose_yaml": ev.compose_yaml,
+                            "diff": ev.diff,
+                            "auto_generated_secrets": ev.auto_generated_secrets,
+                            "config_files": ev.config_files,
+                        }
+                    )
+                    self._dispatch_interaction({"type": "awaiting_input"})
+                    self.pending_event = ev
                 elif isinstance(
                     ev,
                     (
                         PermissionRequest,
-                        PlanReady,
                         TypedConfirmRequest,
                         SecretsInputRequest,
                     ),

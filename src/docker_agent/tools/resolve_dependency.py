@@ -11,7 +11,12 @@ from collections.abc import AsyncIterator
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from docker_agent.tool import ToolContext, ToolDone, ToolProgress
-from docker_agent.tools.shared.spec_schemas import HybridServiceIntent, StackDraft
+from docker_agent.tools.shared.spec_schemas import (
+    HybridServiceIntent,
+    NetworkIntent,
+    StackDraft,
+    VolumeIntent,
+)
 from docker_agent.tools.shared.translator import prepare_stack_draft
 from docker_agent.types.stack import ServiceSpec
 
@@ -25,6 +30,8 @@ class ResolveDependencyInput(BaseModel):
     stack_name: str | None = Field(default=None, alias="stackName")
     intent: str | None = None
     services: list[HybridServiceIntent]
+    networks: list[NetworkIntent] | None = None
+    volumes: list[VolumeIntent] | None = None
 
     @field_validator("stack_name")
     @classmethod
@@ -124,11 +131,23 @@ class ResolveDependencyTool:
         self, input: ResolveDependencyInput, ctx: ToolContext
     ) -> AsyncIterator[ToolProgress | ToolDone]:
         yield ToolProgress(msg="Resolving service dependencies...")
+        extra: dict = {}
+        if input.networks:
+            extra["networks"] = [
+                n.model_dump(by_alias=True, exclude_none=True)
+                for n in input.networks
+            ]
+        if input.volumes:
+            extra["volumes"] = [
+                v.model_dump(by_alias=True, exclude_none=True)
+                for v in input.volumes
+            ]
         draft = StackDraft.model_validate(
             {
                 "stackName": input.stack_name or "validate-temp-stack",
                 "intent": input.intent or "validation only",
                 "services": input.services,
+                **extra,
             }
         )
         prep = await prepare_stack_draft(draft, ctx)
@@ -158,4 +177,6 @@ __all__ = [
     "ResolveDependencyTool",
     "resolve_dependencies",
     "resolve_dependency",
+    "NetworkIntent",
+    "VolumeIntent",
 ]

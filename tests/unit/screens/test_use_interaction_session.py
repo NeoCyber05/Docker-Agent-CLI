@@ -30,6 +30,9 @@ class MockQueryEngine:
     def get_messages(self) -> list[Any]:
         return list(self._messages)
 
+    def get_activity_snapshot(self) -> list[Any] | None:
+        return None
+
     def abort(self) -> None:
         self.aborted = True
         for future in self._pending.values():

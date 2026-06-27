@@ -154,6 +154,43 @@ async def test_tcp_and_udp_on_same_host_port_do_not_conflict(tmp_project) -> Non
 
 
 @pytest.mark.asyncio
+async def test_accepts_numeric_host_port_from_docker_engine(tmp_project) -> None:
+    engine = MockDockerEngine()
+    engine.containers.append(
+        ContainerSummary.model_validate(
+            {
+                "Id": "existing",
+                "Names": ["/existing"],
+                "State": "running",
+                "Labels": {},
+            }
+        )
+    )
+    engine.inspect_by_id["existing"] = {
+        "Id": "existing",
+        "Name": "/existing",
+        "State": {"Status": "running"},
+        "Config": {"Image": "nginx", "Env": [], "Labels": {}},
+        "HostConfig": {"Binds": None, "PortBindings": {}},
+        "NetworkSettings": {
+            "Ports": {"80/tcp": [{"HostIp": "0.0.0.0", "HostPort": 8080}]}
+        },
+        "RestartCount": 0,
+    }
+
+    from docker_agent.types.stack import ServiceSpec
+
+    result = await check_port_conflicts(
+        "app",
+        {"web": ServiceSpec(image="nginx:1.27-alpine", ports=["9090:80"])},
+        _make_ctx(engine, tmp_project),
+    )
+
+    assert result.ok is True
+    assert result.docker_error is None
+
+
+@pytest.mark.asyncio
 async def test_returns_actionable_result_when_docker_engine_unavailable(
     tmp_project,
 ) -> None:
@@ -183,3 +220,49 @@ async def test_returns_actionable_result_when_docker_engine_unavailable(
             "daemon, then retry."
         ),
     }
+
+
+@pytest.mark.asyncio
+async def test_skips_container_when_inspect_fails(tmp_project) -> None:
+    class PartiallyBrokenEngine(MockDockerEngine):
+        async def inspect(self, container_id: str):
+            if container_id == "broken":
+                raise RuntimeError("inspect failed")
+            return await super().inspect(container_id)
+
+    engine = PartiallyBrokenEngine()
+    engine.containers.append(
+        ContainerSummary.model_validate(
+            {
+                "Id": "broken",
+                "Names": ["/broken"],
+                "State": "running",
+                "Labels": {},
+            }
+        )
+    )
+    engine.containers.append(
+        ContainerSummary.model_validate(
+            {
+                "Id": "healthy",
+                "Names": ["/healthy"],
+                "State": "running",
+                "Labels": {},
+            }
+        )
+    )
+    engine.inspect_by_id["healthy"] = _inspect_with_ports(
+        "healthy", "80/tcp", "9090"
+    )
+
+    from docker_agent.types.stack import ServiceSpec
+
+    result = await check_port_conflicts(
+        "app",
+        {"web": ServiceSpec(image="nginx:1.27-alpine", ports=["8080:80"])},
+        _make_ctx(engine, tmp_project),
+    )
+
+    assert result.ok is True
+    assert result.docker_error is None
+    assert result.conflicts == []

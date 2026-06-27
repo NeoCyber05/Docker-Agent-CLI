@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-from textual.app import App, ComposeResult
-from textual.widgets import Static
-
-from docker_agent.components.plan_preview import PlanPreview
+from docker_agent.components.plan_preview import compose_yaml_for_preview, render_plan_preview
 from docker_agent.types.stack import FieldChange, ServiceDiff, ServiceSnapshot, StackDiff
 
 
@@ -28,26 +25,52 @@ def _sample_diff() -> StackDiff:
     )
 
 
-class Host(App):
-    def compose(self) -> ComposeResult:
-        yield Static("host")
+def test_compose_yaml_for_preview_strips_metadata() -> None:
+    raw = "x-docker-agent: {}\nservices:\n  web:\n    image: nginx"
+    preview = compose_yaml_for_preview(raw)
+    assert "x-docker-agent" not in preview
+    assert "nginx" in preview
 
 
-async def test_plan_preview_approve() -> None:
-    app = Host()
-    async with app.run_test() as pilot:
-        responses: list[object] = []
+def test_render_plan_preview_shows_service_diffs() -> None:
+    rendered = render_plan_preview(
+        compose_yaml="services:\n  web:\n    image: nginx",
+        diff=_sample_diff(),
+        status="pending",
+    )
+    text = str(rendered)
+    assert "web" in text
+    assert "Apply this plan?" in text
 
-        def check(response: object) -> None:
-            responses.append(response)
 
-        pilot.app.push_screen(
-            PlanPreview(compose_yaml="services:\n  web:\n    image: nginx", diff=_sample_diff()),
-            check,
+def test_render_plan_preview_shows_bordered_yaml_when_expanded() -> None:
+    rendered = render_plan_preview(
+        compose_yaml="services:\n  web:\n    image: nginx",
+        diff=_sample_diff(),
+        show_yaml=True,
+        status="pending",
+    )
+    text = str(rendered)
+    assert "┌" in text
+    assert "│" in text
+    assert "└" in text
+    assert "image: nginx" in text
+
+
+def test_render_plan_preview_shows_decision_status() -> None:
+    approved = str(
+        render_plan_preview(
+            compose_yaml="services:\n  web:\n    image: nginx",
+            diff=_sample_diff(),
+            status="approved",
         )
-        await pilot.pause()
-        rendered = str(pilot.app.screen.query_one("#service-diffs").content)
-        assert "web" in rendered
-        await pilot.press("y")
-        await pilot.pause()
-        assert responses[0].kind == "approve"  # type: ignore[attr-defined]
+    )
+    denied = str(
+        render_plan_preview(
+            compose_yaml="services:\n  web:\n    image: nginx",
+            diff=_sample_diff(),
+            status="denied",
+        )
+    )
+    assert "Plan approved" in approved
+    assert "Plan declined" in denied

@@ -74,7 +74,7 @@ class _RemediateDriftTool:
             return
 
         desired_yaml = yaml.safe_dump(
-            definition.model_dump(by_alias=True),
+            definition.model_dump(by_alias=True, exclude_none=True),
             sort_keys=False,
         )
         yield ToolDone(

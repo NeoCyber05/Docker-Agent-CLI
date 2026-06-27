@@ -8,7 +8,7 @@ import pytest
 
 from docker_agent.engine.nodes.tools_node import ToolsNodeDeps, tools_node
 from docker_agent.engine.state import AgentState
-from docker_agent.types.message import AssistantBlock, AssistantMessage
+from docker_agent.types.message import AssistantBlock, AssistantMessage, ToolResultMessage
 
 
 def _assistant_with_tool(name: str, input_data: object, tool_id: str = "t1") -> AgentState:
@@ -102,6 +102,96 @@ async def test_tools_node_destroy_stack_typed_confirm_mismatch(make_loop_ctx) ->
     state = _assistant_with_tool(
         "destroy_stack",
         {"stackName": "demo", "removeVolumes": True},
+    )
+
+    result = await tools_node(deps, state)
+
+    assert "typed confirmation did not match" in result["messages"][0].content
+    assert result["messages"][0].is_error is False
+
+
+@pytest.mark.asyncio
+async def test_tools_node_remove_container_success(make_loop_ctx) -> None:
+    ctx = make_loop_ctx()
+    ctx.request_permission = AsyncMock(return_value={"kind": "allow_once"})
+    events: list[object] = []
+    deps = ToolsNodeDeps(ctx=ctx, emit=events.append)
+    state = _assistant_with_tool("remove_container", {"containers": ["web-1"]})
+
+    with patch(
+        "docker_agent.engine.adapters.tool_adapter.run_tool",
+        new=AsyncMock(
+            return_value=type(
+                "Run",
+                (),
+                {
+                    "progress": [],
+                    "output": {"ok": True, "removed": ["web-1"], "failed": []},
+                    "is_error": False,
+                },
+            )()
+        ),
+    ):
+        result = await tools_node(deps, state)
+
+    assert result["messages"][0].is_error is False
+    assert "not supported in langgraph backend" not in result["messages"][0].content
+
+
+@pytest.mark.asyncio
+async def test_tools_node_loop_guard_short_circuits_repeated_tool(make_loop_ctx) -> None:
+    ctx = make_loop_ctx()
+    deps = ToolsNodeDeps(ctx=ctx, emit=lambda _e: None)
+    tool_input = {"stackName": "orphan"}
+    prior_blocks = [
+        AssistantBlock.model_validate(
+            {
+                "type": "tool_use",
+                "id": f"t{i}",
+                "name": "destroy_stack",
+                "input": tool_input,
+            }
+        )
+        for i in range(2)
+    ]
+    state = AgentState(
+        messages=[
+            AssistantMessage(content=[prior_blocks[0]]),
+            ToolResultMessage(role="tool", toolUseId="t0", content="failed", isError=False),
+            AssistantMessage(content=[prior_blocks[1]]),
+            ToolResultMessage(role="tool", toolUseId="t1", content="failed", isError=False),
+            AssistantMessage(
+                content=[
+                    AssistantBlock.model_validate(
+                        {
+                            "type": "tool_use",
+                            "id": "t2",
+                            "name": "destroy_stack",
+                            "input": tool_input,
+                        }
+                    )
+                ]
+            ),
+        ],
+        iter=3,
+    )
+
+    result = await tools_node(deps, state)
+
+    assert "Loop guard" in result["messages"][0].content
+    assert result["messages"][0].is_error is False
+
+
+@pytest.mark.asyncio
+async def test_tools_node_remove_container_typed_confirm_mismatch(make_loop_ctx) -> None:
+    ctx = make_loop_ctx()
+    ctx.request_typed_confirm = AsyncMock(
+        return_value={"kind": "typed_confirm_value", "value": "WRONG"}
+    )
+    deps = ToolsNodeDeps(ctx=ctx, emit=lambda _e: None)
+    state = _assistant_with_tool(
+        "remove_container",
+        {"containers": ["a-1", "b-1", "c-1"]},
     )
 
     result = await tools_node(deps, state)

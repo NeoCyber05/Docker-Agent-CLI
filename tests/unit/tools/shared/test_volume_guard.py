@@ -52,3 +52,36 @@ def test_blocks_ssh_bind_mount() -> None:
     )
     assert len(issues) == 1
     assert issues[0].code == "sensitive_host_path"
+
+
+def test_check_volume_references_passes_when_declared() -> None:
+    from docker_agent.tools.shared.volume_guard import check_volume_references
+
+    assert (
+        check_volume_references(
+            {"web": _svc(["data:/data"])},
+            {"data": {}},
+        )
+        == []
+    )
+
+
+def test_check_volume_references_blocks_undeclared() -> None:
+    from docker_agent.tools.shared.volume_guard import check_volume_references
+
+    issues = check_volume_references({"web": _svc(["ghost:/data"])}, {"data": {}})
+    assert len(issues) == 1
+    assert issues[0].code == "undeclared_volume"
+    assert issues[0].volume == "ghost:/data"
+
+
+def test_check_volume_references_ignores_bind_mounts() -> None:
+    from docker_agent.tools.shared.volume_guard import check_volume_references
+
+    assert (
+        check_volume_references(
+            {"web": _svc(["./config:/config:ro"])},
+            {},
+        )
+        == []
+    )

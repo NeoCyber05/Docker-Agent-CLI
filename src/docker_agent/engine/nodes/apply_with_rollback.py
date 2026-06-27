@@ -10,8 +10,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from docker_agent.engine.adapters.tool_adapter import run_tool
 from docker_agent.state.rollback import capture_known_good, plan_rollback
+from docker_agent.tool import ToolDone
 from docker_agent.state.state_store import HistoryEvent
 from docker_agent.tools.apply_stack import apply_stack
 from docker_agent.tools.destroy_stack import destroy_stack
@@ -53,11 +53,14 @@ async def _run_apply_tool(
     emit: Callable[[Any], None],
 ) -> Any:
     emit(ToolCall(name=tool.name, input=input_data))
-    run = await run_tool(tool, input_data, ctx)
-    for p in run.progress:
-        emit(ToolProgress(msg=p.msg))
-    emit(ToolResult(name=tool.name, output=run.output))
-    return run.output
+    output: Any = None
+    async for item in tool.call(input_data, ctx):
+        if isinstance(item, ToolDone):
+            output = item.result
+        else:
+            emit(ToolProgress(msg=item.msg))
+    emit(ToolResult(name=tool.name, output=output))
+    return output
 
 
 async def run_apply_with_rollback(params: ApplyWithRollbackParams) -> ApplyWithRollbackResult:

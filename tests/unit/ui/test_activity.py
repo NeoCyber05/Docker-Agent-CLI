@@ -196,6 +196,59 @@ def test_usage_event() -> None:
     assert item.output_tokens == 20
 
 
+def test_plan_ready_resolved_and_toggle() -> None:
+    from docker_agent.types.stack import StackDiff
+
+    diff = StackDiff(stackName="demo", status="missing", serviceDiffs=[])
+    state = activity_reducer(
+        make_state(),
+        {
+            "type": "plan_ready",
+            "request_id": "plan-1",
+            "compose_yaml": "services:\n  web:\n    image: nginx",
+            "diff": diff,
+            "auto_generated_secrets": None,
+            "config_files": None,
+        },
+    )
+    plan = state.items[0]
+    assert plan.type == "plan"
+    assert plan.status == "pending"
+    state = activity_reducer(
+        state,
+        {"type": "plan_toggle_yaml", "request_id": "plan-1"},
+    )
+    assert state.items[0].show_yaml is True
+    state = activity_reducer(
+        state,
+        {"type": "plan_resolved", "request_id": "plan-1", "status": "approved"},
+    )
+    assert state.items[0].status == "approved"
+
+
+def test_serialize_and_deserialize_plan_activity() -> None:
+    from docker_agent.types.stack import StackDiff
+    from docker_agent.ui.activity import PlanActivity, deserialize_activity_items, serialize_activity_items
+
+    diff = StackDiff(stackName="demo", status="missing", serviceDiffs=[])
+    items = [
+        PlanActivity(
+            id="plan-1",
+            request_id="req-1",
+            compose_yaml="services:\n  web:\n    image: nginx",
+            diff=diff,
+            status="approved",
+            show_yaml=True,
+        )
+    ]
+    roundtrip = deserialize_activity_items(serialize_activity_items(items))
+    assert len(roundtrip) == 1
+    assert roundtrip[0].type == "plan"
+    assert roundtrip[0].request_id == "req-1"
+    assert roundtrip[0].status == "approved"
+    assert roundtrip[0].show_yaml is True
+
+
 def test_rollback_started_and_result() -> None:
     state = activity_reducer(
         make_state(),

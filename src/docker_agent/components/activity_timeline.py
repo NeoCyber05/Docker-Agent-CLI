@@ -8,13 +8,16 @@ from typing import Any
 from rich.text import Text
 from textual.widgets import Static
 
+from docker_agent.components.plan_preview import render_plan_activity
 from docker_agent.ui.activity import (
     ActivityItem,
+    PlanActivity,
     RollbackActivity,
     TextActivity,
     ToolActivity,
     UsageActivity,
 )
+from docker_agent.ui.text_formatting import render_inline_markdown
 
 
 def _format_duration(ms: float) -> str:
@@ -59,7 +62,7 @@ def _render_text(item: TextActivity) -> Text:
         content.append(f"error: {item.text}", style="red")
     else:
         content.append("Agent\n", style="bold magenta")
-        content.append(item.text)
+        content.append_text(render_inline_markdown(item.text))
     content.append("\n")
     return content
 
@@ -77,6 +80,12 @@ def _render_rollback(item: RollbackActivity) -> Text:
     if item.ok is not None:
         suffix = f" — {'ok' if item.ok else 'FAILED'}"
     return Text(f"rollback {item.phase} for {item.stack_name}{suffix}\n", style=style)
+
+
+def _render_plan(item: PlanActivity) -> Text:
+    content = render_plan_activity(item)
+    content.append("\n")
+    return content
 
 
 def render_activity_timeline(
@@ -109,6 +118,8 @@ def render_activity_timeline(
             content.append_text(_render_text(item))
         elif item.type == "rollback":
             content.append_text(_render_rollback(item))
+        elif item.type == "plan":
+            content.append_text(_render_plan(item))
 
     if active_item and active_item.type == "tool":
         content.append_text(_render_tool(active_item, is_active=True))

@@ -9,6 +9,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from docker_agent.tools.shared.spec_schemas import DraftServiceSpec
 
@@ -121,8 +122,47 @@ def check_volume_safety(
     return issues
 
 
+def _is_named_volume_mount(volume: str) -> bool:
+    """Return True when the left side of a mount string is a named volume."""
+    host_part = volume.split(":")[0]
+    if not host_part:
+        return False
+    if host_part.startswith((".", "~", "/")):
+        return False
+    return True
+
+
+def check_volume_references(
+    services: dict[str, DraftServiceSpec],
+    volumes: dict[str, Any] | None = None,
+) -> list[VolumeIssue]:
+    """Report services referencing named volumes not declared at top level."""
+    declared = set(volumes.keys()) if volumes else set()
+    issues: list[VolumeIssue] = []
+
+    for svc_name, spec in services.items():
+        for vol in spec.volumes or []:
+            if not _is_named_volume_mount(vol):
+                continue
+            volume_name = vol.split(":")[0]
+            if volume_name not in declared:
+                issues.append(
+                    VolumeIssue(
+                        code="undeclared_volume",
+                        service=svc_name,
+                        volume=vol,
+                        message=(
+                            f"service '{svc_name}' references volume '{volume_name}' "
+                            "which is not declared in top-level volumes"
+                        ),
+                    )
+                )
+    return issues
+
+
 __all__ = [
     "SENSITIVE_HOST_PATHS",
     "VolumeIssue",
+    "check_volume_references",
     "check_volume_safety",
 ]

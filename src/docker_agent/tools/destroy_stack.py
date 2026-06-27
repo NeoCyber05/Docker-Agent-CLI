@@ -26,6 +26,8 @@ class DestroyStackInput(BaseModel):
 class DestroyStackResult(BaseModel):
     ok: bool
     exit_code: int = Field(alias="exitCode")
+    reason: str | None = None
+    message: str | None = None
 
     model_config = {"populate_by_name": True}
 
@@ -46,8 +48,19 @@ class _DestroyStackTool:
     ) -> AsyncIterator[ToolProgress | ToolDone]:
         yaml_path = stack_state_yaml_path(input.stack_name, ctx.cwd)
         if not Path(yaml_path).exists():
-            yield ToolProgress(msg=f"No stack file for {input.stack_name}; nothing to do.")
-            yield ToolDone(DestroyStackResult(ok=True, exit_code=0))
+            message = (
+                f"No stack file for {input.stack_name}; this stack is not managed by "
+                "docker-agent. Use remove_container to remove physical containers if needed."
+            )
+            yield ToolProgress(msg=message)
+            yield ToolDone(
+                DestroyStackResult(
+                    ok=False,
+                    exit_code=1,
+                    reason="stack_file_not_found",
+                    message=message,
+                )
+            )
             return
 
         yield ToolProgress(msg=f"Compose down for {input.stack_name}...")

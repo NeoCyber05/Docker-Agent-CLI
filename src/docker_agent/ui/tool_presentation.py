@@ -169,6 +169,69 @@ def _output_failed(output: Any) -> bool:
     )
 
 
+def _format_bullet_list(items: list[str], *, max_items: int = 10) -> list[str]:
+    lines = [f"  • {item}" for item in items[:max_items]]
+    if len(items) > max_items:
+        lines.append(f"  … and {len(items) - max_items} more")
+    return lines
+
+
+def _permission_detail_remove_container(input_dict: dict[str, Any]) -> list[str]:
+    containers = input_dict.get("containers", [])
+    if not isinstance(containers, list):
+        containers = [str(containers)]
+    stop_only = input_dict.get("stopOnly") is True
+    force = input_dict.get("force", True) is not False
+
+    if stop_only:
+        header = f"Will stop {len(containers)} orphan Docker container(s) (not removed):"
+        command = "docker stop"
+    elif force:
+        header = f"Will force-remove {len(containers)} orphan Docker container(s):"
+        command = "docker rm -f"
+    else:
+        header = f"Will stop and remove {len(containers)} orphan Docker container(s):"
+        command = "docker stop && docker rm"
+
+    lines = [
+        header,
+        "Only removes the containers listed below (not all stopped containers).",
+        f"Command: {command}",
+        *_format_bullet_list(containers),
+    ]
+    if len(containers) >= 3:
+        lines.append("Typed confirmation required for 3+ containers.")
+    return lines
+
+
+def _permission_detail_destroy_stack(input_dict: dict[str, Any]) -> list[str]:
+    stack_name = input_dict.get("stackName", "unknown")
+    remove_volumes = input_dict.get("removeVolumes") is True
+    lines = [
+        f'Will tear down stack "{stack_name}"',
+        "Command: docker compose down",
+        "Containers and networks for this stack will be stopped and removed.",
+    ]
+    if remove_volumes:
+        lines.append("All volumes for this stack will be DELETED.")
+    else:
+        lines.append("Named volumes are kept.")
+    return lines
+
+
+def _permission_detail_destroy_all_stacks(input_dict: dict[str, Any]) -> list[str]:
+    remove_volumes = input_dict.get("removeVolumes") is True
+    lines = [
+        "Will tear down ALL stacks managed by docker-agent",
+        "Command: docker compose down (each tracked stack)",
+    ]
+    if remove_volumes:
+        lines.append("All volumes for every stack will be DELETED.")
+    else:
+        lines.append("Named volumes are kept.")
+    return lines
+
+
 def _build_detail(input_data: Any, output: Any | None = None) -> list[str]:
     input_lines = to_detail_lines(input_data)
     output_lines = to_detail_lines(output) if output is not None else []
@@ -178,6 +241,23 @@ def _build_detail(input_data: Any, output: Any | None = None) -> list[str]:
     if output_lines:
         lines.extend(["Output:", *[f"  {line}" for line in output_lines]])
     return lines
+
+
+def _finalize_presentation(
+    title: str,
+    summary: str,
+    detail_lines: list[str],
+    output: Any | None = None,
+) -> ToolPresentation:
+    lines = list(detail_lines)
+    if output is not None:
+        lines.extend(_build_detail(None, output))
+    trimmed = _truncate_lines(lines, MAX_DETAIL_LINES, MAX_DETAIL_BYTES)
+    return ToolPresentation(
+        title=sanitize_tool_text(title),
+        summary=sanitize_tool_text(summary),
+        detail_lines=[sanitize_tool_text(line) for line in trimmed],
+    )
 
 
 def present_tool(name: str, input_data: Any = None, output: Any = None) -> ToolPresentation:
@@ -218,9 +298,22 @@ def present_tool(name: str, input_data: Any = None, output: Any = None) -> ToolP
         remove_volumes = input_dict.get("removeVolumes") is True
         title = f"Destroy stack: {stack_name}"
         summary = f"Tear down stack {stack_name}{' (volumes removed)' if remove_volumes else ''}"
+        detail_lines = _permission_detail_destroy_stack(input_dict)
+        return _finalize_presentation(title, summary, detail_lines, output)
     elif name == "destroy_all_stacks":
         title = "Destroy all stacks"
         summary = "Tear down all stacks"
+        detail_lines = _permission_detail_destroy_all_stacks(input_dict)
+        return _finalize_presentation(title, summary, detail_lines, output)
+    elif name == "remove_container":
+        containers = input_dict.get("containers", [])
+        stop_only = input_dict.get("stopOnly") is True
+        action = "Stop" if stop_only else "Remove"
+        container_list = ", ".join(containers) if isinstance(containers, list) else str(containers)
+        title = f"{action} container: {container_list}"
+        summary = f"{action} Docker container(s): {container_list}"
+        detail_lines = _permission_detail_remove_container(input_dict)
+        return _finalize_presentation(title, summary, detail_lines, output)
     elif name == "list_stacks":
         title = "List stacks"
         summary = "List all stacks"

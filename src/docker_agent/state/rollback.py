@@ -55,7 +55,10 @@ def capture_known_good(stack_name: str, ctx: dict[str, Any]) -> KnownGood:
             previous=live,
             existed_expected=True,
             recoverable=True,
-            previous_yaml=yaml.safe_dump(live.model_dump(by_alias=True), sort_keys=False),
+            previous_yaml=yaml.safe_dump(
+                live.model_dump(by_alias=True, exclude_none=True),
+                sort_keys=False,
+            ),
         )
 
     archived = store.read_archive(stack_name)
@@ -65,7 +68,8 @@ def capture_known_good(stack_name: str, ctx: dict[str, Any]) -> KnownGood:
             existed_expected=True,
             recoverable=True,
             previous_yaml=yaml.safe_dump(
-                archived.model_dump(by_alias=True), sort_keys=False
+                archived.model_dump(by_alias=True, exclude_none=True),
+                sort_keys=False,
             ),
         )
 

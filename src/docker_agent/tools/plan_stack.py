@@ -37,7 +37,11 @@ from docker_agent.tools.shared.required_secrets import find_required_secrets, is
 from docker_agent.tools.shared.resource_limits import ResourceLimitIssue, check_resource_limits
 from docker_agent.tools.shared.spec_schemas import DraftServiceSpec, StackDraft
 from docker_agent.tools.shared.translator import prepare_stack_draft
-from docker_agent.tools.shared.volume_guard import VolumeIssue, check_volume_safety
+from docker_agent.tools.shared.volume_guard import (
+    VolumeIssue,
+    check_volume_references,
+    check_volume_safety,
+)
 from docker_agent.tools.shared.yaml_round_trip import validate_yaml_round_trip
 from docker_agent.tools.validate_spec import SpecIssue, validate_spec_input
 from docker_agent.types.stack import EnvFileSource, ServiceSpec, StackDiff
@@ -198,6 +202,18 @@ class _PlanStackTool:
                 PlanStackResultBlocked(
                     reason="unsafe_volume",
                     volume_issues=volume_issues,
+                )
+            )
+            return
+
+        volume_ref_issues = check_volume_references(
+            prepared.services, prepared.volumes
+        )
+        if volume_ref_issues:
+            yield ToolDone(
+                PlanStackResultBlocked(
+                    reason="undeclared_volume",
+                    volume_issues=volume_ref_issues,
                 )
             )
             return

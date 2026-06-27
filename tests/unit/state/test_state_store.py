@@ -69,6 +69,35 @@ def test_write_and_read_round_trip(tmp_path: Path) -> None:
     assert read.services["web"].image == "nginx:1.27"
 
 
+def test_write_omits_null_fields_in_yaml(tmp_path: Path) -> None:
+    store = StateStore(str(tmp_path / ".docker-agent"))
+    stack = StackDefinition(
+        x_docker_agent=DockerAgentMeta(
+            name="app",
+            created_at="2026-06-27T00:00:00Z",
+            last_applied=None,
+            intent="deploy",
+            provider="gemini",
+            generated_by="docker-agent",
+            env_file_sources={},
+        ),
+        services={
+            "db": ServiceSpec(
+                image="postgres:16-alpine",
+                depends_on=["cache"],
+            ),
+            "web": ServiceSpec(image="nginx:1.27-alpine", ports=["8080:80"]),
+        },
+    )
+    store.write("app", stack)
+    raw_yaml = (tmp_path / "docker-stacks" / "app.yaml").read_text(encoding="utf-8")
+    assert ": null" not in raw_yaml
+    parsed = yaml.safe_load(raw_yaml)
+    db_service = parsed["services"]["db"]
+    assert "ports" not in db_service
+    assert "env_file" not in db_service
+
+
 def test_write_is_atomic_and_sets_mode(tmp_path: Path) -> None:
     root = tmp_path / ".docker-agent"
     store = StateStore(str(root))

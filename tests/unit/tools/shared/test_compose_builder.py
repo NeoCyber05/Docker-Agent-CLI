@@ -87,3 +87,39 @@ def test_compose_yaml_for_preview_removes_x_docker_agent_metadata() -> None:
 def test_compose_yaml_for_preview_returns_original_on_parse_failure() -> None:
     malformed = "services: [unclosed"
     assert compose_yaml_for_preview(malformed) == malformed
+
+
+def test_build_stack_definition_includes_networks_and_volumes() -> None:
+    services = {
+        "web": ServiceSpec(image="nginx:1.27-alpine", networks=["frontend"]),
+        "db": ServiceSpec(image="postgres:16-alpine", networks=["backend"]),
+    }
+    result = build_stack_definition(
+        PlanInput(
+            stack_name="demo",
+            intent="deploy",
+            services=services,
+            networks={
+                "default": {},
+                "frontend": {},
+                "backend": {"internal": True},
+            },
+            volumes={
+                "pgdata": {"driver": "local"},
+            },
+        ),
+        None,
+        "gemini",
+        "test",
+    )
+    assert result.definition.networks == {
+        "default": {},
+        "frontend": {},
+        "backend": {"internal": True},
+    }
+    assert result.definition.volumes == {"pgdata": {"driver": "local"}}
+
+    yaml_text = stack_to_yaml(result.definition)
+    parsed = yaml.safe_load(yaml_text)
+    assert parsed["networks"]["backend"]["internal"] is True
+    assert parsed["volumes"]["pgdata"]["driver"] == "local"

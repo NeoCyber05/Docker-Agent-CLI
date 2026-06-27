@@ -104,11 +104,11 @@ async def test_respond_to_resolves_pending_permission_request(tmp_project) -> No
         tmp_project,
         provider=fake_provider(
             [
-                {"type": "tool_use_start", "id": "t1", "name": "pull_image"},
+                {"type": "tool_use_start", "id": "t1", "name": "exec_docker"},
                 {
                     "type": "tool_use_delta",
                     "id": "t1",
-                    "args_partial_json": '{"image":"nginx"}',
+                    "args_partial_json": '{"args":["ps"]}',
                 },
                 {"type": "tool_use_stop", "id": "t1"},
                 {"type": "message_stop", "stop_reason": "tool_use"},
@@ -119,7 +119,7 @@ async def test_respond_to_resolves_pending_permission_request(tmp_project) -> No
     collected: list[str] = []
 
     async def drain() -> None:
-        async for ev in engine.query("pull nginx"):
+        async for ev in engine.query("run ps"):
             if ev.type == "permission_request":
                 engine.respond_to(ev.id, Approve())
             collected.append(ev.type)
@@ -203,11 +203,11 @@ async def test_abort_resolves_pending_permission_and_ends_turn(tmp_project) -> N
         tmp_project,
         provider=fake_provider(
             [
-                {"type": "tool_use_start", "id": "t1", "name": "pull_image"},
+                {"type": "tool_use_start", "id": "t1", "name": "exec_docker"},
                 {
                     "type": "tool_use_delta",
                     "id": "t1",
-                    "args_partial_json": '{"image":"nginx"}',
+                    "args_partial_json": '{"args":["ps"]}',
                 },
                 {"type": "tool_use_stop", "id": "t1"},
                 {"type": "message_stop", "stop_reason": "tool_use"},
@@ -218,7 +218,7 @@ async def test_abort_resolves_pending_permission_and_ends_turn(tmp_project) -> N
     seen: list[str] = []
 
     async def drain() -> None:
-        async for event in engine.query("pull nginx"):
+        async for event in engine.query("run ps"):
             seen.append(event.type)
             if event.type == "permission_request":
                 engine.abort()

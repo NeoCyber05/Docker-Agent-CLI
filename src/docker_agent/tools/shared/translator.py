@@ -13,7 +13,12 @@ from typing import Any
 
 from docker_agent.tool import ToolContext
 from docker_agent.tools.shared.db_healthcheck import inject_db_healthchecks
-from docker_agent.tools.shared.spec_schemas import StackDraft
+from docker_agent.tools.shared.spec_schemas import (
+    NetworkIntent,
+    StackDraft,
+    VolumeIntent,
+    VolumeMount,
+)
 from docker_agent.types.stack import (
     DeployResources,
     DeployResourcesLimits,
@@ -148,23 +153,27 @@ async def get_occupied_ports(ctx: ToolContext, exclude_stack: str) -> set[int]:
 
     try:
         containers = await ctx.docker_engine.list_containers(all=True)
-        for container in containers:
-            if container.state in ("exited", "dead"):
-                continue
-            labels = container.labels or {}
-            if labels.get("com.docker.compose.project") == exclude_stack:
-                continue
-            inspected = await ctx.docker_engine.inspect(container.id)
-            ports = inspected.network_settings.ports
-            for bindings in ports.values():
-                if not bindings:
-                    continue
-                for binding in bindings:
-                    host_port = binding.get("HostPort")
-                    if host_port:
-                        occupied.add(int(host_port))
     except Exception:
-        pass
+        return occupied
+
+    for container in containers:
+        if container.state in ("exited", "dead"):
+            continue
+        labels = container.labels or {}
+        if labels.get("com.docker.compose.project") == exclude_stack:
+            continue
+        try:
+            inspected = await ctx.docker_engine.inspect(container.id)
+        except Exception:
+            continue
+        ports = inspected.network_settings.ports
+        for bindings in ports.values():
+            if not bindings:
+                continue
+            for binding in bindings:
+                host_port = binding.host_port
+                if host_port:
+                    occupied.add(int(host_port))
 
     return occupied
 
@@ -189,6 +198,44 @@ def calculate_canonical_hash(stack: PreparedStack) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _network_intent_to_compose(net: NetworkIntent) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    if net.external:
+        result["external"] = True
+    if net.driver is not None:
+        result["driver"] = net.driver
+    if net.internal is not None:
+        result["internal"] = net.internal
+    if net.labels:
+        result["labels"] = net.labels
+    return result
+
+
+def _volume_intent_to_compose(vol: VolumeIntent) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    if vol.external:
+        result["external"] = True
+    if vol.driver is not None:
+        result["driver"] = vol.driver
+    if vol.driver_opts:
+        result["driver_opts"] = vol.driver_opts
+    if vol.labels:
+        result["labels"] = vol.labels
+    return result
+
+
+def _volume_mount_to_compose_string(mount: VolumeMount) -> str:
+    result = f"{mount.volume}:{mount.target}"
+    if mount.read_only:
+        result += ":ro"
+    return result
+
+
+def _append_volume(spec: ServiceSpec, mount: str) -> None:
+    spec.volumes = list(spec.volumes or [])
+    spec.volumes.append(mount)
+
+
 async def prepare_stack_draft(input: StackDraft, ctx: ToolContext) -> PrepareResult:
     """Translate a validated stack draft into a prepared compose specification."""
     services: dict[str, ServiceSpec] = {}
@@ -199,16 +246,25 @@ async def prepare_stack_draft(input: StackDraft, ctx: ToolContext) -> PrepareRes
         {"name": input.network_name} if input.network_name else {}
     )
 
+    for net_intent in input.networks or []:
+        networks[net_intent.name] = _network_intent_to_compose(net_intent)
+
+    for vol_intent in input.volumes or []:
+        volumes[vol_intent.name] = _volume_intent_to_compose(vol_intent)
+
     occupied_ports = await get_occupied_ports(ctx, input.stack_name)
     previous_def = ctx.state_store.read(input.stack_name)
     next_auto_port = 8000
 
     for intent in input.services:
         service_name = intent.name
+        service_networks = (
+            intent.networks if intent.networks else [default_network_name]
+        )
         spec = ServiceSpec(
             image="",
             environment=dict(intent.environment or {}),
-            networks=[default_network_name],
+            networks=service_networks,
             logging=DEFAULT_LOGGING,
         )
 
@@ -219,9 +275,8 @@ async def prepare_stack_draft(input: StackDraft, ctx: ToolContext) -> PrepareRes
         if intent.scale is not None:
             spec.scale = intent.scale
         if intent.config_mounts:
-            spec.volumes = list(spec.volumes or [])
             for mount in intent.config_mounts:
-                spec.volumes.append(f"{mount.host_path}:{mount.container_path}")
+                _append_volume(spec, f"{mount.host_path}:{mount.container_path}")
 
         if intent.kind == "catalog":
             catalog_entry = CATALOG_REGISTRY.get(intent.catalog_id or "")
@@ -239,7 +294,9 @@ async def prepare_stack_draft(input: StackDraft, ctx: ToolContext) -> PrepareRes
                 spec.healthcheck = catalog_entry["healthcheck"]
             if intent.persistence:
                 vol_name = f"{service_name}_data"
-                spec.volumes = [f"{vol_name}:{catalog_entry['default_db_volume']}"]
+                _append_volume(
+                    spec, f"{vol_name}:{catalog_entry['default_db_volume']}"
+                )
                 volumes[vol_name] = {}
         else:
             if not intent.image:
@@ -253,8 +310,12 @@ async def prepare_stack_draft(input: StackDraft, ctx: ToolContext) -> PrepareRes
                     intent.persistence.path if intent.persistence.path else "/data"
                 )
                 vol_name = f"{service_name}_data"
-                spec.volumes = [f"{vol_name}:{mount_path}"]
+                _append_volume(spec, f"{vol_name}:{mount_path}")
                 volumes[vol_name] = {}
+
+        if intent.volume_mounts:
+            for mount in intent.volume_mounts:
+                _append_volume(spec, _volume_mount_to_compose_string(mount))
 
         if intent.resources:
             limits = RESOURCE_LIMITS_MAP.get(intent.resources)

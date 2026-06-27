@@ -12,12 +12,31 @@ SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇",
 
 
 class ThinkingIndicator(Static):
-    """Static widget showing a spinner while the agent is thinking."""
+    """Static widget showing a spinner while the agent is thinking or running a tool."""
 
-    def __init__(self, *, running: bool = True, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        *,
+        running: bool = True,
+        label: str = "Thinking",
+        **kwargs: Any,
+    ) -> None:
         super().__init__(**kwargs)
         self._running = running
+        self._label = label
         self._frame_index = 0
+        self._started_at = time.time()
+        self._update_display()
+
+    @property
+    def label(self) -> str:
+        return self._label
+
+    @label.setter
+    def label(self, value: str) -> None:
+        if value == self._label:
+            return
+        self._label = value
         self._started_at = time.time()
         self._update_display()
 
@@ -36,4 +55,4 @@ class ThinkingIndicator(Static):
     def _update_display(self) -> None:
         frame = SPINNER_FRAMES[self._frame_index]
         elapsed = int(time.time() - self._started_at)
-        self.update(Text(f"{frame} Thinking… {elapsed}s", style="green"))
+        self.update(Text(f"{frame} {self._label}… {elapsed}s", style="green"))

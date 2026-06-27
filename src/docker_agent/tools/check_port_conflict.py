@@ -214,39 +214,6 @@ async def check_port_conflicts(
 
     try:
         containers = await ctx.docker_engine.list_containers(all=True)
-        for summary in containers:
-            if summary.state in ("exited", "dead"):
-                continue
-            if (
-                stack_name
-                and summary.labels.get("com.docker.compose.project") == stack_name
-            ):
-                continue
-            inspected = await ctx.docker_engine.inspect(summary.id)
-            ports = inspected.network_settings.ports
-            for container_port_key, bindings in ports.items():
-                if not bindings:
-                    continue
-                container_port_raw, protocol_raw = container_port_key.split("/")
-                protocol: Literal["tcp", "udp"] = (
-                    "udp" if protocol_raw == "udp" else "tcp"
-                )
-                container_port = int(container_port_raw)
-                for binding in bindings:
-                    host_port = binding.get("HostPort")
-                    if not host_port:
-                        continue
-                    running_bindings.append(
-                        (
-                            summary.names[0] if summary.names else summary.id,
-                            PublishedPort(
-                                host_ip=binding.get("HostIp") or "0.0.0.0",
-                                host_port=int(host_port),
-                                container_port=container_port,
-                                protocol=protocol,
-                            ),
-                        )
-                    )
     except Exception as error:
         return CheckPortConflictResult(
             ok=False,
@@ -254,6 +221,43 @@ async def check_port_conflicts(
             invalid=invalid,
             docker_error=_describe_docker_error(error),
         )
+
+    for summary in containers:
+        if summary.state in ("exited", "dead"):
+            continue
+        if (
+            stack_name
+            and summary.labels.get("com.docker.compose.project") == stack_name
+        ):
+            continue
+        try:
+            inspected = await ctx.docker_engine.inspect(summary.id)
+        except Exception:
+            continue
+        ports = inspected.network_settings.ports
+        for container_port_key, bindings in ports.items():
+            if not bindings:
+                continue
+            container_port_raw, _, protocol_raw = container_port_key.partition("/")
+            protocol: Literal["tcp", "udp"] = (
+                "udp" if protocol_raw == "udp" else "tcp"
+            )
+            container_port = int(container_port_raw)
+            for binding in bindings:
+                host_port = binding.host_port
+                if not host_port:
+                    continue
+                running_bindings.append(
+                    (
+                        summary.names[0] if summary.names else summary.id,
+                        PublishedPort(
+                            host_ip=binding.host_ip or "0.0.0.0",
+                            host_port=int(host_port),
+                            container_port=container_port,
+                            protocol=protocol,
+                        ),
+                    )
+                )
 
     for draft_service, draft_binding in draft_bindings:
         for running_container, running_binding in running_bindings:

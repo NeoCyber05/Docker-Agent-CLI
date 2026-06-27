@@ -9,6 +9,7 @@ AGENT_TOOL_NAMES = [
     "plan_stack",
     "destroy_stack",
     "destroy_all_stacks",
+    "remove_container",
     "list_stacks",
     "inspect_drift",
     "remediate_drift",
@@ -41,6 +42,7 @@ def test_destructive_tools_need_permission() -> None:
         if tool.name in {
             "destroy_stack",
             "destroy_all_stacks",
+            "remove_container",
             "remediate_drift",
             "apply_stack",
             "pull_image",

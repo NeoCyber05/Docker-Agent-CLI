@@ -12,6 +12,7 @@ from io import StringIO
 
 from rich.console import Console
 
+from docker_agent.components.activity_timeline import ActivityTimeline
 from docker_agent.components.model_picker_dialog import ModelPickerDialog
 from docker_agent.components.welcome_banner import WelcomeBanner
 from docker_agent.services.model_catalog import CatalogRowHeader, CatalogRowModel
@@ -91,9 +92,9 @@ async def test_help_slash_command_renders_in_timeline(tmp_project) -> None:
         await pilot.press("/", "h", "e", "l", "p")
         await pilot.press("enter")
         await pilot.pause(delay=0.5)
-        timeline = pilot.app.query_one("#timeline")
+        timeline = pilot.app.query_one("#timeline-content", ActivityTimeline)
         assert len(timeline.items) == 2
-        assert "/help" in str(timeline.content)
+        assert "/help" in str(timeline.render())
         assert app._tick_task is not None
         assert not app._tick_task.done()
 
@@ -145,15 +146,15 @@ async def test_model_slash_command_mounts_inline_picker(tmp_project) -> None:
 
 
 @pytest.mark.asyncio
-async def test_prompt_disabled_while_agent_running(tmp_project) -> None:
+async def test_prompt_enabled_while_agent_running(tmp_project) -> None:
     app = REPL(engine=make_engine(tmp_project), version="0.1.0-test", show_banner=False)
     app.session.interaction.phase = "running"
 
     async with app.run_test() as pilot:
         await pilot.pause(delay=0.3)
         prompt_input = pilot.app.query_one("#prompt-input")
-        assert prompt_input.disabled is True
-        assert "Processing" in pilot.app.query_one("#phase-hint").content
+        assert prompt_input.disabled is False
+        assert "Agent thinking" in pilot.app.query_one("#phase-hint").content
 
 
 @pytest.mark.asyncio
@@ -172,11 +173,12 @@ async def test_permission_request_opens_dialog_and_responds(tmp_project) -> None
         await pilot.pause(delay=0.5)
         assert app.session.pending_event is None
         assert app.session.phase == "running"
-        assert prompt_input.disabled is True
+        assert prompt_input.disabled is False
+        assert not pilot.app.query("#permission-prompt")
 
 
 @pytest.mark.asyncio
-async def test_plan_ready_opens_preview_and_accepts_approval(tmp_project) -> None:
+async def test_plan_ready_shows_in_timeline_and_accepts_approval(tmp_project) -> None:
     from docker_agent.types.events import PlanReady
     from docker_agent.types.stack import StackDiff
 
@@ -186,17 +188,34 @@ async def test_plan_ready_opens_preview_and_accepts_approval(tmp_project) -> Non
         compose_yaml="services:\n  web:\n    image: nginx",
         diff=StackDiff(stackName="demo", status="missing", serviceDiffs=[]),
     )
+    app.session.dispatch_activity(
+        {
+            "type": "plan_ready",
+            "request_id": "plan-1",
+            "compose_yaml": "services:\n  web:\n    image: nginx",
+            "diff": StackDiff(stackName="demo", status="missing", serviceDiffs=[]),
+            "auto_generated_secrets": None,
+            "config_files": None,
+        }
+    )
     app.session.interaction.phase = "awaiting_input"
 
     async with app.run_test(size=(100, 30)) as pilot:
         await pilot.pause(delay=0.5)
         prompt_input = pilot.app.query_one("#prompt-input")
         assert prompt_input.disabled is True
+        timeline = str(pilot.app.query_one("#timeline-content").render())
+        assert "Plan preview" in timeline
         await pilot.press("y")
         await pilot.pause(delay=0.5)
         assert app.session.pending_event is None
         assert app.session.phase == "running"
-        assert prompt_input.disabled is True
+        assert any(
+            item.type == "plan" and item.status == "approved"
+            for item in app.session.activity_state.items
+        )
+        timeline_after = str(pilot.app.query_one("#timeline-content").render())
+        assert "Plan approved" in timeline_after
 
 
 @pytest.mark.asyncio

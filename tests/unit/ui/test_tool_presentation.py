@@ -40,7 +40,11 @@ from docker_agent.ui.tool_presentation import present_tool, sanitize_tool_text
             {"ok": True, "exitCode": 0},
             "Destroy stack: web",
             "Tear down stack web (volumes removed)",
-            lambda detail: any("exitCode" in line for line in detail),
+            lambda detail: (
+                any("docker compose down" in line for line in detail)
+                and any("DELETED" in line for line in detail)
+                and not any(line.startswith("Input:") for line in detail)
+            ),
         ),
         (
             "destroy_all_stacks",
@@ -49,6 +53,19 @@ from docker_agent.ui.tool_presentation import present_tool, sanitize_tool_text
             "Destroy all stacks",
             "Tear down all stacks",
             lambda detail: any("web" in line for line in detail),
+        ),
+        (
+            "remove_container",
+            {"containers": ["web-1", "db-1"]},
+            {"ok": True, "removed": ["web-1", "db-1"], "failed": []},
+            "Remove container: web-1, db-1",
+            "Remove Docker container(s): web-1, db-1",
+            lambda detail: (
+                any("force-remove" in line for line in detail)
+                and any("orphan" in line for line in detail)
+                and any("web-1" in line for line in detail)
+                and not any(line.startswith("Input:") for line in detail)
+            ),
         ),
         (
             "list_stacks",
@@ -148,6 +165,27 @@ def test_registers_presentation_for_tool(
     assert presentation.summary == expected_summary
     if detail_check is not None:
         assert detail_check(presentation.detail_lines)
+
+
+def test_remove_container_permission_detail_lists_action_and_containers() -> None:
+    presentation = present_tool(
+        "remove_container",
+        {"containers": ["web-app-nginx-1", "web-app-postgres-1"], "force": True},
+    )
+    text = "\n".join(presentation.detail_lines)
+    assert "force-remove" in text
+    assert "docker rm -f" in text
+    assert "web-app-nginx-1" in text
+    assert "Input:" not in text
+
+
+def test_destroy_stack_permission_detail_describes_compose_down() -> None:
+    presentation = present_tool("destroy_stack", {"stackName": "webapp"})
+    text = "\n".join(presentation.detail_lines)
+    assert "webapp" in text
+    assert "docker compose down" in text
+    assert "Named volumes are kept" in text
+    assert "Input:" not in text
 
 
 def test_falls_back_for_unknown_tool_name() -> None:

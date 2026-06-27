@@ -16,6 +16,7 @@ from docker_agent.types.message import (
     ToolResultMessage,
     UserMessage,
 )
+from docker_agent.types.stack import StackDiff
 from docker_agent.ui.tool_presentation import present_tool, sanitize_tool_text
 
 MAX_PROGRESS_LINES = 20
@@ -73,7 +74,37 @@ class RollbackActivity:
     detail: str | None = None
 
 
-ActivityItem = ToolActivity | TextActivity | UsageActivity | RollbackActivity
+PlanActivityStatus = Literal["pending", "approved", "denied"]
+
+
+@dataclass
+class PlanSecretRef:
+    service: str
+    keys: list[str]
+
+
+@dataclass
+class PlanConfigRef:
+    path: str
+    content: str
+    bytes: int
+
+
+@dataclass
+class PlanActivity:
+    id: str
+    type: Literal["plan"] = "plan"
+    request_id: str = ""
+    compose_yaml: str = ""
+    diff: StackDiff | None = None
+    auto_generated_secrets: list[PlanSecretRef] = field(default_factory=list)
+    config_files: list[PlanConfigRef] = field(default_factory=list)
+    status: PlanActivityStatus = "pending"
+    show_yaml: bool = False
+    show_config: bool = False
+
+
+ActivityItem = ToolActivity | TextActivity | UsageActivity | RollbackActivity | PlanActivity
 
 
 @dataclass
@@ -177,6 +208,31 @@ class RollbackResultAction(TypedDict):
     detail: str | None
 
 
+class PlanReadyAction(TypedDict):
+    type: Literal["plan_ready"]
+    request_id: str
+    compose_yaml: str
+    diff: StackDiff
+    auto_generated_secrets: list[Any] | None
+    config_files: list[Any] | None
+
+
+class PlanResolvedAction(TypedDict):
+    type: Literal["plan_resolved"]
+    request_id: str
+    status: PlanActivityStatus
+
+
+class PlanToggleYamlAction(TypedDict):
+    type: Literal["plan_toggle_yaml"]
+    request_id: str
+
+
+class PlanToggleConfigAction(TypedDict):
+    type: Literal["plan_toggle_config"]
+    request_id: str
+
+
 ActivityAction = (
     ReplaceAction
     | ResetAction
@@ -191,7 +247,204 @@ ActivityAction = (
     | UsageAction
     | RollbackStartedAction
     | RollbackResultAction
+    | PlanReadyAction
+    | PlanResolvedAction
+    | PlanToggleYamlAction
+    | PlanToggleConfigAction
 )
+
+
+def _plan_secret_refs(raw: list[Any] | None) -> list[PlanSecretRef]:
+    if not raw:
+        return []
+    refs: list[PlanSecretRef] = []
+    for item in raw:
+        if isinstance(item, PlanSecretRef):
+            refs.append(item)
+        elif isinstance(item, dict):
+            refs.append(
+                PlanSecretRef(
+                    service=str(item.get("service", "")),
+                    keys=[str(key) for key in item.get("keys", [])],
+                )
+            )
+    return refs
+
+
+def _plan_config_refs(raw: list[Any] | None) -> list[PlanConfigRef]:
+    if not raw:
+        return []
+    refs: list[PlanConfigRef] = []
+    for item in raw:
+        if isinstance(item, PlanConfigRef):
+            refs.append(item)
+        elif isinstance(item, dict):
+            refs.append(
+                PlanConfigRef(
+                    path=str(item.get("path", "")),
+                    content=str(item.get("content", "")),
+                    bytes=int(item.get("bytes", 0)),
+                )
+            )
+    return refs
+
+
+def _update_plan_activity(
+    items: list[ActivityItem],
+    request_id: str,
+    updater: Any,
+) -> list[ActivityItem]:
+    updated: list[ActivityItem] = []
+    for item in items:
+        if item.type == "plan" and item.request_id == request_id:
+            updated.append(updater(item))
+        else:
+            updated.append(item)
+    return updated
+
+
+def serialize_activity_items(items: list[ActivityItem]) -> list[dict[str, Any]]:
+    serialized: list[dict[str, Any]] = []
+    for item in items:
+        if item.type == "tool":
+            serialized.append(
+                {
+                    "type": "tool",
+                    "id": item.id,
+                    "name": item.name,
+                    "title": item.title,
+                    "summary": item.summary,
+                    "status": item.status,
+                    "progressMsgs": item.progress_msgs,
+                    "detailLines": item.detail_lines,
+                    "startTime": item.start_time,
+                    "endTime": item.end_time,
+                }
+            )
+        elif item.type == "text":
+            serialized.append(
+                {
+                    "type": "text",
+                    "id": item.id,
+                    "role": item.role,
+                    "text": item.text,
+                }
+            )
+        elif item.type == "usage":
+            serialized.append(
+                {
+                    "type": "usage",
+                    "id": item.id,
+                    "inputTokens": item.input_tokens,
+                    "outputTokens": item.output_tokens,
+                }
+            )
+        elif item.type == "rollback":
+            serialized.append(
+                {
+                    "type": "rollback",
+                    "id": item.id,
+                    "stackName": item.stack_name,
+                    "phase": item.phase,
+                    "ok": item.ok,
+                    "restored": item.restored,
+                    "detail": item.detail,
+                }
+            )
+        elif item.type == "plan":
+            serialized.append(
+                {
+                    "type": "plan",
+                    "id": item.id,
+                    "requestId": item.request_id,
+                    "composeYaml": item.compose_yaml,
+                    "diff": item.diff.model_dump(by_alias=True) if item.diff else None,
+                    "autoGeneratedSecrets": [
+                        {"service": secret.service, "keys": list(secret.keys)}
+                        for secret in item.auto_generated_secrets
+                    ],
+                    "configFiles": [
+                        {
+                            "path": config.path,
+                            "content": config.content,
+                            "bytes": config.bytes,
+                        }
+                        for config in item.config_files
+                    ],
+                    "status": item.status,
+                    "showYaml": item.show_yaml,
+                    "showConfig": item.show_config,
+                }
+            )
+    return serialized
+
+
+def deserialize_activity_items(raw: list[Any]) -> list[ActivityItem]:
+    items: list[ActivityItem] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        item_type = entry.get("type")
+        if item_type == "tool":
+            items.append(
+                ToolActivity(
+                    id=str(entry.get("id", _next_id())),
+                    name=str(entry.get("name", "")),
+                    title=str(entry.get("title", "")),
+                    summary=str(entry.get("summary", "")),
+                    status=entry.get("status", "completed"),
+                    progress_msgs=list(entry.get("progressMsgs", [])),
+                    detail_lines=list(entry.get("detailLines", [])),
+                    start_time=float(entry.get("startTime", 0)),
+                    end_time=entry.get("endTime"),
+                )
+            )
+        elif item_type == "text":
+            items.append(
+                TextActivity(
+                    id=str(entry.get("id", _next_id())),
+                    role=entry.get("role", "assistant"),
+                    text=str(entry.get("text", "")),
+                )
+            )
+        elif item_type == "usage":
+            items.append(
+                UsageActivity(
+                    id=str(entry.get("id", _next_id())),
+                    input_tokens=int(entry.get("inputTokens", 0)),
+                    output_tokens=int(entry.get("outputTokens", 0)),
+                )
+            )
+        elif item_type == "rollback":
+            items.append(
+                RollbackActivity(
+                    id=str(entry.get("id", _next_id())),
+                    stack_name=str(entry.get("stackName", "")),
+                    phase=entry.get("phase", "started"),
+                    ok=entry.get("ok"),
+                    restored=entry.get("restored"),
+                    detail=entry.get("detail"),
+                )
+            )
+        elif item_type == "plan":
+            diff_raw = entry.get("diff")
+            diff = StackDiff.model_validate(diff_raw) if diff_raw else None
+            items.append(
+                PlanActivity(
+                    id=str(entry.get("id", _next_id())),
+                    request_id=str(entry.get("requestId", "")),
+                    compose_yaml=str(entry.get("composeYaml", "")),
+                    diff=diff,
+                    auto_generated_secrets=_plan_secret_refs(
+                        entry.get("autoGeneratedSecrets")
+                    ),
+                    config_files=_plan_config_refs(entry.get("configFiles")),
+                    status=entry.get("status", "approved"),
+                    show_yaml=bool(entry.get("showYaml")),
+                    show_config=bool(entry.get("showConfig")),
+                )
+            )
+    return items
 
 
 def activity_reducer(state: ActivityState, action: ActivityAction) -> ActivityState:
@@ -375,6 +628,51 @@ def activity_reducer(state: ActivityState, action: ActivityAction) -> ActivitySt
                     )
                 )
             return replace(state, items=updated_items)
+        case "plan_ready":
+            return replace(
+                state,
+                items=[
+                    *state.items,
+                    PlanActivity(
+                        id=_next_id(),
+                        request_id=action["request_id"],
+                        compose_yaml=action["compose_yaml"],
+                        diff=action["diff"],
+                        auto_generated_secrets=_plan_secret_refs(
+                            action.get("auto_generated_secrets")
+                        ),
+                        config_files=_plan_config_refs(action.get("config_files")),
+                        status="pending",
+                    ),
+                ],
+            )
+        case "plan_resolved":
+            return replace(
+                state,
+                items=_update_plan_activity(
+                    state.items,
+                    action["request_id"],
+                    lambda item: replace(item, status=action["status"]),
+                ),
+            )
+        case "plan_toggle_yaml":
+            return replace(
+                state,
+                items=_update_plan_activity(
+                    state.items,
+                    action["request_id"],
+                    lambda item: replace(item, show_yaml=not item.show_yaml),
+                ),
+            )
+        case "plan_toggle_config":
+            return replace(
+                state,
+                items=_update_plan_activity(
+                    state.items,
+                    action["request_id"],
+                    lambda item: replace(item, show_config=not item.show_config),
+                ),
+            )
         case _:
             return state
 
@@ -458,11 +756,17 @@ __all__ = [
     "ActivityAction",
     "ActivityItem",
     "ActivityState",
+    "PlanActivity",
+    "PlanActivityStatus",
+    "PlanConfigRef",
+    "PlanSecretRef",
     "RollbackActivity",
     "TextActivity",
     "ToolActivity",
     "ToolActivityStatus",
     "UsageActivity",
     "activity_reducer",
+    "deserialize_activity_items",
     "project_messages_to_activities",
+    "serialize_activity_items",
 ]

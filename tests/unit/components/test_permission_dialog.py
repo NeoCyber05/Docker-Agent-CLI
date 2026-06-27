@@ -58,6 +58,50 @@ async def test_permission_dialog_always_allow() -> None:
         assert app.responses[0].kind == "always_allow_in_session"  # type: ignore[attr-defined]
 
 
+async def test_permission_dialog_shows_summary_for_remove_container() -> None:
+    app = Host()
+    async with app.run_test() as pilot:
+        dialog = PermissionDialog(
+            tool="remove_container",
+            input={
+                "containers": ["web-app-nginx-1", "web-app-postgres-1"],
+                "force": True,
+            },
+            id="permission-prompt",
+        )
+        pilot.app.mount(dialog, after="#timeline")
+        await pilot.pause()
+        text = str(dialog.render())
+        assert "[y] approve" in text
+        assert "[n] deny" in text
+        assert "[a] always for this session" in text
+        assert "Remove Docker container(s)" in text
+        assert "force-remove" in text
+        assert "web-app-nginx-1" in text
+        assert "Input:" not in text
+
+
+async def test_permission_dialog_shows_key_hints_for_initialize_project_policy() -> None:
+    app = Host()
+    async with app.run_test() as pilot:
+        dialog = PermissionDialog(
+            tool="initialize_project_policy",
+            input_data={
+                "reason": "Project policy file is missing",
+                "path": "project-policies.yaml",
+                "content": "project:\n  hardDeny: []\n  require: []\n",
+            },
+            id="permission-prompt",
+        )
+        pilot.app.mount(dialog, after="#timeline")
+        await pilot.pause()
+        text = str(dialog.render())
+        assert "Permission required" in text
+        assert "[y] approve" in text
+        assert "[n] deny" in text
+        assert "[a] always for this session" in text
+
+
 async def test_permission_dialog_deny() -> None:
     app = Host()
     async with app.run_test() as pilot:

@@ -36,7 +36,7 @@ RUNTIME_ALLOWLIST = {
 
 
 def _parse_actual_ports(
-    network_ports: dict[str, list[dict[str, str]] | None]
+    network_ports: dict[str, list[Any] | None],
 ) -> list[str]:
     out: list[str] = []
     for container_port_proto, bindings in network_ports.items():
@@ -46,8 +46,8 @@ def _parse_actual_ports(
             container_port, proto = container_port_proto.split("/", 1)
         else:
             container_port, proto = container_port_proto, "tcp"
-        for b in bindings:
-            host_port = b.get("HostPort", "")
+        for binding in bindings:
+            host_port = binding.host_port
             if not host_port:
                 continue
             if proto == "tcp":

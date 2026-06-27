@@ -44,6 +44,61 @@ class ConfigMount(BaseModel):
     container_path: str = Field(alias="containerPath")
 
 
+class NetworkIntent(BaseModel):
+    model_config = _MODEL_CONFIG
+
+    name: str
+    driver: Literal["bridge", "overlay"] | None = None
+    internal: bool | None = None
+    external: bool | None = None
+    labels: dict[str, str] | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, value: str) -> str:
+        if not SERVICE_NAME_PATTERN.match(value):
+            raise ValueError(
+                "name must match ^[a-z][a-z0-9_-]{0,62}$"
+            )
+        return value
+
+
+class VolumeIntent(BaseModel):
+    model_config = _MODEL_CONFIG
+
+    name: str
+    driver: str | None = None
+    driver_opts: dict[str, str] | None = Field(default=None, alias="driverOpts")
+    labels: dict[str, str] | None = None
+    external: bool | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, value: str) -> str:
+        if not SERVICE_NAME_PATTERN.match(value):
+            raise ValueError(
+                "name must match ^[a-z][a-z0-9_-]{0,62}$"
+            )
+        return value
+
+
+class VolumeMount(BaseModel):
+    model_config = _MODEL_CONFIG
+
+    volume: str
+    target: str
+    read_only: bool | None = Field(default=None, alias="readOnly")
+
+    @field_validator("volume")
+    @classmethod
+    def _validate_volume(cls, value: str) -> str:
+        if not SERVICE_NAME_PATTERN.match(value):
+            raise ValueError(
+                "volume must match ^[a-z][a-z0-9_-]{0,62}$"
+            )
+        return value
+
+
 def parse_docker_mount_string(value: str) -> dict[str, str]:
     """Parse Docker short volume syntax into ConfigMount fields."""
     trimmed = value.strip()
@@ -90,6 +145,8 @@ class HybridServiceIntent(BaseModel):
     depends_on: list[str] | None = None
     scale: int | None = Field(default=None, ge=1)
     config_mounts: list[ConfigMount] | None = Field(default=None, alias="configMounts")
+    networks: list[str] | None = None
+    volume_mounts: list[VolumeMount] | None = Field(default=None, alias="volumeMounts")
 
     @field_validator("config_mounts", mode="before")
     @classmethod
@@ -150,6 +207,8 @@ class StackDraft(BaseModel):
     stack_name: str = Field(alias="stackName")
     intent: str
     network_name: str | None = Field(default=None, alias="networkName")
+    networks: list[NetworkIntent] | None = None
+    volumes: list[VolumeIntent] | None = None
     services: list[HybridServiceIntent]
     config_files: dict[str, str] | None = Field(default=None, alias="configFiles")
 
@@ -171,13 +230,54 @@ class StackDraft(BaseModel):
     ) -> list[HybridServiceIntent]:
         return validate_services(value)
 
+    @model_validator(mode="after")
+    def _validate_network_and_volume_references(self) -> Self:
+        if self.networks:
+            net_names = [n.name for n in self.networks]
+            if len(set(net_names)) != len(net_names):
+                raise ValueError("network names must be unique")
+            if "default" in net_names:
+                raise ValueError(
+                    "network name 'default' is reserved; use networkName to rename "
+                    "the default network"
+                )
+
+        if self.volumes:
+            vol_names = [v.name for v in self.volumes]
+            if len(set(vol_names)) != len(vol_names):
+                raise ValueError("volume names must be unique")
+
+        declared_networks = {n.name for n in (self.networks or [])} | {"default"}
+        declared_volumes = {v.name for v in (self.volumes or [])}
+        for svc in self.services:
+            if svc.persistence:
+                declared_volumes.add(f"{svc.name}_data")
+            if svc.networks:
+                for net in svc.networks:
+                    if net not in declared_networks:
+                        raise ValueError(
+                            f"service '{svc.name}' references network '{net}' "
+                            "which is not declared in top-level networks"
+                        )
+            if svc.volume_mounts:
+                for mount in svc.volume_mounts:
+                    if mount.volume not in declared_volumes:
+                        raise ValueError(
+                            f"service '{svc.name}' references volume '{mount.volume}' "
+                            "which is not declared in top-level volumes"
+                        )
+        return self
+
 
 __all__ = [
     "APPROVED_CATALOG_IDS",
     "ConfigMount",
     "DraftServiceSpec",
     "HybridServiceIntent",
+    "NetworkIntent",
     "PersistenceSpec",
+    "VolumeIntent",
+    "VolumeMount",
     "SERVICE_NAME_PATTERN",
     "StackDraft",
     "format_validation_error",

@@ -346,7 +346,7 @@ class _ApplyStackTool:
         ctx.state_store.write(input.stack_name, definition)
 
         yaml_text = yaml.safe_dump(
-            definition.model_dump(by_alias=True),
+            definition.model_dump(by_alias=True, exclude_none=True),
             sort_keys=False,
         )
         yaml_check = validate_yaml_round_trip(yaml_text)

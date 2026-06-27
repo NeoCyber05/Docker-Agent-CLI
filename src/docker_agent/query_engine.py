@@ -44,6 +44,7 @@ from docker_agent.types.events import (
 )
 from docker_agent.types.message import Message, UserMessage
 from docker_agent.types.permissions import PermissionResponse, PermissionResponseAdapter
+from docker_agent.ui.activity import ActivityItem, deserialize_activity_items, serialize_activity_items
 from docker_agent.utils.async_queue import AsyncQueue
 
 _MessageListAdapter: TypeAdapter[list[Message]] = TypeAdapter(list[Message])
@@ -129,6 +130,7 @@ class QueryEngine:
         self._logger: StructuredLogger | None = None
         self._current_iteration = 0
         self.total_usage = {"input_tokens": 0, "output_tokens": 0}
+        self._activity_snapshot: list[ActivityItem] | None = None
 
     @property
     def session_id(self) -> str:
@@ -147,6 +149,9 @@ class QueryEngine:
         self._session_created_at = record.get("created_at")
         if record.get("model") is not None:
             self.model = record["model"]
+        raw_activities = record.get("activities")
+        if isinstance(raw_activities, list):
+            self._activity_snapshot = deserialize_activity_items(raw_activities)
         self._pending.clear()
         self._session_allow_set.clear()
         warning = session_cwd_mismatch_warning(record, self._cwd)
@@ -156,6 +161,12 @@ class QueryEngine:
 
     def get_messages(self) -> list[Message]:
         return list(self._messages)
+
+    def get_activity_snapshot(self) -> list[ActivityItem] | None:
+        return None if self._activity_snapshot is None else list(self._activity_snapshot)
+
+    def set_activity_snapshot(self, items: list[ActivityItem]) -> None:
+        self._activity_snapshot = list(items)
 
     def set_logger(self, logger: StructuredLogger) -> None:
         self._logger = logger
@@ -299,20 +310,21 @@ class QueryEngine:
                 )
                 first_prompt = first_user.content if first_user is not None else "(empty)"
                 provider_name = getattr(self.provider, "name", "unknown")
-                self._session_store.save(
-                    {
-                        "schema_version": 1,
-                        "id": self._session_id,
-                        "created_at": self._session_created_at,
-                        "updated_at": now,
-                        "cwd": self._cwd,
-                        "provider": provider_name,
-                        "model": self.model,
-                        "first_prompt": first_prompt,
-                        "stack_names": [s.name for s in self._state_store.list()],
-                        "messages": [m.model_dump(by_alias=True) for m in self._messages],
-                    }
-                )
+                record: SessionRecord = {
+                    "schema_version": 1,
+                    "id": self._session_id,
+                    "created_at": self._session_created_at,
+                    "updated_at": now,
+                    "cwd": self._cwd,
+                    "provider": provider_name,
+                    "model": self.model,
+                    "first_prompt": first_prompt,
+                    "stack_names": [s.name for s in self._state_store.list()],
+                    "messages": [m.model_dump(by_alias=True) for m in self._messages],
+                }
+                if self._activity_snapshot is not None:
+                    record["activities"] = serialize_activity_items(self._activity_snapshot)
+                self._session_store.save(record)
 
     def respond_to(self, request_id: str, answer: PermissionResponse) -> bool:
         future = self._pending.get(request_id)
@@ -341,6 +353,7 @@ class QueryEngine:
         self._resumed_id = None
         self._session_created_at = None
         self._session_id = _nanoid()
+        self._activity_snapshot = None
 
     def _to_log_entry(self, ev: LoopEvent) -> LogEntry:
         ts = datetime.now(UTC).isoformat()

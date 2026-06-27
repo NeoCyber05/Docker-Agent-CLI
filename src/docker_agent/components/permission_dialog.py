@@ -55,18 +55,22 @@ class PermissionDialog(Static):
         self._answered = False
         self._update_content()
 
+    def _append_key_hints(self, content: Text) -> None:
+        content.append("  [y] approve  ", style="green")
+        content.append("[n] deny  ", style="red")
+        content.append("[a] always for this session\n", style="cyan")
+
     def _update_content(self) -> None:
         presentation = present_tool(self._tool, self._input)
         content = Text()
         content.append("⚠ Permission required\n", style="bold yellow")
-        content.append(f"  {presentation.title}\n", style="bold")
-        content.append(f"  {presentation.summary}\n", style="dim")
-        for line in presentation.detail_lines[:6]:
-            content.append(f"  {line}\n", style="dim")
+        self._append_key_hints(content)
         content.append("\n")
-        content.append("  [y] approve  ", style="green")
-        content.append("[n] deny  ", style="red")
-        content.append("[a] always for this session", style="cyan")
+        if presentation.summary:
+            content.append(f"  {presentation.summary}\n", style="bold")
+        lines = presentation.detail_lines[:8] or [presentation.title]
+        for line in lines:
+            content.append(f"  {line}\n", style="dim")
         self.update(content)
 
     def on_mount(self) -> None:

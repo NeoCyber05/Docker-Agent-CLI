@@ -145,3 +145,77 @@ def test_coerce_config_mounts_from_object() -> None:
     assert intent.config_mounts == [
         ConfigMount(host_path="./nginx.conf", container_path="/etc/nginx/nginx.conf")
     ]
+
+
+def test_stack_draft_rejects_undeclared_service_network() -> None:
+    with pytest.raises(ValidationError, match="not declared in top-level networks"):
+        StackDraft.model_validate(
+            {
+                "stackName": "demo",
+                "intent": "test",
+                "services": [
+                    {
+                        "name": "web",
+                        "kind": "custom",
+                        "image": "nginx",
+                        "networks": ["backend"],
+                    }
+                ],
+            }
+        )
+
+
+def test_stack_draft_rejects_undeclared_volume_mount() -> None:
+    with pytest.raises(ValidationError, match="not declared in top-level volumes"):
+        StackDraft.model_validate(
+            {
+                "stackName": "demo",
+                "intent": "test",
+                "services": [
+                    {
+                        "name": "web",
+                        "kind": "custom",
+                        "image": "nginx",
+                        "volumeMounts": [{"volume": "data", "target": "/data"}],
+                    }
+                ],
+            }
+        )
+
+
+def test_stack_draft_accepts_declared_networks_and_volumes() -> None:
+    draft = StackDraft.model_validate(
+        {
+            "stackName": "demo",
+            "intent": "test",
+            "networks": [{"name": "backend", "internal": True}],
+            "volumes": [{"name": "pgdata", "driver": "local"}],
+            "services": [
+                {
+                    "name": "db",
+                    "kind": "catalog",
+                    "catalogId": "postgresql:16",
+                    "networks": ["backend", "default"],
+                    "volumeMounts": [{"volume": "pgdata", "target": "/var/lib/postgresql/data"}],
+                }
+            ],
+        }
+    )
+    assert draft.networks is not None
+    assert draft.networks[0].internal is True
+    assert draft.volumes is not None
+    assert draft.volumes[0].driver == "local"
+
+
+def test_stack_draft_rejects_reserved_default_network_name() -> None:
+    with pytest.raises(ValidationError, match="reserved"):
+        StackDraft.model_validate(
+            {
+                "stackName": "demo",
+                "intent": "test",
+                "networks": [{"name": "default"}],
+                "services": [
+                    {"name": "web", "kind": "custom", "image": "nginx"},
+                ],
+            }
+        )

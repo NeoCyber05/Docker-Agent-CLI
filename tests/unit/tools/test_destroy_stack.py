@@ -53,3 +53,17 @@ async def test_destroy_stack_calls_for_stack_down(tmp_project: Path) -> None:
     assert bound.down_calls == [{"volumes": True}]
 
 
+@pytest.mark.asyncio
+async def test_destroy_stack_missing_yaml_returns_not_ok(tmp_project: Path) -> None:
+    ctx = make_ctx(tmp_project)
+
+    result = await drain(
+        destroy_stack.call(DestroyStackInput(stack_name="orphan"), ctx)
+    )
+
+    assert result.ok is False
+    assert result.exit_code == 1
+    assert result.reason == "stack_file_not_found"
+    assert "remove_container" in (result.message or "")
+
+

@@ -47,7 +47,6 @@ class PromptInput(Vertical):
         self._suggestion_idx = 0
 
     def compose(self) -> ComposeResult:
-        yield Static("▶ ", id="prompt-prefix")
         yield Input(
             placeholder="Enter prompt…",
             id="prompt-input",

@@ -18,6 +18,7 @@ from docker_agent.tools.inspect_drift import inspect_drift
 from docker_agent.tools.list_stacks import list_stacks
 from docker_agent.tools.plan_stack import plan_stack
 from docker_agent.tools.pull_image import pull_image
+from docker_agent.tools.remove_container import remove_container
 from docker_agent.tools.remediate_drift import remediate_drift
 from docker_agent.tools.resolve_dependency import resolve_dependency
 from docker_agent.tools.validate_spec import validate_spec
@@ -34,6 +35,7 @@ def get_agent_tools() -> list[Any]:
         plan_stack,
         destroy_stack,
         destroy_all_stacks,
+        remove_container,
         list_stacks,
         inspect_drift,
         remediate_drift,

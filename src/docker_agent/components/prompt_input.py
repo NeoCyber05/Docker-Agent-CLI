@@ -11,6 +11,7 @@ from textual.message import Message
 from textual.reactive import reactive
 from textual.widgets import Input, ListItem, ListView, Static
 
+from docker_agent.components.slash_highlighter import SlashCommandHighlighter
 from docker_agent.slash_commands import get_slash_command_suggestions
 from docker_agent.slash_router import SlashCommandDef
 from docker_agent.ui.interaction_state import InteractionPhase
@@ -47,7 +48,11 @@ class PromptInput(Vertical):
 
     def compose(self) -> ComposeResult:
         yield Static("▶ ", id="prompt-prefix")
-        yield Input(placeholder="Enter prompt…", id="prompt-input")
+        yield Input(
+            placeholder="Enter prompt…",
+            id="prompt-input",
+            highlighter=SlashCommandHighlighter(),
+        )
         yield Static(PHASE_HINTS["idle"], id="phase-hint", classes="dim")
         yield ListView(id="suggestions")
 

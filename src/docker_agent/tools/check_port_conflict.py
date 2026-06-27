@@ -10,10 +10,14 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from docker_agent.tool import ToolContext, ToolDone, ToolProgress
-from docker_agent.tools.shared.spec_schemas import StackDraft
+from docker_agent.tools.shared.spec_schemas import (
+    HybridServiceIntent,
+    StackDraft,
+    format_validation_error,
+)
 from docker_agent.tools.shared.translator import prepare_stack_draft
 from docker_agent.types.stack import ServiceSpec
 
@@ -47,7 +51,7 @@ class CheckPortConflictResult:
 class _CheckPortConflictInput(BaseModel):
     stack_name: str | None = Field(default=None, alias="stackName")
     intent: str | None = None
-    services: list[Any]
+    services: list[HybridServiceIntent]
 
 
 def _parse_protocol(value: str) -> tuple[str, Literal["tcp", "udp"]]:
@@ -297,13 +301,29 @@ class _CheckPortConflictTool:
         self, input: _CheckPortConflictInput, ctx: ToolContext
     ) -> AsyncIterator[ToolProgress | ToolDone]:
         yield ToolProgress(msg="Checking published ports...")
-        draft = StackDraft.model_validate(
-            {
-                "stackName": input.stack_name or "validate-temp-stack",
-                "intent": input.intent or "validation only",
-                "services": input.services,
-            }
-        )
+        try:
+            draft = StackDraft.model_validate(
+                {
+                    "stackName": input.stack_name or "validate-temp-stack",
+                    "intent": input.intent or "validation only",
+                    "services": input.services,
+                }
+            )
+        except ValidationError as err:
+            yield ToolDone(
+                CheckPortConflictResult(
+                    ok=False,
+                    conflicts=[],
+                    invalid=[
+                        {
+                            "service": "*",
+                            "value": "services",
+                            "message": format_validation_error(err),
+                        }
+                    ],
+                )
+            )
+            return
         prep = await prepare_stack_draft(draft, ctx)
         if not prep.ok:
             yield ToolDone(

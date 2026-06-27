@@ -349,6 +349,42 @@ async def test_persists_created_at_model_and_stack_names_across_turns(tmp_projec
 
 
 @pytest.mark.asyncio
+async def test_turn_accumulates_and_persists_assistant_messages(tmp_project) -> None:
+    """Regression: assistant output must survive a turn so resume shows it."""
+    state_root = tmp_project / "state"
+    state_store = StateStore(str(state_root))
+    session_store = SessionStore(str(state_root))
+    engine = make_engine(
+        tmp_project,
+        state_root=state_root,
+        session_store=session_store,
+        provider=fake_provider(
+            [
+                {"type": "text_delta", "text": "hello there"},
+                {"type": "message_stop", "stop_reason": "end_turn"},
+            ]
+        ),
+    )
+
+    async for _ in engine.query("hi"):
+        pass
+
+    messages = engine.get_messages()
+    roles = [m.role for m in messages]
+    assert roles == ["user", "assistant"]
+
+    saved = session_store.read(engine.session_id)
+    assert saved is not None
+    saved_roles = [m["role"] for m in saved["messages"]]
+    assert "assistant" in saved_roles
+    assistant = next(m for m in saved["messages"] if m["role"] == "assistant")
+    assert any(
+        block.get("type") == "text" and block.get("text") == "hello there"
+        for block in assistant["content"]
+    )
+
+
+@pytest.mark.asyncio
 async def test_reset_clears_messages_and_allow_set(tmp_project) -> None:
     engine = make_engine(
         tmp_project,

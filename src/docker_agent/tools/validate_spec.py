@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any, Literal, cast
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from docker_agent.tool import ToolContext, ToolDone, ToolProgress
 from docker_agent.tools.shared.config_files import (
@@ -15,7 +15,11 @@ from docker_agent.tools.shared.config_files import (
     stage_config_files,
 )
 from docker_agent.tools.shared.image_validation import validate_images_for_tool
-from docker_agent.tools.shared.spec_schemas import StackDraft
+from docker_agent.tools.shared.spec_schemas import (
+    HybridServiceIntent,
+    StackDraft,
+    format_validation_error,
+)
 from docker_agent.tools.shared.translator import prepare_stack_draft
 from docker_agent.types.stack import ServiceSpec
 
@@ -41,7 +45,7 @@ class ValidateSpecResult:
 class _ValidateSpecInput(BaseModel):
     stack_name: str | None = Field(default=None, alias="stackName")
     intent: str | None = None
-    services: list[Any]
+    services: list[HybridServiceIntent]
     config_files: dict[str, str] | None = Field(default=None, alias="configFiles")
 
 
@@ -118,14 +122,30 @@ class _ValidateSpecTool:
         self, input: _ValidateSpecInput, ctx: ToolContext
     ) -> AsyncIterator[ToolProgress | ToolDone]:
         yield ToolProgress(msg="Validating stack spec...")
-        draft = StackDraft.model_validate(
-            {
-                "stackName": input.stack_name or "validate-temp-stack",
-                "intent": input.intent or "validation only",
-                "services": input.services,
-                "configFiles": input.config_files,
-            }
-        )
+        try:
+            draft = StackDraft.model_validate(
+                {
+                    "stackName": input.stack_name or "validate-temp-stack",
+                    "intent": input.intent or "validation only",
+                    "services": input.services,
+                    "configFiles": input.config_files,
+                }
+            )
+        except ValidationError as err:
+            yield ToolDone(
+                ValidateSpecResult(
+                    valid=False,
+                    issues=[
+                        SpecIssue(
+                            code="invalid_spec",
+                            path="services",
+                            message=format_validation_error(err),
+                        )
+                    ],
+                    warnings=[],
+                )
+            )
+            return
         prep = await prepare_stack_draft(draft, ctx)
         if not prep.ok:
             yield ToolDone(

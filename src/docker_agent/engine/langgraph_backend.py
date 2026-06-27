@@ -17,6 +17,7 @@ from docker_agent.agent import AgentBackend, BackendQueryParams
 from docker_agent.config import load_user_config
 from docker_agent.engine.adapters.tool_adapter import run_tool
 from docker_agent.engine.graph import GraphDeps, build_graph
+from docker_agent.iteration_limits import derive_recursion_limit
 from docker_agent.engine.state import AgentState
 from docker_agent.policy.policy_engine import PolicyEngine
 from docker_agent.tools.destroy_all_stacks import destroy_all_stacks
@@ -223,7 +224,7 @@ class LangGraphBackend(AgentBackend):
                 thread_id = params.ctx.session_id or "default"
                 config: dict[str, Any] = {
                     "configurable": {"thread_id": thread_id},
-                    "recursion_limit": 50,
+                    "recursion_limit": derive_recursion_limit(),
                 }
 
                 stream_input: AgentState | Command[Any] = initial_state
@@ -240,6 +241,16 @@ class LangGraphBackend(AgentBackend):
                             break
                     if not interrupted:
                         break
+
+                final_state = await graph.aget_state(config)
+                final_values = getattr(final_state, "values", None)
+                final_messages = None
+                if isinstance(final_values, dict):
+                    final_messages = final_values.get("messages")
+                elif final_values is not None:
+                    final_messages = getattr(final_values, "messages", None)
+                if final_messages is not None:
+                    params.messages[:] = final_messages
             except Exception as err:
                 if not params.ctx.abort_signal.is_set():
                     emit(Error(error=err))

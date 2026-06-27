@@ -131,7 +131,7 @@ from docker_agent.ui.tool_presentation import present_tool, sanitize_tool_text
             {"exitCode": 0, "stdout": "CONTAINER ID...", "stderr": ""},
             "Docker: ps -a",
             "Run docker ps -a",
-            lambda detail: any("stdout" in line for line in detail),
+            lambda detail: any("docker ps -a" in line for line in detail),
         ),
     ],
 )
@@ -252,3 +252,20 @@ def test_sanitize_tool_text_truncates_to_4096_bytes() -> None:
     long = "a" * 10_000
     sanitized = sanitize_tool_text(long)
     assert len(sanitized.encode("utf-8")) <= 4096
+
+
+def test_exec_docker_presentation_from_pydantic_input() -> None:
+    from docker_agent.tools.exec_docker import ExecDockerInput
+
+    presentation = present_tool("exec_docker", ExecDockerInput(args=["network", "ls"]))
+    assert presentation.title == "Docker: network ls"
+    assert presentation.summary == "Run docker network ls"
+    assert presentation.detail_lines == ["$ docker network ls"]
+
+
+def test_pull_image_presentation_from_pydantic_input() -> None:
+    from docker_agent.tools.pull_image import PullImageInput
+
+    presentation = present_tool("pull_image", PullImageInput(image="nginx:latest"))
+    assert presentation.title == "Pull image: nginx:latest"
+    assert presentation.summary == "Validate and pull nginx:latest"

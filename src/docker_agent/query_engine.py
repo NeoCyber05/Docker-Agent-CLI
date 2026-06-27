@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import math
 import secrets
 import sys
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -16,6 +17,7 @@ from typing import Any
 from pydantic import TypeAdapter
 
 from docker_agent.agent import BackendQueryParams, create_backend
+from docker_agent.iteration_limits import MAX_ITERATIONS
 from docker_agent.loop_context import PlanReadyPayload
 from docker_agent.services.api.types import Provider
 from docker_agent.services.docker.compose_runner import ComposeRunner
@@ -238,17 +240,16 @@ class QueryEngine:
         )
 
         backend = create_backend()
+        backend_params = BackendQueryParams(
+            messages=self._messages,
+            ctx=ctx,
+            provider=self.provider,
+            model=self.model,
+        )
 
         async def runner() -> None:
             try:
-                async for ev in backend.query(
-                    BackendQueryParams(
-                        messages=self._messages,
-                        ctx=ctx,
-                        provider=self.provider,
-                        model=self.model,
-                    )
-                ):
+                async for ev in backend.query(backend_params):
                     await event_queue.push(ev)
             except Exception as err:
                 if not controller.is_set():
@@ -274,6 +275,9 @@ class QueryEngine:
             self._active_controller = None
             with contextlib.suppress(Exception):
                 await task
+            # Backends accumulate assistant + tool-result messages on the params
+            # object; pull them back so the full transcript is persisted/resumable.
+            self._messages = list(backend_params.messages)
             if self._logger is not None:
                 self._logger.log(
                     LogEntry(
@@ -345,13 +349,18 @@ class QueryEngine:
 
         if isinstance(ev, IterationStart):
             self._current_iteration = ev.n
+            near_limit = ev.n >= math.ceil(MAX_ITERATIONS * 0.8)
             return LogEntry(
                 ts=ts,
-                level="info",
+                level="warn" if near_limit else "info",
                 session_id=session_id,
                 iteration=ev.n,
                 category="iteration_start",
-                message=f"iteration {ev.n}",
+                message=(
+                    f"iteration {ev.n} (approaching limit: {ev.n}/{MAX_ITERATIONS})"
+                    if near_limit
+                    else f"iteration {ev.n}"
+                ),
             )
         if isinstance(ev, AssistantText):
             return LogEntry(

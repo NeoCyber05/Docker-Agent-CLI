@@ -10,6 +10,8 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from pydantic import BaseModel
+
 SECRET_PATTERN = re.compile(r"secret|token|password|apiKey|credential", re.IGNORECASE)
 MAX_DETAIL_LINES = 20
 MAX_DETAIL_BYTES = 4096
@@ -20,6 +22,17 @@ class ToolPresentation:
     title: str
     summary: str
     detail_lines: list[str]
+
+
+def _tool_input_as_dict(input_data: Any) -> dict[str, Any]:
+    """Normalize tool input for presentation (dict or pydantic model)."""
+    if input_data is None:
+        return {}
+    if isinstance(input_data, dict):
+        return input_data
+    if isinstance(input_data, BaseModel):
+        return input_data.model_dump(by_alias=True, exclude_none=True)
+    return {}
 
 
 def _mask_secrets(text: str) -> str:
@@ -171,11 +184,13 @@ def present_tool(name: str, input_data: Any = None, output: Any = None) -> ToolP
     title = f"Tool: {name}"
     summary = f"Run {name}"
 
-    if name == "initialize_project_policy" and isinstance(input_data, dict):
-        content = str(input_data.get("content", ""))
+    input_dict = _tool_input_as_dict(input_data)
+
+    if name == "initialize_project_policy" and input_dict:
+        content = str(input_dict.get("content", ""))
         detail_lines = [
-            f"Reason: {input_data.get('reason', '')}",
-            f"Path: {input_data.get('path', '')}",
+            f"Reason: {input_dict.get('reason', '')}",
+            f"Path: {input_dict.get('path', '')}",
             "",
             "Proposed Content:",
             *[f"  {line}" for line in content.split("\n")],
@@ -189,7 +204,6 @@ def present_tool(name: str, input_data: Any = None, output: Any = None) -> ToolP
             detail_lines=[sanitize_tool_text(line) for line in detail_lines],
         )
 
-    input_dict = input_data if isinstance(input_data, dict) else {}
     if name == "plan_stack":
         stack_name = input_dict.get("stackName", "unknown")
         intent = input_dict.get("intent", "")
@@ -248,7 +262,7 @@ def present_tool(name: str, input_data: Any = None, output: Any = None) -> ToolP
         )
 
     detail_lines = _truncate_lines(
-        _build_detail(input_data, output), MAX_DETAIL_LINES, MAX_DETAIL_BYTES
+        _build_detail(input_dict, output), MAX_DETAIL_LINES, MAX_DETAIL_BYTES
     )
     return ToolPresentation(
         title=sanitize_tool_text(title),

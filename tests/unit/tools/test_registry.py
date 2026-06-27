@@ -15,7 +15,6 @@ AGENT_TOOL_NAMES = [
     "get_stack_status",
     "get_logs",
     "get_health",
-    "pull_image",
     "exec_docker",
 ]
 
@@ -25,7 +24,10 @@ def test_agent_tool_names_and_order() -> None:
 
 
 def test_all_tools_includes_apply_stack() -> None:
-    assert [t.name for t in get_all_tools()] == AGENT_TOOL_NAMES + ["apply_stack"]
+    assert [t.name for t in get_all_tools()] == AGENT_TOOL_NAMES + [
+        "pull_image",
+        "apply_stack",
+    ]
 
 
 def test_read_only_tools_need_no_permission() -> None:

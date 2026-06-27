@@ -57,7 +57,7 @@ from docker_agent.types.message import (
     UserMessage,
 )
 
-MAX_ITERATIONS = 24
+from docker_agent.iteration_limits import MAX_ITERATIONS, build_graceful_summary
 
 
 def format_plan_blocker(result: PlanStackResultBlocked) -> str:
@@ -722,7 +722,9 @@ async def query(
                     )
 
     policy_engine = PolicyEngine(user_config=user_config, project_policy_path=project_policy_path)
-    working_messages = list(messages)
+    # Mutate the caller's list in place so appended assistant/tool-result messages
+    # propagate back to QueryEngine for persistence and resume.
+    working_messages = messages
 
     last_user = next(
         (m for m in reversed(working_messages) if isinstance(m, UserMessage)),
@@ -964,7 +966,7 @@ async def query(
                 )
             )
 
-    yield Error(error=RuntimeError(f"agent loop reached max iterations ({MAX_ITERATIONS})"))
+    yield AssistantText(delta=build_graceful_summary(working_messages, MAX_ITERATIONS))
 
 
 __all__ = ["MAX_ITERATIONS", "format_plan_blocker", "query", "run_provider", "run_tool"]

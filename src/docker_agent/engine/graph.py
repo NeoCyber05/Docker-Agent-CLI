@@ -12,8 +12,8 @@ from typing import Any
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 
+from docker_agent.iteration_limits import MAX_ITERATIONS, derive_recursion_limit
 from docker_agent.engine.nodes.agent_node import (
-    MAX_ITERATIONS,
     AgentNodeDeps,
     agent_node,
 )
@@ -108,7 +108,7 @@ def build_graph(deps: GraphDeps) -> Any:
         tool_uses = _tool_uses_in_last_assistant(state)
         if not tool_uses:
             return END
-        if state.iter > MAX_ITERATIONS:
+        if state.iter >= MAX_ITERATIONS:
             return END
         if any(getattr(b, "name", None) == "remediate_drift" for b in tool_uses):
             return "remediate_drift"

@@ -51,13 +51,19 @@ Current state of stacks in this project (YAML, secrets masked):
 
 ## Config files for bind mounts
 
-When a service bind-mounts a single config FILE (a host path with an extension,
-e.g. `./nginx.conf:/etc/nginx/nginx.conf`), you MUST also provide that file's
-full content in the `configFiles` map, keyed by the same host path:
+When a service bind-mounts a single config FILE (a host path with an extension),
+declare the mount with `configMounts` — do NOT use raw compose `volumes`:
+
+  configMounts: [
+    { "hostPath": "./nginx.conf", "containerPath": "/etc/nginx/nginx.conf" }
+  ]
+
+You MUST also provide that file's full content in the `configFiles` map, keyed by
+the same `hostPath`:
 
   configFiles: { "./nginx.conf": "<full file content>" }
 
 The agent writes these files to the project directory before `docker compose up`.
 Do NOT provide content for directory mounts (paths without an extension, e.g.
-`./data:/var/lib/postgresql/data`) — Docker creates those directories itself.
+`./data` for PostgreSQL data) — Docker creates those directories itself.
 If you bind-mount a config file but omit its content, the plan is blocked.

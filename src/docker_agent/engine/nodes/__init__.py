@@ -1,7 +1,7 @@
 """LangGraph graph nodes."""
 
+from docker_agent.iteration_limits import MAX_ITERATIONS
 from docker_agent.engine.nodes.agent_node import (
-    MAX_ITERATIONS,
     AgentNodeDeps,
     agent_node,
 )

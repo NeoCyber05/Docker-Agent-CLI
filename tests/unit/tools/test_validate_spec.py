@@ -93,6 +93,43 @@ async def test_returns_structured_observation_for_missing_config_content(
 
 
 @pytest.mark.asyncio
+async def test_accepts_docker_string_config_mount(tmp_project) -> None:
+    """LLM may send configMounts as Docker volume strings; must not crash."""
+    _, result = await drain_with_progress(
+        validate_spec.call(
+            validate_spec.input_schema.model_validate(
+                {
+                    "services": [
+                        {
+                            "name": "web",
+                            "kind": "custom",
+                            "image": "nginx:1.27-alpine",
+                            "configMounts": [
+                                "./nginx.conf:/etc/nginx/nginx.conf",
+                            ],
+                        }
+                    ]
+                }
+            ),
+            make_ctx(tmp_project),
+        )
+    )
+    assert result == ValidateSpecResult(
+        valid=False,
+        issues=[
+            SpecIssue(
+                code="missing_config_file",
+                path="services.web.volumes",
+                message=(
+                    "Missing content for bind-mounted config file './nginx.conf'."
+                ),
+            )
+        ],
+        warnings=[],
+    )
+
+
+@pytest.mark.asyncio
 async def test_reports_unsafe_config_path(tmp_project) -> None:
     _, result = await drain_with_progress(
         validate_spec.call(

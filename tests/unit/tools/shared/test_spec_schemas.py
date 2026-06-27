@@ -5,8 +5,10 @@ from pydantic import ValidationError
 
 from docker_agent.tools.shared.spec_schemas import (
     APPROVED_CATALOG_IDS,
+    ConfigMount,
     HybridServiceIntent,
     StackDraft,
+    parse_docker_mount_string,
 )
 
 
@@ -91,3 +93,55 @@ def test_approved_catalog_ids_match_ts_list() -> None:
         "mongodb:6.0",
         "nginx:1.27",
     )
+
+
+def test_parse_docker_mount_string_basic() -> None:
+    assert parse_docker_mount_string("./nginx.conf:/etc/nginx/nginx.conf") == {
+        "hostPath": "./nginx.conf",
+        "containerPath": "/etc/nginx/nginx.conf",
+    }
+
+
+def test_parse_docker_mount_string_strips_mode_suffix() -> None:
+    assert parse_docker_mount_string("./nginx.conf:/etc/nginx/nginx.conf:ro") == {
+        "hostPath": "./nginx.conf",
+        "containerPath": "/etc/nginx/nginx.conf",
+    }
+
+
+def test_parse_docker_mount_string_rejects_invalid() -> None:
+    with pytest.raises(ValueError, match="config mount must be"):
+        parse_docker_mount_string("invalid")
+
+
+def test_coerce_config_mounts_from_docker_string() -> None:
+    intent = HybridServiceIntent.model_validate(
+        {
+            "name": "web",
+            "kind": "custom",
+            "image": "nginx:1.27-alpine",
+            "configMounts": ["./nginx.conf:/etc/nginx/nginx.conf"],
+        }
+    )
+    assert intent.config_mounts == [
+        ConfigMount(host_path="./nginx.conf", container_path="/etc/nginx/nginx.conf")
+    ]
+
+
+def test_coerce_config_mounts_from_object() -> None:
+    intent = HybridServiceIntent.model_validate(
+        {
+            "name": "web",
+            "kind": "custom",
+            "image": "nginx:1.27-alpine",
+            "configMounts": [
+                {
+                    "hostPath": "./nginx.conf",
+                    "containerPath": "/etc/nginx/nginx.conf",
+                }
+            ],
+        }
+    )
+    assert intent.config_mounts == [
+        ConfigMount(host_path="./nginx.conf", container_path="/etc/nginx/nginx.conf")
+    ]

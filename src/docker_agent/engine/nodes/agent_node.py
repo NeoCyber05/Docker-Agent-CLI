@@ -11,12 +11,14 @@ from dataclasses import dataclass
 from typing import Any
 
 from docker_agent.engine.adapters.provider_adapter import drive_provider
+from docker_agent.iteration_limits import (
+    MAX_ITERATIONS,
+    build_graceful_summary,
+)
 from docker_agent.engine.state import AgentState
 from docker_agent.services.api.types import Provider
 from docker_agent.types.events import AssistantText, Error, IterationStart, Usage
 from docker_agent.types.message import AssistantBlock, AssistantMessage
-
-MAX_ITERATIONS = 24
 
 
 @dataclass
@@ -29,9 +31,8 @@ class AgentNodeDeps:
 
 async def agent_node(deps: AgentNodeDeps, state: AgentState) -> dict[str, Any]:
     if state.iter >= MAX_ITERATIONS:
-        deps.emit(
-            Error(error=RuntimeError(f"agent loop reached max iterations ({MAX_ITERATIONS})"))
-        )
+        summary = build_graceful_summary(state.messages, MAX_ITERATIONS)
+        deps.emit(AssistantText(delta=summary))
         return {"iter": state.iter}
 
     deps.emit(IterationStart(n=state.iter + 1))
@@ -75,7 +76,12 @@ async def agent_node(deps: AgentNodeDeps, state: AgentState) -> dict[str, Any]:
     if turn.stop_reason == "max_tokens":
         deps.emit(Error(error=RuntimeError("provider response stopped: max tokens reached")))
 
+    next_iter = state.iter + 1
+    if next_iter >= MAX_ITERATIONS and turn.tool_uses:
+        updated_messages = [*state.messages, AssistantMessage(content=blocks)]
+        deps.emit(AssistantText(delta=build_graceful_summary(updated_messages, MAX_ITERATIONS)))
+
     return {
         "messages": [AssistantMessage(content=blocks)],
-        "iter": state.iter + 1,
+        "iter": next_iter,
     }

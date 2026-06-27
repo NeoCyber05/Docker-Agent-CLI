@@ -40,7 +40,6 @@ def get_agent_tools() -> list[Any]:
         get_stack_status,
         get_logs,
         get_health,
-        pull_image,
         exec_docker,
     ]
 
@@ -48,7 +47,7 @@ def get_agent_tools() -> list[Any]:
 def get_all_tools() -> list[Any]:
     from docker_agent.tools.apply_stack import apply_stack
 
-    return get_agent_tools() + [apply_stack]
+    return get_agent_tools() + [pull_image, apply_stack]
 
 
 __all__ = ["get_agent_tools", "get_all_tools"]

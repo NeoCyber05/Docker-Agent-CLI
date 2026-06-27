@@ -8,7 +8,9 @@ from __future__ import annotations
 import re
 from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from docker_agent.types.stack import ServiceSpec
 
@@ -42,6 +44,35 @@ class ConfigMount(BaseModel):
     container_path: str = Field(alias="containerPath")
 
 
+def parse_docker_mount_string(value: str) -> dict[str, str]:
+    """Parse Docker short volume syntax into ConfigMount fields."""
+    trimmed = value.strip()
+    parts = trimmed.rsplit(":", 2)
+    if len(parts) == 3 and parts[2] in ("ro", "rw"):
+        host, container = parts[0], parts[1]
+    elif len(parts) >= 2:
+        host, container = parts[0], ":".join(parts[1:])
+    else:
+        raise ValueError(
+            "config mount must be an object with hostPath and containerPath, "
+            f"or a Docker volume string 'host:container', got: {value!r}"
+        )
+    if not host or not container:
+        raise ValueError(
+            "config mount must be an object with hostPath and containerPath, "
+            f"or a Docker volume string 'host:container', got: {value!r}"
+        )
+    return {"hostPath": host, "containerPath": container}
+
+
+def format_validation_error(err: ValidationError) -> str:
+    parts = []
+    for issue in err.errors():
+        loc = "/".join(str(x) for x in issue["loc"]) or "<root>"
+        parts.append(f"{loc}: {issue['msg']}")
+    return "; ".join(parts)
+
+
 class HybridServiceIntent(BaseModel):
     model_config = _MODEL_CONFIG
 
@@ -59,6 +90,19 @@ class HybridServiceIntent(BaseModel):
     depends_on: list[str] | None = None
     scale: int | None = Field(default=None, ge=1)
     config_mounts: list[ConfigMount] | None = Field(default=None, alias="configMounts")
+
+    @field_validator("config_mounts", mode="before")
+    @classmethod
+    def _coerce_config_mounts(cls, value: Any) -> Any:
+        if value is None:
+            return value
+        coerced: list[Any] = []
+        for item in value:
+            if isinstance(item, str):
+                coerced.append(parse_docker_mount_string(item))
+            else:
+                coerced.append(item)
+        return coerced
 
     @field_validator("name")
     @classmethod
@@ -136,5 +180,7 @@ __all__ = [
     "PersistenceSpec",
     "SERVICE_NAME_PATTERN",
     "StackDraft",
+    "format_validation_error",
+    "parse_docker_mount_string",
     "validate_services",
 ]

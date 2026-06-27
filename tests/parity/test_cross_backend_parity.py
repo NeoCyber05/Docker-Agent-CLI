@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
+from docker_agent.agent import BackendQueryParams, create_backend
 from docker_agent.services.api.types import (
     MessageStopEvent,
     TextDeltaEvent,
@@ -14,6 +17,38 @@ from docker_agent.services.api.types import (
 from docker_agent.types.message import UserMessage
 from docker_agent.types.permissions import Deny, TypedConfirmValue
 from tests.parity.conftest import fake_provider, output_field, text_done, tool_use_call
+
+
+@pytest.mark.parametrize("backend_name", ["current", "langgraph"])
+@pytest.mark.asyncio
+async def test_backend_writes_assistant_messages_back_to_params(
+    backend_name, make_context
+) -> None:
+    """Regression: backends must persist assistant turns onto params.messages
+    so resumed sessions show model output, not just user prompts."""
+    ctx = make_context()
+    params = BackendQueryParams(
+        messages=[UserMessage(content="hello")],
+        ctx=ctx,
+        provider=fake_provider(
+            [[TextDeltaEvent(text="hi back"), MessageStopEvent(stop_reason="end_turn")]]
+        ),
+    )
+
+    prev = os.environ.get("DOCKER_AGENT_BACKEND")
+    os.environ["DOCKER_AGENT_BACKEND"] = backend_name
+    try:
+        backend = create_backend()
+        async for _ in backend.query(params):
+            pass
+    finally:
+        if prev is None:
+            os.environ.pop("DOCKER_AGENT_BACKEND", None)
+        else:
+            os.environ["DOCKER_AGENT_BACKEND"] = prev
+
+    roles = [m.role for m in params.messages]
+    assert roles == ["user", "assistant"]
 
 
 @pytest.mark.parametrize("backend_name", ["current", "langgraph"])
@@ -92,7 +127,7 @@ async def test_permission_denied_emits_permission_request_only(
 
 @pytest.mark.parametrize("backend_name", ["current", "langgraph"])
 @pytest.mark.asyncio
-async def test_max_iterations_emits_error(backend_name, make_context, run_backend) -> None:
+async def test_max_iterations_emits_graceful_summary(backend_name, make_context, run_backend) -> None:
     ctx = make_context()
     iteration = [
         ToolUseStartEvent(id="t1", name="list_stacks"),
@@ -110,8 +145,17 @@ async def test_max_iterations_emits_error(backend_name, make_context, run_backen
     )
 
     error_ev = next((e for e in events if e.type == "error"), None)
-    assert error_ev is not None
-    assert "agent loop reached max iterations" in str(error_ev.error)
+    assert error_ev is None
+
+    graceful = next(
+        (
+            e
+            for e in events
+            if e.type == "assistant_text" and "đã dùng hết" in e.delta
+        ),
+        None,
+    )
+    assert graceful is not None
 
     iteration_starts = [e for e in events if e.type == "iteration_start"]
     assert len(iteration_starts) <= 24

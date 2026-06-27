@@ -1,0 +1,1 @@
+"""Docker service layer — Phase 3 implements the real EngineClient."""

@@ -1,0 +1,1 @@
+"""External service adapters (docker, LLM providers, model catalog)."""

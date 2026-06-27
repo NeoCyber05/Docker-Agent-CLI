@@ -18,6 +18,8 @@ dependencies = [
     "keyring>=25.0",
     "langgraph>=0.2",
     "textual>=0.79",
+    "typer>=0.12",
+    "rich>=13.0",
 ]
 
 [project.scripts]
@@ -139,3 +141,11 @@ module = [
     "docker_agent.screens.*",
 ]
 disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = "typer.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "typer"
+ignore_missing_imports = true

@@ -42,6 +42,12 @@ def recording_provider(
     return _Provider()
 
 
+@pytest.fixture(autouse=True)
+def use_current_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    """QueryEngine unit tests target CurrentBackend semantics (TS default)."""
+    monkeypatch.setenv("DOCKER_AGENT_BACKEND", "current")
+
+
 def make_engine(tmp_project, **kwargs: Any) -> QueryEngine:
     policy_file = tmp_project / "project-policies.yaml"
     if not policy_file.exists():

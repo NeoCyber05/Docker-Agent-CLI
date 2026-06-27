@@ -1,9 +1,11 @@
 # Docker Agent CLI
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D20-green.svg)](https://nodejs.org/)
+[![Python](https://img.shields.io/badge/python-%3E%3D3.11-blue.svg)](https://www.python.org/)
 
 An advanced, natural-language Command Line Interface (CLI) powered by an LLM agent using the **ReAct** (Reasoning + Acting) pattern to autonomously manage and provision Docker infrastructure.
+
+> **Note:** The CLI is now implemented in Python under [`python/`](python/). The TypeScript `src/` tree has been removed after functional parity was verified.
 
 Instead of writing complex `docker-compose.yaml` files, configuring networks, volumes, and secrets manually, you can simply ask the Docker Agent in plain English (or Vietnamese) to orchestrate it for you.
 
@@ -17,7 +19,7 @@ Instead of writing complex `docker-compose.yaml` files, configuring networks, vo
 
 Before running the Docker Agent CLI, ensure you have:
 
-1. **Node.js** (version `>= 20.x`) installed.
+1. **Python 3.11+** and [uv](https://docs.astral.sh/uv/) (or another Python environment manager).
 2. **Docker Engine** & **Docker Compose** installed and running on your local machine.
 3. Access to an LLM provider:
    - API key for Gemini, OpenAI, or OpenRouter (via env var or `/connect` in the REPL), or
@@ -29,9 +31,12 @@ Before running the Docker Agent CLI, ensure you have:
 
 ```bash
 git clone https://github.com/NeoCyber05/Docker-Agent-CLI.git
-cd Docker-Agent-CLI
-npm install
+cd Docker-Agent-CLI/python
+uv sync
+uv run docker-agent
 ```
+
+See [`python/README.md`](python/README.md) for development commands and backend configuration.
 
 ---
 

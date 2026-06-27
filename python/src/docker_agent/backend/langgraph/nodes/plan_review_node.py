@@ -27,6 +27,7 @@ from docker_agent.tools.shared.secret_keys import SecretKeysContext, collect_sec
 from docker_agent.tools.shared.spec_schemas import StackDraft
 from docker_agent.types.events import ToolCall, ToolProgress, ToolResult
 from docker_agent.types.message import ToolResultMessage
+from docker_agent.types.permissions import permission_kind
 
 
 @dataclass
@@ -56,12 +57,12 @@ async def _request_secrets_and_patch(
     current_input: StackDraft,
 ) -> dict[str, Any] | None:
     resp = await ctx.request_secrets_input(service, keys, "missing required env")
-    if resp.get("kind") != "secrets_input_values":
+    if permission_kind(resp) != "secrets_input_values":
         return None
     secrets_dir = Path(ctx.cwd) / ".docker-agent" / "secrets"
     secrets_dir.mkdir(parents=True, exist_ok=True)
     file_path = secrets_dir / f"{current_input.stack_name}-{service}.env"
-    values = resp.get("values", {})
+    values = resp.get("values", {}) if isinstance(resp, dict) else resp.values
     lines = "\n".join(f"{k}={v}" for k, v in values.items()) + "\n"
     file_path.write_text(lines, encoding="utf-8")
     os.chmod(file_path, 0o600)
@@ -203,7 +204,7 @@ async def plan_review_node(deps: PlanReviewNodeDeps, state: AgentState) -> dict[
         ]
 
     confirm = interrupt(confirm_payload)
-    if confirm.get("kind") != "approve":
+    if permission_kind(confirm) != "approve":
         return {
             "messages": [_tool_result(tool_use_id, "plan denied by user", is_error=False)],
             "aborted": True,

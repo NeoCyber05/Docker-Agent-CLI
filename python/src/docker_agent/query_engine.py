@@ -190,7 +190,9 @@ class QueryEngine:
                 {"type": "permission_request", "tool": tool, "input": input_data}
             )
 
-        async def request_confirm(plan: PlanReadyPayload) -> PermissionResponse:
+        async def request_confirm(plan: PlanReadyPayload | dict[str, Any]) -> PermissionResponse:
+            if not isinstance(plan, PlanReadyPayload):
+                plan = PlanReadyPayload.model_validate(plan)
             payload: dict[str, Any] = {
                 "type": "plan_ready",
                 "compose_yaml": plan.compose_yaml,

@@ -76,6 +76,18 @@ class PermissionRequest(BaseModel):
 PermissionResponseAdapter: TypeAdapter[PermissionResponse] = TypeAdapter(PermissionResponse)
 
 
+def permission_kind(resp: object) -> str:
+    if isinstance(resp, dict):
+        return str(resp.get("kind", ""))
+    return str(getattr(resp, "kind", ""))
+
+
+def permission_value(resp: object) -> str:
+    if isinstance(resp, dict):
+        return str(resp.get("value", ""))
+    return str(getattr(resp, "value", ""))
+
+
 __all__ = [
     "AlwaysAllowInSession",
     "Approve",
@@ -83,6 +95,8 @@ __all__ = [
     "PermissionRequest",
     "PermissionResponse",
     "PermissionResponseAdapter",
+    "permission_kind",
+    "permission_value",
     "SecretsInputValues",
     "TypedConfirmValue",
 ]

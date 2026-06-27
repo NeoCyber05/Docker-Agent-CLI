@@ -23,6 +23,7 @@ from docker_agent.tool import ToolDone
 from docker_agent.tools.remediate_drift import remediate_drift
 from docker_agent.types.events import ToolCall, ToolProgress, ToolResult
 from docker_agent.types.message import ToolResultMessage
+from docker_agent.types.permissions import permission_kind
 
 
 @dataclass
@@ -99,7 +100,7 @@ async def remediate_drift_node(
             "diff": result.diff,
         }
     )
-    if confirm.get("kind") != "approve":
+    if permission_kind(confirm) != "approve":
         return {
             "messages": [_tool_result(tool_use_id, "User declined remediation.", is_error=False)],
             "aborted": True,

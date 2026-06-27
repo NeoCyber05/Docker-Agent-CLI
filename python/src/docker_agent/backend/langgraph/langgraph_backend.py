@@ -22,6 +22,7 @@ from docker_agent.policy.policy_engine import PolicyEngine
 from docker_agent.tools.destroy_all_stacks import destroy_all_stacks
 from docker_agent.tools.destroy_stack import destroy_stack
 from docker_agent.types.events import AssistantText, Error, ToolCall, ToolProgress, ToolResult
+from docker_agent.types.permissions import permission_kind, permission_value
 
 
 def _is_destroy_all_prompt(content: str) -> bool:
@@ -93,7 +94,7 @@ class LangGraphBackend(AgentBackend):
                                 "content": default_content,
                             },
                         )
-                        if resp.get("kind") in ("approve", "always_allow_in_session"):
+                        if permission_kind(resp) in ("approve", "always_allow_in_session"):
                             try:
                                 root_policy.write_text(default_content, encoding="utf-8")
                                 project_policy_path = str(root_policy)
@@ -132,8 +133,8 @@ class LangGraphBackend(AgentBackend):
                         f"This will destroy {len(params.ctx.state_store.list())} stacks.",
                     )
                     if (
-                        typed.get("kind") != "typed_confirm_value"
-                        or typed.get("value") != "DESTROY ALL"
+                        permission_kind(typed) != "typed_confirm_value"
+                        or permission_value(typed) != "DESTROY ALL"
                     ):
                         emit(
                             AssistantText(
@@ -170,8 +171,8 @@ class LangGraphBackend(AgentBackend):
                                 "and delete all its volumes."
                             ),
                         )
-                        typed_ok = typed.get("kind") == "typed_confirm_value"
-                        if not typed_ok or typed.get("value") != phrase:
+                        typed_ok = permission_kind(typed) == "typed_confirm_value"
+                        if not typed_ok or permission_value(typed) != phrase:
                             emit(
                                 AssistantText(
                                     delta="destroy_stack aborted: typed confirmation did not match"
@@ -182,14 +183,14 @@ class LangGraphBackend(AgentBackend):
                         resp = await params.ctx.request_permission(
                             "destroy_stack", input_data
                         )
-                        if resp.get("kind") == "deny":
+                        if permission_kind(resp) == "deny":
                             emit(
                                 AssistantText(
                                     delta="destroy_stack aborted: permission denied"
                                 )
                             )
                             return
-                        if resp.get("kind") == "always_allow_in_session":
+                        if permission_kind(resp) == "always_allow_in_session":
                             params.ctx.allow_set.add("destroy_stack")
                     await _run_tool_events(destroy_stack, input_data, params.ctx, emit)
                     return

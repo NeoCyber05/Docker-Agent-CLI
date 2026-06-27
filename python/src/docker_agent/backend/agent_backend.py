@@ -31,14 +31,14 @@ class AgentBackend(Protocol):
 
 
 def create_backend() -> AgentBackend:
-    flag = os.environ.get("DOCKER_AGENT_BACKEND", "current")
-    if flag == "langgraph":
-        from docker_agent.backend.langgraph.langgraph_backend import LangGraphBackend
+    flag = os.environ.get("DOCKER_AGENT_BACKEND", "langgraph")
+    if flag == "current":
+        from docker_agent.backend.current_backend import CurrentBackend
 
-        return LangGraphBackend()
-    from docker_agent.backend.current_backend import CurrentBackend
+        return CurrentBackend()
+    from docker_agent.backend.langgraph.langgraph_backend import LangGraphBackend
 
-    return CurrentBackend()
+    return LangGraphBackend()
 
 
 __all__ = ["AgentBackend", "BackendQueryParams", "create_backend"]

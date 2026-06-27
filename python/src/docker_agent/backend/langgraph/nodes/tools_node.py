@@ -17,6 +17,7 @@ from docker_agent.tools import get_agent_tools
 from docker_agent.tools.destroy_stack import DestroyStackInput
 from docker_agent.types.events import ToolCall, ToolProgress, ToolResult
 from docker_agent.types.message import ToolResultMessage
+from docker_agent.types.permissions import permission_kind, permission_value
 
 READ_ONLY_ALLOWLIST = {
     "validate_spec",
@@ -114,7 +115,10 @@ async def tools_node(deps: ToolsNodeDeps, state: AgentState) -> dict[str, Any]:
                 "DESTROY ALL",
                 f"This will destroy {len(deps.ctx.state_store.list())} stacks.",
             )
-            if resp.get("kind") != "typed_confirm_value" or resp.get("value") != "DESTROY ALL":
+            if (
+                permission_kind(resp) != "typed_confirm_value"
+                or permission_value(resp) != "DESTROY ALL"
+            ):
                 results.append(
                     PendingToolResult(
                         tool_use_id=tu.id,
@@ -138,7 +142,10 @@ async def tools_node(deps: ToolsNodeDeps, state: AgentState) -> dict[str, Any]:
                     phrase,
                     f"This will destroy the stack {stack_name} and delete all its volumes.",
                 )
-                if resp.get("kind") != "typed_confirm_value" or resp.get("value") != phrase:
+                if (
+                    permission_kind(resp) != "typed_confirm_value"
+                    or permission_value(resp) != phrase
+                ):
                     results.append(
                         PendingToolResult(
                             tool_use_id=tu.id,
@@ -166,7 +173,7 @@ async def tools_node(deps: ToolsNodeDeps, state: AgentState) -> dict[str, Any]:
 
         if tool.needs_permission(parsed) and tool.name not in deps.ctx.allow_set:
             resp = await deps.ctx.request_permission(tool.name, parsed)
-            if resp.get("kind") == "deny":
+            if permission_kind(resp) == "deny":
                 results.append(
                     PendingToolResult(
                         tool_use_id=tu.id,
@@ -177,7 +184,7 @@ async def tools_node(deps: ToolsNodeDeps, state: AgentState) -> dict[str, Any]:
                     )
                 )
                 continue
-            if resp.get("kind") == "always_allow_in_session":
+            if permission_kind(resp) == "always_allow_in_session":
                 deps.ctx.allow_set.add(tool.name)
 
         results.append(await _execute_tool_use(tool, parsed, tu, deps))

@@ -19,7 +19,10 @@ class Spawner(Protocol):
 
 
 async def _default_spawner_impl(
-    cmd: str, args: list[str], opts: dict[str, Any]
+    cmd: str,
+    args: list[str],
+    opts: dict[str, Any],
+    spawner: DefaultSpawner | None = None,
 ) -> AsyncIterator[str]:
     """Default subprocess spawner using ``asyncio.create_subprocess_exec``."""
     cwd = opts["cwd"]
@@ -74,13 +77,17 @@ async def _default_spawner_impl(
         if proc.returncode is None:
             proc.terminate()
         await proc.wait()
+    if spawner is not None:
+        spawner.last_exit_code = proc.returncode or 0
 
 
 class DefaultSpawner:
+    last_exit_code: int = 0
+
     def spawn(
         self, cmd: str, args: list[str], opts: dict[str, Any]
     ) -> AsyncIterator[str]:
-        return _default_spawner_impl(cmd, args, opts)
+        return _default_spawner_impl(cmd, args, opts, self)
 
 
 default_spawner = DefaultSpawner()
@@ -108,6 +115,7 @@ class BoundComposeRunner:
         self.yaml_path = yaml_path
         self.cwd = cwd
         self.spawner = spawner
+        self.last_exit_code = 0
 
     def base_args(self) -> list[str]:
         return [
@@ -130,6 +138,7 @@ class BoundComposeRunner:
             args.extend(["--scale", f"{svc}={n}"])
         async for line in self.spawner.spawn("docker", args, {"cwd": self.cwd}):
             yield line
+        self.last_exit_code = getattr(self.spawner, "last_exit_code", 0)
 
     async def down(self, *, volumes: bool = False) -> AsyncIterator[str]:
         args = self.base_args() + ["down"]
@@ -137,6 +146,7 @@ class BoundComposeRunner:
             args.append("-v")
         async for line in self.spawner.spawn("docker", args, {"cwd": self.cwd}):
             yield line
+        self.last_exit_code = getattr(self.spawner, "last_exit_code", 0)
 
     async def ps(self, *, json: bool = False) -> list[ComposePsRow]:
         args = self.base_args() + ["ps"]

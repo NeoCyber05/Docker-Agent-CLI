@@ -31,6 +31,10 @@ class ApiKeyStore(Protocol):
     async def has(self, provider: ApiKeyProviderName) -> bool: ...
 
 
+def is_api_key_provider_name(value: object) -> bool:
+    return isinstance(value, str) and value in API_KEY_PROVIDERS
+
+
 def api_key_env_var(provider: ApiKeyProviderName) -> str:
     return {
         "gemini": "GEMINI_API_KEY",
@@ -146,5 +150,6 @@ __all__ = [
     "api_key_env_var",
     "create_api_key_store",
     "describe_api_key_status",
+    "is_api_key_provider_name",
     "resolve_stored_api_key",
 ]

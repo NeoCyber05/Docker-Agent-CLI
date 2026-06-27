@@ -17,6 +17,7 @@ dependencies = [
     "ollama>=0.4",
     "keyring>=25.0",
     "langgraph>=0.2",
+    "textual>=0.79",
 ]
 
 [project.scripts]
@@ -121,3 +122,20 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "langgraph"
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "textual.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "textual"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "docker_agent.components",
+    "docker_agent.components.*",
+    "docker_agent.screens",
+    "docker_agent.screens.*",
+]
+disallow_untyped_defs = false

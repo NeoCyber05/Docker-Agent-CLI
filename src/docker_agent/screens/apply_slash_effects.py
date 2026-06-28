@@ -10,7 +10,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import cast
 
-from docker_agent.query_engine import QueryEngine
+from docker_agent.config import persist_model_choice
+from docker_agent.query_engine import QueryEngine, restore_session_from_record
 from docker_agent.screens.use_interaction_session import InteractionSession
 from docker_agent.services.api import resolve_provider_for_request
 from docker_agent.slash_router import (
@@ -22,6 +23,7 @@ from docker_agent.slash_router import (
     LoadSession,
     OpenModelPicker,
     OpenProviderConnect,
+    OpenSessionPicker,
     SetModel,
     SlashEffect,
     StartLogPane,
@@ -48,6 +50,7 @@ class SlashEffectApplierDeps:
     set_active_model: Callable[[str | None], None] | None = None
     open_provider_connect: Callable[[], Awaitable[None]] | None = None
     open_model_picker: Callable[[str | None], Awaitable[None]] | None = None
+    open_session_picker: Callable[[], Awaitable[None]] | None = None
     start_log_pane: Callable[[str, str | None], None] | None = None
 
 
@@ -103,6 +106,10 @@ async def apply_slash_effects(
             picker_effect = cast(OpenModelPicker, effect)
             if deps.open_model_picker is not None:
                 await deps.open_model_picker(picker_effect.get("scope_provider"))
+        elif effect_type == "open_session_picker":
+            if deps.open_session_picker is not None:
+                await deps.open_session_picker()
+            _ = cast(OpenSessionPicker, effect)
         elif effect_type == "set_model":
             model_effect = cast(SetModel, effect)
             try:
@@ -116,6 +123,7 @@ async def apply_slash_effects(
                     deps.set_active_provider_name(model_effect["provider"])
                 if deps.set_active_model is not None:
                     deps.set_active_model(model_effect["model"])
+                persist_model_choice(model_effect["provider"], model_effect["model"])
             except Exception as err:  # noqa: BLE001
                 deps.session.dispatch_activity(
                     {"type": "error", "error": err}
@@ -149,11 +157,18 @@ async def apply_slash_effects(
                     {"type": "error", "error": RuntimeError(message)}
                 )
                 continue
-            warning = deps.engine.load_session(record)
+            warning = restore_session_from_record(
+                engine=deps.engine,
+                record=record,
+                api_key_store=deps.api_key_store,
+            )
             if warning:
                 deps.session.dispatch_activity(
                     {"type": "assistant_text", "delta": warning}
                 )
+            provider_name = record.get("provider")
+            if isinstance(provider_name, str) and deps.set_active_provider_name is not None:
+                deps.set_active_provider_name(provider_name)
             if record.get("model") is not None and deps.set_active_model is not None:
                 deps.set_active_model(record["model"])
             deps.session.replace_activities(deps.engine.get_messages())

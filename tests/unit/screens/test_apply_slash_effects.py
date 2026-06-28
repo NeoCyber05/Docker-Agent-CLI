@@ -104,7 +104,20 @@ async def test_open_model_picker() -> None:
 
 
 @pytest.mark.asyncio
-async def test_set_model() -> None:
+async def test_open_session_picker() -> None:
+    open_picker = AsyncMock()
+    deps = make_deps(open_session_picker=open_picker)
+    await apply_slash_effects([{"type": "open_session_picker"}], deps)
+    open_picker.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_set_model(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    monkeypatch.setenv("DOCKER_AGENT_CONFIG", str(config_path))
     set_provider = MagicMock()
     set_model = MagicMock()
     deps = make_deps(
@@ -119,6 +132,11 @@ async def test_set_model() -> None:
     assert getattr(deps.engine.provider, "name", None) == "openai"
     set_provider.assert_called_once_with("openai")
     set_model.assert_called_once_with("gpt-4o")
+    from docker_agent.config import load_user_config
+
+    saved = load_user_config(config_path)
+    assert saved.provider == "openai"
+    assert saved.model == "gpt-4o"
 
 
 @pytest.mark.asyncio
@@ -135,14 +153,15 @@ async def test_load_session_with_store() -> None:
         "schema_version": 1,
         "id": "sess-1",
         "messages": [],
+        "provider": "openrouter",
         "model": "gpt-4o-mini",
     }
     store.latest.return_value = record
     engine = MagicMock()
     engine.get_messages.return_value = []
-    engine.load_session.return_value = "warning"
     session = InteractionSession(engine)
     set_model = MagicMock()
+    set_provider = MagicMock()
     deps = SlashEffectApplierDeps(
         input="/resume",
         session=session,
@@ -150,9 +169,23 @@ async def test_load_session_with_store() -> None:
         api_key_store=MemoryApiKeyStore(),
         session_store=store,
         set_active_model=set_model,
+        set_active_provider_name=set_provider,
     )
-    await apply_slash_effects([{"type": "load_session"}], deps)
-    engine.load_session.assert_called_once_with(record)
+    with pytest.MonkeyPatch.context() as mp:
+        restore = MagicMock(return_value="warning")
+        import importlib
+
+        slash_effects_mod = importlib.import_module(
+            "docker_agent.screens.apply_slash_effects"
+        )
+        mp.setattr(slash_effects_mod, "restore_session_from_record", restore)
+        await apply_slash_effects([{"type": "load_session"}], deps)
+    restore.assert_called_once_with(
+        engine=engine,
+        record=record,
+        api_key_store=deps.api_key_store,
+    )
+    set_provider.assert_called_once_with("openrouter")
     set_model.assert_called_once_with("gpt-4o-mini")
     engine.get_messages.assert_called()
 

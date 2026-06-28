@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import math
+import os
 import secrets
 import sys
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -17,6 +18,7 @@ from typing import Any
 from pydantic import TypeAdapter
 
 from docker_agent.agent import BackendQueryParams, create_backend
+from docker_agent.config import is_valid_provider
 from docker_agent.iteration_limits import MAX_ITERATIONS
 from docker_agent.loop_context import PlanReadyPayload
 from docker_agent.services.api.types import Provider
@@ -490,4 +492,24 @@ class QueryEngine:
         )
 
 
-__all__ = ["QueryEngine"]
+def restore_session_from_record(
+    *,
+    engine: QueryEngine,
+    record: SessionRecord,
+    api_key_store: Any,
+) -> str | None:
+    """Load a saved session and re-bind the LLM provider from the record."""
+    from docker_agent.services.api import resolve_provider_for_request
+
+    warning = engine.load_session(record)
+    provider_name = record.get("provider")
+    if isinstance(provider_name, str) and is_valid_provider(provider_name):
+        engine.provider = resolve_provider_for_request(
+            provider_name,  # type: ignore[arg-type]
+            os.environ,
+            api_key_store=api_key_store,
+        )
+    return warning
+
+
+__all__ = ["QueryEngine", "restore_session_from_record"]

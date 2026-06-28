@@ -7,6 +7,8 @@ from typing import Any
 from rich.text import Text
 from textual.widgets import Static
 
+from docker_agent.config import resolve_display_model
+
 
 def build_footer_content(
     *,
@@ -21,7 +23,7 @@ def build_footer_content(
     parts: list[tuple[str, str]] = []
 
     if provider:
-        model_label = model or "default"
+        model_label = resolve_display_model(provider, model) or "unknown"
         parts.append((f"{model_label} ({provider})", "bold cyan"))
 
     if session_id:

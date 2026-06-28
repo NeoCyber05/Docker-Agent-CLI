@@ -17,7 +17,7 @@ from textual.reactive import reactive
 from textual.widgets import Input, Static
 
 
-from docker_agent.commands.registry import Command, create_default_registry
+from docker_agent.config import persist_model_choice, resolve_display_model
 from docker_agent.components.activity_timeline import ActivityTimeline
 from docker_agent.components.api_key_input_dialog import ApiKeyInputDialog
 from docker_agent.components.command_palette import CommandPalette
@@ -27,6 +27,11 @@ from docker_agent.components.model_picker_dialog import (
     ModelChoice,
     ModelPickerClosed,
     ModelPickerDialog,
+)
+from docker_agent.components.session_picker_dialog import (
+    SessionChoice,
+    SessionPickerClosed,
+    SessionPickerDialog,
 )
 from docker_agent.components.ollama_setup_dialog import OllamaSetupDialog
 from docker_agent.components.permission_dialog import PermissionAnswered, PermissionDialog
@@ -47,7 +52,7 @@ from docker_agent.components.welcome_banner import (
     resolve_terminal_size,
 )
 from docker_agent.config import PROVIDER_NAMES, ProviderName, stack_state_yaml_path
-from docker_agent.query_engine import QueryEngine
+from docker_agent.query_engine import QueryEngine, restore_session_from_record
 from docker_agent.screens.apply_slash_effects import SlashEffectApplierDeps, apply_slash_effects
 from docker_agent.screens.use_interaction_session import InteractionSession
 from docker_agent.services.api import resolve_provider_for_request
@@ -161,6 +166,7 @@ class REPL(App[None]):
         self._active_log_pane: LogPane | None = None
         self._local_pending: str | None = None
         self._model_picker_waiter: asyncio.Future[ModelChoice | str | None] | None = None
+        self._session_picker_waiter: asyncio.Future[SessionChoice | None] | None = None
         self._timeline_key = 0
         self._timeline_signature: tuple[Any, ...] | None = None
         self._cwd = engine._cwd  # noqa: SLF001
@@ -169,6 +175,11 @@ class REPL(App[None]):
         self._session_store = engine._session_store  # noqa: SLF001
         self.active_provider_name = getattr(engine.provider, "name", "unknown")
         self.active_model = engine.model
+
+    def _display_model_label(self) -> str:
+        return (
+            resolve_display_model(self.active_provider_name, self.active_model) or "unknown"
+        )
 
     def on_mount(self) -> None:
         log_dir = Path(self._cwd) / ".docker-agent" / "logs"
@@ -196,7 +207,7 @@ class REPL(App[None]):
             yield WelcomeBanner(
                 version=self.version,
                 provider=self.active_provider_name,
-                model=self.active_model,
+                model=self._display_model_label(),
                 compact=term_rows <= COMPACT_WELCOME_MAX_ROWS,
                 id="welcome",
             )
@@ -204,7 +215,7 @@ class REPL(App[None]):
             yield Static(
                 (
                     f"docker-agent | provider: {self.active_provider_name} | "
-                    f"model: {self.active_model or 'default'}"
+                    f"model: {self._display_model_label()}"
                 ),
                 id="header",
             )
@@ -286,6 +297,13 @@ class REPL(App[None]):
             if self._model_picker_waiter is not None:
                 try:
                     picker = self.query_one("#model-picker", ModelPickerDialog)
+                    if self.focused is not picker:
+                        self.set_focus(picker)
+                except Exception:
+                    pass
+            if self._session_picker_waiter is not None:
+                try:
+                    picker = self.query_one("#session-picker", SessionPickerDialog)
                     if self.focused is not picker:
                         self.set_focus(picker)
                 except Exception:
@@ -611,6 +629,74 @@ class REPL(App[None]):
         else:
             await self._on_connect_provider(choice)
 
+    async def _open_session_picker(self) -> None:
+        store = self._session_store
+        if store is None:
+            self.session.dispatch_activity(
+                {
+                    "type": "error",
+                    "error": RuntimeError("Session persistence not configured."),
+                }
+            )
+            return
+
+        entries = store.list()
+        if not entries:
+            self.session.dispatch_activity(
+                {
+                    "type": "assistant_text",
+                    "delta": "No saved sessions.",
+                }
+            )
+            return
+
+        self._lock_prompt_input()
+        loop = asyncio.get_running_loop()
+        waiter = loop.create_future()
+        self._session_picker_waiter = waiter
+        panel = SessionPickerDialog(entries=entries, id="session-picker")
+        self.mount(panel, after="#prompt")
+        self.set_focus(panel)
+        try:
+            choice = await waiter
+        finally:
+            self._session_picker_waiter = None
+            if panel.is_attached:
+                panel.remove()
+            self._unlock_prompt_input()
+
+        if choice is None:
+            self.session.dispatch_activity(
+                {"type": "assistant_text", "delta": "Session selection cancelled"}
+            )
+            return
+
+        record = store.read(choice.session_id)
+        if record is None:
+            self.session.dispatch_activity(
+                {
+                    "type": "error",
+                    "error": RuntimeError(f'Session "{choice.session_id}" not found.'),
+                }
+            )
+            return
+
+        warning = restore_session_from_record(
+            engine=self.engine,
+            record=record,
+            api_key_store=self.api_key_store,
+        )
+        if warning:
+            self.session.dispatch_activity(
+                {"type": "assistant_text", "delta": warning}
+            )
+        provider_name = record.get("provider")
+        if isinstance(provider_name, str):
+            self.active_provider_name = provider_name
+        if record.get("model") is not None:
+            self.active_model = record["model"]
+        self.session.replace_activities(self.engine.get_messages())
+
     def _on_model_picked(self, choice: ModelChoice) -> None:
         try:
             self.engine.provider = resolve_provider_for_request(
@@ -619,6 +705,7 @@ class REPL(App[None]):
             self.engine.model = choice.model
             self.active_provider_name = choice.provider
             self.active_model = choice.model
+            persist_model_choice(choice.provider, choice.model)
             self.session.dispatch_activity(
                 {
                     "type": "assistant_text",
@@ -692,6 +779,7 @@ class REPL(App[None]):
             set_active_model=lambda value: setattr(self, "active_model", value),
             open_provider_connect=self._open_provider_connect,
             open_model_picker=self._open_model_picker,
+            open_session_picker=self._open_session_picker,
             start_log_pane=self._start_log_pane,
         )
 
@@ -724,6 +812,13 @@ class REPL(App[None]):
         if self._model_picker_waiter is not None and not self._model_picker_waiter.done():
             self._model_picker_waiter.set_result(message.result)
 
+    def on_session_picker_closed(self, message: SessionPickerClosed) -> None:
+        if (
+            self._session_picker_waiter is not None
+            and not self._session_picker_waiter.done()
+        ):
+            self._session_picker_waiter.set_result(message.result)
+
     @work(exclusive=False, name="submit")
     async def _submit_prompt(self, text: str) -> None:
         await self._handle_submit(text)
@@ -742,6 +837,7 @@ class REPL(App[None]):
             or self.session.pending_event is not None
             or self._local_pending is not None
             or self._model_picker_waiter is not None
+            or self._session_picker_waiter is not None
             or self.show_palette
             or self.show_queue
             or (self.show_details and self._latest_tool() is not None)

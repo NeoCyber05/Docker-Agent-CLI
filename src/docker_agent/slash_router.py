@@ -17,7 +17,7 @@ from docker_agent.slash_dispatch import (
     dispatch_stacks,
     dispatch_yaml,
 )
-from docker_agent.state.session_store import SessionStore, format_sessions_list
+from docker_agent.state.session_store import SessionStore
 from docker_agent.state.state_store import StateStore
 from docker_agent.vault.api_key_store import ApiKeyStore
 
@@ -77,6 +77,10 @@ class LoadSession(TypedDict, total=False):
     session_id: str
 
 
+class OpenSessionPicker(TypedDict):
+    type: Literal["open_session_picker"]
+
+
 class StartLogPane(TypedDict, total=False):
     type: Literal["start_log_pane"]
     stack_name: str
@@ -94,6 +98,7 @@ SlashEffect = (
     | OpenModelPicker
     | SetModel
     | LoadSession
+    | OpenSessionPicker
     | StartLogPane
 )
 
@@ -147,10 +152,8 @@ SLASH_COMMAND_DEFS: tuple[SlashCommandDef, ...] = (
         "/model ",
     ),
     SlashCommandDef("/yaml <stack>", "Show stack YAML", "/yaml "),
-    SlashCommandDef("/sessions", "List saved sessions", "/sessions"),
-    SlashCommandDef("/resume", "Resume the most recent session", "/resume"),
     SlashCommandDef(
-        "/resume <id>", "Resume a specific session by id", "/resume "
+        "/resume", "List saved sessions and pick one to resume", "/resume"
     ),
 )
 
@@ -169,7 +172,6 @@ HANDLER_KEYS = [
     "/connect",
     "/model",
     "/yaml",
-    "/sessions",
     "/resume",
 ]
 
@@ -448,7 +450,18 @@ async def route_slash_command(
                     },
                 ],
             )
-        case "/sessions":
+        case "/resume":
+            if len(parts) > 1:
+                return SlashRouteResult(
+                    handled=True,
+                    effects=[
+                        {"type": "emit_user_text", "text": input_text},
+                        {
+                            "type": "emit_error",
+                            "message": "Usage: /resume (pick from the session list)",
+                        },
+                    ],
+                )
             if ctx.session_store is None:
                 return SlashRouteResult(
                     handled=True,
@@ -464,17 +477,9 @@ async def route_slash_command(
                 handled=True,
                 effects=[
                     {"type": "emit_user_text", "text": input_text},
-                    {
-                        "type": "emit_assistant_text",
-                        "delta": format_sessions_list(ctx.session_store.list()),
-                    },
+                    {"type": "open_session_picker"},
                 ],
             )
-        case "/resume":
-            effect: LoadSession = {"type": "load_session"}
-            if len(parts) > 1:
-                effect["session_id"] = " ".join(parts[1:]).strip()
-            return SlashRouteResult(handled=True, effects=[effect])
         case "/logs":
             log_parts = [part for part in parts[1:] if part]
             log_stack = log_parts[0] if log_parts else None

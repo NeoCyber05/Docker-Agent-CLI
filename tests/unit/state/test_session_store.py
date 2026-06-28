@@ -214,4 +214,4 @@ def test_format_sessions_list_with_entries() -> None:
     assert "Saved sessions (newest first):" in text
     assert "1. abc123" in text
     assert "deploy nginx" in text
-    assert "Resume with /resume or /resume <id>" in text
+    assert "Use /resume to pick a session" in text

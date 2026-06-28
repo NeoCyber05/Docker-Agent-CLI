@@ -41,6 +41,6 @@ def test_footer_shows_model_and_provider() -> None:
     assert "gpt-4o-mini (openai)" in rendered
 
 
-def test_footer_shows_default_model_when_unset() -> None:
+def test_footer_shows_provider_default_model_when_unset() -> None:
     content = build_footer_content(provider="ollama", model=None)
-    assert "default (ollama)" in str(content)
+    assert "qwen2.5:14b (ollama)" in str(content)

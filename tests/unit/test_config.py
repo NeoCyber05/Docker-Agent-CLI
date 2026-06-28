@@ -9,8 +9,12 @@ from docker_agent.config import (
     UserConfig,
     is_valid_provider,
     load_user_config,
+    persist_model_choice,
     project_state_dir,
+    resolve_default_model,
+    resolve_display_model,
     resolve_provider,
+    save_user_config,
     stack_state_yaml_path,
     user_config_path,
 )
@@ -130,3 +134,46 @@ def test_resolve_provider_invalid_flag_ignored() -> None:
 def test_resolve_provider_env_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCKER_AGENT_CONFIG", str(tmp_path / "config.json"))
     assert user_config_path() == str(tmp_path / "config.json")
+
+
+# --- resolve_default_model / resolve_display_model -----------------------
+
+def test_resolve_default_model_per_provider() -> None:
+    assert resolve_default_model("gemini") == "gemini-2.0-flash"
+    assert resolve_default_model("openai") == "gpt-4o-mini"
+    assert resolve_default_model("openrouter") == "openai/gpt-4o-mini"
+    assert resolve_default_model("ollama") == "qwen2.5:14b"
+
+
+def test_resolve_default_model_respects_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENROUTER_MODEL", "anthropic/claude-3.5-sonnet")
+    assert resolve_default_model("openrouter") == "anthropic/claude-3.5-sonnet"
+
+
+def test_resolve_display_model_uses_override() -> None:
+    assert resolve_display_model("openrouter", "custom/model") == "custom/model"
+
+
+def test_resolve_display_model_falls_back_to_provider_default() -> None:
+    assert resolve_display_model("ollama", None) == "qwen2.5:14b"
+
+
+# --- save_user_config / persist_model_choice -----------------------------
+
+def test_save_user_config_writes_json(tmp_path: Path) -> None:
+    path = tmp_path / "config.json"
+    cfg = UserConfig(provider="openrouter", model="anthropic/claude-3.5-sonnet")
+    save_user_config(cfg, path)
+    loaded = load_user_config(path)
+    assert loaded.provider == "openrouter"
+    assert loaded.model == "anthropic/claude-3.5-sonnet"
+
+
+def test_persist_model_choice_merges_existing(tmp_path: Path) -> None:
+    path = tmp_path / "config.json"
+    save_user_config(UserConfig(theme="light"), path)
+    persist_model_choice("openrouter", "openai/gpt-4o", path=path)
+    loaded = load_user_config(path)
+    assert loaded.provider == "openrouter"
+    assert loaded.model == "openai/gpt-4o"
+    assert loaded.theme == "light"

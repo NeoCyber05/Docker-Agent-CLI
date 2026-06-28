@@ -28,7 +28,7 @@ from docker_agent.config import (
     resolve_provider,
     stack_states_dir,
 )
-from docker_agent.query_engine import QueryEngine
+from docker_agent.query_engine import QueryEngine, restore_session_from_record
 from docker_agent.screens.repl import REPL
 from docker_agent.services.api import resolve_provider_for_request
 from docker_agent.services.docker.compose_runner import ComposeRunner
@@ -178,7 +178,11 @@ def _run_chat_session(
         session_store=session_store,
     )
     if resumed is not None:
-        engine.load_session(resumed["resumed_record"])
+        restore_session_from_record(
+            engine=engine,
+            record=resumed["resumed_record"],
+            api_key_store=deps["api_key_store"],
+        )
 
     log_dir = Path(deps["cwd"]) / ".docker-agent" / "logs"
     engine.set_logger(StructuredLogger(str(log_dir), engine.session_id))

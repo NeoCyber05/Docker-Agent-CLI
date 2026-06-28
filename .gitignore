@@ -32,7 +32,7 @@ terminals/
 .codegraph/
 .vscode/
 CLAUDE.md
-
+project_description.md
 project-policies.yaml
 
 # Docker Agent Desired States (GitOps)

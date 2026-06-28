@@ -31,37 +31,11 @@ Before running the Docker Agent CLI, ensure you have:
 
 ## Installation
 
-Clone the repo and install dependencies:
+Clone the repo, install the CLI globally, then run it from any directory:
 
 ```bash
 git clone https://github.com/NeoCyber05/Docker-Agent-CLI.git
 cd Docker-Agent-CLI
-uv sync
-```
-
-### Run from the project (no global install)
-
-```bash
-uv run docker-agent
-```
-
-Or activate the virtualenv first, then use `docker-agent` directly in that shell:
-
-```bash
-# Windows (PowerShell)
-.\.venv\Scripts\Activate.ps1
-
-# macOS / Linux
-source .venv/bin/activate
-
-docker-agent
-```
-
-### Install globally (recommended)
-
-Install the CLI onto your PATH so you can run `docker-agent` from any directory:
-
-```bash
 uv tool install -e .
 ```
 
@@ -83,50 +57,9 @@ To remove the global command:
 uv tool uninstall docker-agent
 ```
 
-> **Note:** If you previously installed the old TypeScript CLI via `npm link` or `npm install -g`, remove it first (`npm uninstall -g docker-agent`) so `docker-agent` resolves to the Python CLI.
-
----
-
-## Quick Start
-
-```bash
-git clone https://github.com/NeoCyber05/Docker-Agent-CLI.git
-cd Docker-Agent-CLI
-uv sync
-uv tool install -e .
-docker-agent
-```
-
-See below for development commands and engine configuration.
-
 ---
 
 ## Configuration
-
-### Global Config File
-
-Save preferences in a JSON file:
-
-- **Default path**: `~/.docker-agent/config.json`
-- **Custom path**: `DOCKER_AGENT_CONFIG` environment variable
-
-#### Configuration schema (`config.json`)
-
-```json
-{
-  "provider": "gemini",
-  "model": "gemini-2.0-flash",
-  "defaults": {
-    "autoApproveNonDestructive": false
-  }
-}
-```
-
-| Field | Values | Notes |
-| :--- | :--- | :--- |
-| `provider` | `gemini` \| `openai` \| `openrouter` \| `ollama` | Default LLM provider |
-| `model` | string or omitted | Provider-specific model override |
-| `defaults.autoApproveNonDestructive` | boolean | Reserved for future use |
 
 ### Default models (when not set in config or `--model`)
 
@@ -139,7 +72,7 @@ Save preferences in a JSON file:
 
 ### State Directory Structure
 
-Project-local state lives in `.docker-agent/` under your current working directory. See [docs/docker-agent-directory.md](docs/docker-agent-directory.md) for the full layout (`states/`, `sessions/`, `secrets/`, `locks/`, `logs/`, `history.json`), lifecycle, and security notes.
+Project-local state splits across two directories under your working directory: `docker-stacks/` (desired-state Compose YAML) and `.docker-agent/` (sessions, secrets, locks, logs, archive). See [docs/docker-agent-directory.md](docs/docker-agent-directory.md) for the full layout, lifecycle, and security notes.
 
 API keys saved via `/connect` are stored separately under `~/.docker-agent/api-keys` (Windows) or the OS keychain/secret service (macOS/Linux). Override the Windows storage path with `DOCKER_AGENT_SECRET_DIR`.
 
@@ -155,7 +88,7 @@ API keys saved via `/connect` are stored separately under `~/.docker-agent/api-k
 | `--provider <name>` | LLM provider: `gemini`, `openai`, `openrouter`, or `ollama` |
 | `--model <id>` | Model override for the session |
 | `-y, --yes` | Auto-approve non-destructive permissions (destructive tools still gated) |
-| `--resume [id]` | Resume the latest session, or a specific session by id (restores transcript and saved model) |
+| `--resume [id]` | Resume a session from the CLI (`--resume` for latest, `--resume <id>` for a specific one) |
 | `-v, --version` | Print version |
 | `-h, --help` | Show help |
 
@@ -177,9 +110,7 @@ Shortcut commands available inside the interactive shell:
 | `/destroy all` | Tear down all stacks (requires typed `DESTROY ALL` confirmation) |
 | `/secrets list <stack>` | List secret env keys (values masked) |
 | `/secrets rotate <stack> <service>` | Rotate secrets for a service |
-| `/sessions` | List saved sessions (newest first) |
-| `/resume` | Resume the most recent session |
-| `/resume <id>` | Resume a specific session by id |
+| `/resume` | Open the saved-session picker and resume the one you select |
 | `/clear` | Reset conversation context and clear the screen |
 | `/exit` | Exit the REPL (`exit` without slash also works) |
 
@@ -220,18 +151,6 @@ Chat with the agent in plain language:
 **Destroying infrastructure**
 
 > *"Hãy xoá stack redis-cache đi."*
-
----
-
-## Development
-
-```bash
-uv sync                  # Cài đặt môi trường ảo và dependencies
-uv run docker-agent      # Chạy CLI ở chế độ interactive REPL
-uv run pytest            # Chạy toàn bộ tests
-uv run ruff check src    # Kiểm tra cú pháp (linter)
-uv run mypy docker_agent # Kiểm tra kiểu dữ liệu (type checker)
-```
 
 ---
 

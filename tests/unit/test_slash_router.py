@@ -80,7 +80,7 @@ async def test_unknown_command_emits_error(tmp_project) -> None:
 
 
 def test_registry_metadata_covers_every_slash_command_def() -> None:
-    assert len(SLASH_COMMAND_DEFS) >= 16
+    assert len(SLASH_COMMAND_DEFS) >= 14
     for definition in SLASH_COMMAND_DEFS:
         assert definition.usage.startswith("/")
         assert definition.description
@@ -272,41 +272,39 @@ async def test_logs_emits_start_log_pane(tmp_project) -> None:
 
 
 @pytest.mark.asyncio
-async def test_sessions_lists_saved_sessions(tmp_project) -> None:
+async def test_resume_emits_open_session_picker(tmp_project) -> None:
     ctx = make_ctx(tmp_project)
     session_store = SessionStore(str(tmp_project / ".docker-agent"))
-    session_store.save(
-        {
-            "schema_version": 1,
-            "id": "sess-a",
-            "created_at": "2026-01-01T00:00:00.000Z",
-            "updated_at": "2026-02-01T00:00:00.000Z",
-            "cwd": str(tmp_project),
-            "provider": "gemini",
-            "first_prompt": "deploy nginx",
-            "stack_names": ["web"],
-            "messages": [{"role": "user", "content": "deploy nginx"}],
-        }
+    result = await route_slash_command(
+        "/resume",
+        SlashRouterContext(
+            cwd=ctx.cwd,
+            state_store=ctx.state_store,
+            active_provider_name=ctx.active_provider_name,
+            api_key_store=ctx.api_key_store,
+            session_store=session_store,
+        ),
     )
-    result = await route_slash_command("/sessions", SlashRouterContext(
-        cwd=ctx.cwd,
-        state_store=ctx.state_store,
-        active_provider_name=ctx.active_provider_name,
-        api_key_store=ctx.api_key_store,
-        session_store=session_store,
-    ))
-    assert {"type": "emit_user_text", "text": "/sessions"} in result.effects
-    assistant = next(effect for effect in result.effects if effect["type"] == "emit_assistant_text")
-    assert "sess-a" in assistant["delta"]
+    assert result.effects == [
+        {"type": "emit_user_text", "text": "/resume"},
+        {"type": "open_session_picker"},
+    ]
 
 
 @pytest.mark.asyncio
-async def test_resume_emits_load_session_without_id(tmp_project) -> None:
-    result = await route_slash_command("/resume", make_ctx(tmp_project))
-    assert result.effects == [{"type": "load_session"}]
-
-
-@pytest.mark.asyncio
-async def test_resume_with_id_emits_load_session(tmp_project) -> None:
-    result = await route_slash_command("/resume abc123", make_ctx(tmp_project))
-    assert result.effects == [{"type": "load_session", "session_id": "abc123"}]
+async def test_resume_rejects_session_id_argument(tmp_project) -> None:
+    ctx = make_ctx(tmp_project)
+    session_store = SessionStore(str(tmp_project / ".docker-agent"))
+    result = await route_slash_command(
+        "/resume abc123",
+        SlashRouterContext(
+            cwd=ctx.cwd,
+            state_store=ctx.state_store,
+            active_provider_name=ctx.active_provider_name,
+            api_key_store=ctx.api_key_store,
+            session_store=session_store,
+        ),
+    )
+    assert {"type": "emit_user_text", "text": "/resume abc123"} in result.effects
+    error = next(effect for effect in result.effects if effect["type"] == "emit_error")
+    assert "Usage: /resume" in error["message"]

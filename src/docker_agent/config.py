@@ -5,7 +5,10 @@ Parity: ``src/config.ts:1-73``.
 
 import json
 import os
+import shutil
 import sys
+import contextlib
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal
 
@@ -16,6 +19,13 @@ ProviderName = Literal["gemini", "openai", "ollama", "openrouter"]
 ThemeName = Literal["dark", "light"]
 PROVIDER_NAMES: list[ProviderName] = ["gemini", "openai", "ollama", "openrouter"]
 STACK_STATES_DIR_NAME = "docker-stacks"
+
+_PROVIDER_DEFAULT_MODELS: dict[ProviderName, tuple[str, str]] = {
+    "gemini": ("GEMINI_MODEL", "gemini-2.0-flash"),
+    "openai": ("OPENAI_MODEL", "gpt-4o-mini"),
+    "openrouter": ("OPENROUTER_MODEL", "openai/gpt-4o-mini"),
+    "ollama": ("OLLAMA_MODEL", "qwen2.5:14b"),
+}
 
 
 def is_valid_provider(value: object) -> bool:
@@ -135,6 +145,65 @@ def resolve_provider(
     return effective.provider
 
 
+def resolve_default_model(
+    provider: ProviderName,
+    env: Mapping[str, str] | None = None,
+) -> str:
+    """Return the provider's fallback model (env override, then built-in default)."""
+    effective_env = env if env is not None else os.environ
+    env_var, fallback = _PROVIDER_DEFAULT_MODELS[provider]
+    return effective_env.get(env_var) or fallback
+
+
+def resolve_display_model(
+    provider: str | None,
+    model: str | None,
+    env: Mapping[str, str] | None = None,
+) -> str | None:
+    """Model label for UI: explicit override, else provider default."""
+    if model:
+        return model
+    if provider and is_valid_provider(provider):
+        return resolve_default_model(provider, env)  # type: ignore[arg-type]
+    return None
+
+
+def save_user_config(
+    config: UserConfig,
+    path: str | os.PathLike[str] | None = None,
+) -> None:
+    """Persist user config to ``path`` or ``user_config_path()``."""
+    target = Path(path) if path else Path(user_config_path())
+    target.parent.mkdir(parents=True, exist_ok=True)
+    payload = config.model_dump(mode="json", by_alias=True)
+    tmp_path = Path(f"{target}.tmp")
+    try:
+        tmp_path.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        shutil.move(str(tmp_path), str(target))
+    except Exception as err:  # noqa: BLE001
+        with contextlib.suppress(FileNotFoundError):
+            tmp_path.unlink()
+        print(
+            f"[docker-agent] Failed to save user config: {err}",
+            file=sys.stderr,
+        )
+
+
+def persist_model_choice(
+    provider: ProviderName,
+    model: str,
+    *,
+    path: str | os.PathLike[str] | None = None,
+) -> None:
+    """Merge provider + model into the user config file."""
+    config_path = Path(path) if path else Path(user_config_path())
+    existing = load_user_config(config_path)
+    save_user_config(existing.model_copy(update={"provider": provider, "model": model}), config_path)
+
+
 __all__ = [
     "PROVIDER_NAMES",
     "STACK_STATES_DIR_NAME",
@@ -144,8 +213,12 @@ __all__ = [
     "UserDefaults",
     "is_valid_provider",
     "load_user_config",
+    "persist_model_choice",
     "project_state_dir",
+    "resolve_default_model",
+    "resolve_display_model",
     "resolve_provider",
+    "save_user_config",
     "stack_state_yaml_path",
     "stack_states_dir",
     "user_config_path",

@@ -145,7 +145,7 @@ def format_sessions_list(entries: list[SessionIndexEntry]) -> str:
         lines.append(f"   updated: {entry['updated_at']}{stacks}")
         lines.append(f"   prompt: {prompt}")
     lines.append("")
-    lines.append("Resume with /resume or /resume <id>")
+    lines.append("Use /resume to pick a session")
     return "\n".join(lines)
 
 

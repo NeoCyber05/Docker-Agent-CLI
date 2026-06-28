@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from docker_agent.query_engine import QueryEngine
+from docker_agent.query_engine import QueryEngine, restore_session_from_record
 from docker_agent.services.api.types import CallModelParams, ProviderEvent
 from docker_agent.state.session_store import SessionStore
 from docker_agent.state.state_store import StateStore
@@ -15,6 +15,7 @@ from docker_agent.types.permissions import Approve
 from docker_agent.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
 from tests.mocks.mock_compose_runner import MockComposeRunner
 from tests.mocks.mock_docker_engine import MockDockerEngine
+from docker_agent.vault.api_key_store import MemoryApiKeyStore
 
 
 def fake_provider(events: list[ProviderEvent | dict[str, Any]]):
@@ -289,6 +290,37 @@ def test_load_session_restores_model_and_returns_cwd_mismatch_warning(tmp_projec
     assert engine.session_id == "saved-session"
     assert engine.model == "gpt-4.1-mini"
     assert engine.is_resumed is True
+
+
+def test_restore_session_from_record_restores_provider(tmp_project) -> None:
+    state_store = StateStore(str(tmp_project / ".docker-agent"))
+    engine = QueryEngine(
+        cwd=str(tmp_project),
+        state_store=state_store,
+        docker_engine=MockDockerEngine(),
+        compose_runner=MockComposeRunner(str(tmp_project)),
+        provider=fake_provider([]),
+        model=None,
+    )
+    record = {
+        "schema_version": 1,
+        "id": "saved-session",
+        "created_at": "2026-01-01T00:00:00.000Z",
+        "updated_at": "2026-01-02T00:00:00.000Z",
+        "cwd": str(tmp_project),
+        "provider": "openai",
+        "model": "gpt-4.1-mini",
+        "first_prompt": "hello",
+        "stack_names": [],
+        "messages": [{"role": "user", "content": "hello"}],
+    }
+    restore_session_from_record(
+        engine=engine,
+        record=record,
+        api_key_store=MemoryApiKeyStore(initial={"openai": "sk-test"}),
+    )
+    assert getattr(engine.provider, "name", None) == "openai"
+    assert engine.model == "gpt-4.1-mini"
 
 
 @pytest.mark.asyncio

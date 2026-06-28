@@ -12,7 +12,7 @@ LLM agent có thể gọi các tool sau trong phiên REPL. Tool được phân l
 | `apply_stack` | high-level | Apply plan đã được duyệt (chạy sau khi user confirm) |
 | `destroy_stack` | high-level | Dừng và gỡ một stack |
 | `destroy_all_stacks` | high-level | Gỡ toàn bộ stack (yêu cầu gõ `DESTROY ALL`) |
-| `list_stacks` | read-only | Liệt kê stack trong `.docker-agent/states/` |
+| `list_stacks` | read-only | Liệt kê stack trong `docker-stacks/` |
 | `get_stack_status` | read-only | Trạng thái container của stack |
 | `get_logs` | read-only | Lấy log container |
 | `get_health` | read-only | Trạng thái health-check runtime |
@@ -40,8 +40,8 @@ Tool destructive (`apply_stack`, `destroy_stack`, `destroy_all_stacks`) **bắt 
 - Transcript lưu tại `.docker-agent/sessions/<id>.json` sau mỗi turn (secrets đã redact).
 - Mỗi bản ghi gồm `createdAt`, `updatedAt`, `cwd`, `provider`, `model` (tùy chọn), `firstPrompt`, `stackNames`, và mảng `messages[]`.
 - `createdAt` giữ nguyên qua các turn; chỉ `updatedAt` thay đổi khi lưu lại.
-- `stackNames` lấy từ stack đang quản lý trong `.docker-agent/states/`.
-- Resume (`--resume` hoặc `/resume`) nạp lại transcript và model override đã lưu. Dialog permission đang chờ **không** được resume.
+- `stackNames` lấy từ stack đang quản lý trong `docker-stacks/`.
+- Resume (`--resume` hoặc `/resume`) nạp lại transcript và model override đã lưu. `/resume` mở danh sách phiên đã lưu để chọn. Dialog permission đang chờ **không** được resume.
 - Nếu `cwd` lưu khác thư mục hiện tại, REPL và stderr hiển thị cảnh báo.
 - Footer REPL hiển thị `session: <id>` đang active.
 

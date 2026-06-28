@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 from docker_agent.engine.adapters.provider_adapter import drive_provider
@@ -17,6 +18,7 @@ from docker_agent.iteration_limits import (
 )
 from docker_agent.engine.state import AgentState
 from docker_agent.services.api.types import Provider
+from docker_agent.state.logger import LogEntry
 from docker_agent.types.events import AssistantText, Error, IterationStart, Usage
 from docker_agent.types.message import AssistantBlock, AssistantMessage
 
@@ -59,6 +61,20 @@ async def agent_node(deps: AgentNodeDeps, state: AgentState) -> dict[str, Any]:
         signal=deps.ctx.abort_signal,
     )
 
+    # --- ReAct trace: log full Thought for this reasoning step ---
+    if deps.ctx.logger is not None and turn.text:
+        deps.ctx.logger.log(
+            LogEntry(
+                ts=datetime.now(UTC).isoformat(),
+                level="info",
+                session_id=deps.ctx.session_id or "unknown",
+                iteration=state.iter + 1,
+                category="thought",
+                message="full thought",
+                data={"text": turn.text},
+            )
+        )
+
     blocks: list[Any] = []
     if turn.text:
         blocks.append(AssistantBlock.model_validate({"type": "text", "text": turn.text}))
@@ -80,6 +96,25 @@ async def agent_node(deps: AgentNodeDeps, state: AgentState) -> dict[str, Any]:
     if next_iter >= MAX_ITERATIONS and turn.tool_uses:
         updated_messages = [*state.messages, AssistantMessage(content=blocks)]
         deps.emit(AssistantText(delta=build_graceful_summary(updated_messages, MAX_ITERATIONS)))
+
+    # --- ReAct trace: log iteration_summary (parity with CurrentBackend) ---
+    if deps.ctx.logger is not None:
+        actions = [tu["name"] for tu in turn.tool_uses]
+        deps.ctx.logger.log(
+            LogEntry(
+                ts=datetime.now(UTC).isoformat(),
+                level="info",
+                session_id=deps.ctx.session_id or "unknown",
+                iteration=state.iter + 1,
+                category="iteration_summary",
+                message=f"iteration {state.iter + 1}: {len(actions)} action(s)",
+                data={
+                    "thoughtLength": len(turn.text) if turn.text else 0,
+                    "actions": actions,
+                    "stopReason": turn.stop_reason,
+                },
+            )
+        )
 
     return {
         "messages": [AssistantMessage(content=blocks)],

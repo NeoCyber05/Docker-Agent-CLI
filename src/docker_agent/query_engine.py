@@ -380,11 +380,11 @@ class QueryEngine:
         if isinstance(ev, AssistantText):
             return LogEntry(
                 ts=ts,
-                level="info",
+                level="debug",
                 session_id=session_id,
                 iteration=iteration,
-                category="thought",
-                message="assistant text",
+                category="thought_delta",
+                message="assistant text delta",
                 data={"text": ev.delta},
             )
         if isinstance(ev, ToolCall):

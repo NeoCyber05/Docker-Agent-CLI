@@ -41,7 +41,7 @@ Tool destructive (`apply_stack`, `destroy_stack`, `destroy_all_stacks`) **bắt 
 - Mỗi bản ghi gồm `createdAt`, `updatedAt`, `cwd`, `provider`, `model` (tùy chọn), `firstPrompt`, `stackNames`, và mảng `messages[]`.
 - `createdAt` giữ nguyên qua các turn; chỉ `updatedAt` thay đổi khi lưu lại.
 - `stackNames` lấy từ stack đang quản lý trong `docker-stacks/`.
-- Resume (`--resume` hoặc `/resume`) nạp lại transcript và model override đã lưu. `/resume` mở danh sách phiên đã lưu để chọn. Dialog permission đang chờ **không** được resume.
+- Resume (`--resume` hoặc `/resume`) nạp lại transcript, **provider**, và `model` đã lưu. `/resume` mở danh sách phiên đã lưu để chọn. Dialog permission đang chờ **không** được resume.
 - Nếu `cwd` lưu khác thư mục hiện tại, REPL và stderr hiển thị cảnh báo.
 - Footer REPL hiển thị `session: <id>` đang active.
 

@@ -771,6 +771,22 @@ async def query(
             yield Error(error=RuntimeError("provider response stopped: max tokens reached"))
             return
 
+        # --- ReAct trace: log full Thought for this reasoning step ---
+        if ctx.logger is not None and collected.text:
+            from docker_agent.state.logger import LogEntry
+
+            ctx.logger.log(
+                LogEntry(
+                    ts=datetime.now(UTC).isoformat(),
+                    level="info",
+                    session_id=ctx.session_id or "unknown",
+                    iteration=iteration + 1,
+                    category="thought",
+                    message="full thought",
+                    data={"text": collected.text},
+                )
+            )
+
         blocks = assistant_blocks_from_collected(collected.text, collected.tool_uses)
         if blocks:
             working_messages.append(AssistantMessage(content=blocks))
@@ -960,7 +976,6 @@ async def query(
                     data={
                         "thoughtLength": len(collected.text),
                         "actions": actions,
-                        "observations": actions,
                         "stopReason": collected.stop_reason,
                     },
                 )

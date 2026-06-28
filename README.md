@@ -9,7 +9,7 @@
 
 An advanced, natural-language Command Line Interface (CLI) powered by an LLM agent using the **ReAct** (Reasoning + Acting) pattern to autonomously manage and provision Docker infrastructure.
 
-Instead of writing complex `docker-compose.yaml` files, configuring networks, volumes, and secrets manually, you can simply ask the Docker Agent in plain English (or Vietnamese) to orchestrate it for you.
+Instead of writing complex `docker-compose.yaml` files, configuring networks, volumes, and secrets manually, you can simply ask the Docker Agent in plain language to orchestrate it for you.
 
 ---
 
@@ -61,14 +61,33 @@ uv tool uninstall docker-agent
 
 ## Configuration
 
-### Default models (when not set in config or `--model`)
+User preferences are stored in `~/.docker-agent/config.json` (override with `DOCKER_AGENT_CONFIG`):
 
-| Provider | Default model | Env override |
+| Field | Purpose |
+| :--- | :--- |
+| `provider` | LLM provider used on startup (default: `gemini`) |
+| `model` | Preferred model id (optional) |
+| `theme` | TUI theme |
+| `defaults` | Policy and approval defaults |
+
+On startup, the REPL loads `provider` and `model` from this file. Choosing a model via `/model` or the model picker **saves** your choice for the next session.
+
+**Provider resolution order:** `--provider` flag → `DOCKER_AGENT_PROVIDER` env → `config.json` → `gemini`.
+
+**One-time overrides:** `--provider` and `--model` apply only to the current launch and do not update `config.json`.
+
+### Provider fallback models
+
+When no explicit model is set (in config, CLI flags, or a resumed session), each provider falls back to:
+
+| Provider | Fallback model | Env override |
 | :--- | :--- | :--- |
 | Gemini | `gemini-2.0-flash` | `GEMINI_MODEL` |
 | OpenAI | `gpt-4o-mini` | `OPENAI_MODEL` |
 | OpenRouter | `openai/gpt-4o-mini` | `OPENROUTER_MODEL` |
 | Ollama | `qwen2.5:14b` | `OLLAMA_MODEL` |
+
+The REPL footer shows this fallback name (not a generic `default` label) when no model override is active.
 
 ### State Directory Structure
 
@@ -85,8 +104,8 @@ API keys saved via `/connect` are stored separately under `~/.docker-agent/api-k
 | Command / Option | Description |
 | :--- | :--- |
 | `docker-agent` | Start the interactive REPL |
-| `--provider <name>` | LLM provider: `gemini`, `openai`, `openrouter`, or `ollama` |
-| `--model <id>` | Model override for the session |
+| `--provider <name>` | One-time provider override for this launch (`gemini`, `openai`, `openrouter`, `ollama`) |
+| `--model <id>` | One-time model override for this launch |
 | `-y, --yes` | Auto-approve non-destructive permissions (destructive tools still gated) |
 | `--resume [id]` | Resume a session from the CLI (`--resume` for latest, `--resume <id>` for a specific one) |
 | `-v, --version` | Print version |
@@ -101,7 +120,7 @@ Shortcut commands available inside the interactive shell:
 | :--- | :--- |
 | `/help` | List all slash commands |
 | `/connect` | Connect a provider (enter API key or configure Ollama) |
-| `/model` | Browse models (no args) or set override (`/model openai/gpt-4o`) |
+| `/model` | Browse models (no args) or set and save provider/model (`/model openrouter/anthropic/claude-3.5-sonnet`) |
 | `/stacks` | List managed stacks |
 | `/status <stack>` | Show status and drift for a stack |
 | `/yaml <stack>` | Print the stack's Compose YAML |

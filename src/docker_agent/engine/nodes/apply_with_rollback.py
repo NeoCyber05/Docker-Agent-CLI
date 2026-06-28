@@ -92,6 +92,15 @@ async def run_apply_with_rollback(params: ApplyWithRollbackParams) -> ApplyWithR
     apply_result = await _run_apply_tool(apply_stack, apply_input, ctx, emit)
 
     if apply_result.ok:
+        if apply_result.warnings:
+            warning_lines = "\n".join(f"- {item}" for item in apply_result.warnings)
+            return ApplyWithRollbackResult(
+                ok=True,
+                result_message=(
+                    "Stack applied. CẢNH BÁO: phát hiện dấu hiệu lỗi trong log hoặc "
+                    f"kiểm tra HTTP không kết luận được:\n{warning_lines}"
+                ),
+            )
         return ApplyWithRollbackResult(ok=True, result_message="Stack applied.")
 
     reason = "unhealthy" if apply_result.healthy is False else "apply_failed"

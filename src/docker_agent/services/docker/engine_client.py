@@ -49,11 +49,45 @@ def _load_docker_py() -> Any:
     return importlib.import_module("docker")
 
 
+def _docker_list_payload(item: Any) -> Any:
+    """Return list-API payload from docker-py models or plain dicts.
+
+    docker-py ``Container`` stores the list response in ``_attrs`` while the
+    ``attrs`` property fetches full inspect data (where ``State`` is a dict).
+    """
+    if isinstance(item, dict):
+        return item
+    list_attrs = getattr(item, "_attrs", None)
+    if isinstance(list_attrs, dict):
+        return list_attrs
+    if hasattr(item, "attrs"):
+        raw = item.attrs
+        if isinstance(raw, dict):
+            state = raw.get("State")
+            if isinstance(state, dict):
+                name = raw.get("Name")
+                names = [name] if isinstance(name, str) else raw.get("Names", [])
+                return {
+                    "Id": raw.get("Id", ""),
+                    "Names": names,
+                    "State": state.get("Status", ""),
+                    "Labels": (raw.get("Config") or {}).get("Labels") or {},
+                }
+            return raw
+    return item
+
+
 def create_engine_client(client: Any | None = None) -> EngineClient:
     """Create an EngineClient backed by docker-py."""
     docker = _load_docker_py()
     ImageNotFound = docker.errors.ImageNotFound
-    docker_client = client if client is not None else docker.from_env()
+    try:
+        docker_client = client if client is not None else docker.from_env()
+    except Exception as e:
+        raise RuntimeError(
+            "Docker is not running or cannot be reached. Please ensure Docker Desktop is started "
+            f"and you have permission to access the Docker socket/pipe.\nOriginal error: {e}"
+        ) from e
 
     class _EngineClientImpl:
         async def list_containers(
@@ -61,11 +95,10 @@ def create_engine_client(client: Any | None = None) -> EngineClient:
         ) -> list[ContainerSummary]:
             docker_opts: dict[str, Any] = {"all": all}
             if filters is not None:
-                docker_opts["filters"] = json.dumps(filters)
+                docker_opts["filters"] = filters
             raw = docker_client.containers.list(**docker_opts)
             return [
-                ContainerSummary.model_validate(item.attrs if hasattr(item, "attrs") else item)
-                for item in raw
+                ContainerSummary.model_validate(_docker_list_payload(item)) for item in raw
             ]
 
         async def inspect(self, container_id: str) -> ContainerInspect:
@@ -89,11 +122,10 @@ def create_engine_client(client: Any | None = None) -> EngineClient:
         ) -> list[ImageSummary]:
             docker_opts: dict[str, Any] = {}
             if filters is not None:
-                docker_opts["filters"] = json.dumps(filters)
+                docker_opts["filters"] = filters
             raw = docker_client.images.list(**docker_opts)
             return [
-                ImageSummary.model_validate(item.attrs if hasattr(item, "attrs") else item)
-                for item in raw
+                ImageSummary.model_validate(_docker_list_payload(item)) for item in raw
             ]
 
         async def pull_image(

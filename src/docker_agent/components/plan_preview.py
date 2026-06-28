@@ -41,7 +41,7 @@ def compose_yaml_for_preview(compose_yaml: str) -> str:
 def _render_service_diffs(diff: StackDiff) -> Text:
     content = Text()
     if not diff.service_diffs:
-        content.append(" No changes detected", style="dim")
+        content.append(" No changes detected\n", style="dim")
         return content
     for service_diff in diff.service_diffs:
         if not service_diff.actual:

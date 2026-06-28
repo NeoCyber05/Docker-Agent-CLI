@@ -39,6 +39,22 @@ async def test_prompt_input_tab_completes_suggestion() -> None:
         await pilot.pause()
         prompt_input = pilot.app.query_one("#prompt-input")
         assert prompt_input.value.startswith("/help")
+        assert prompt_input.cursor_position == len(prompt_input.value)
+
+
+async def test_prompt_input_enter_completes_suggestion_cursor_at_end() -> None:
+    app = PromptApp()
+    async with app.run_test() as pilot:
+        await pilot.click("#prompt-input")
+        await pilot.press("/")
+        await pilot.press("h")
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        prompt_input = pilot.app.query_one("#prompt-input")
+        assert prompt_input.value.startswith("/help")
+        assert prompt_input.cursor_position == len(prompt_input.value)
+        assert app.submitted == []
 
 
 async def test_prompt_input_submits_trimmed_text() -> None:

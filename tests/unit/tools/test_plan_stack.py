@@ -620,3 +620,60 @@ async def test_auto_injects_database_healthcheck_and_upgrades_depends_on(
     assert parsed["services"]["web"]["depends_on"] == {
         "db": {"condition": "service_healthy"}
     }
+
+
+@pytest.mark.asyncio
+async def test_wordpress_mysql_wires_db_password_to_app(tmp_project: Path) -> None:
+    ctx = _ctx(tmp_project)
+    result = await _plan(
+        {
+            "stackName": "wordpress-stack",
+            "intent": "wordpress + mysql",
+            "services": [
+                {
+                    "name": "db",
+                    "kind": "catalog",
+                    "catalogId": "mysql:8.0",
+                },
+                {
+                    "name": "wordpress",
+                    "kind": "custom",
+                    "image": "wordpress:latest",
+                    "exposure": "public",
+                    "hostPort": 8080,
+                    "containerPort": 80,
+                    "depends_on": ["db"],
+                    "environment": {
+                        "WORDPRESS_DB_HOST": "db",
+                        "WORDPRESS_DB_USER": "root",
+                    },
+                },
+            ],
+        },
+        ctx,
+    )
+
+    assert result.blocked is False
+    parsed = yaml.safe_load(result.compose_yaml)
+    assert parsed["services"]["wordpress"]["environment"]["WORDPRESS_DB_NAME"] == "wordpress"
+    assert "WORDPRESS_DB_PASSWORD" not in (parsed["services"]["wordpress"].get("environment") or {})
+    assert "./.docker-agent/secrets/wordpress-stack-wordpress.env" in (
+        parsed["services"]["wordpress"].get("env_file") or []
+    )
+
+    db_env = (tmp_project / ".docker-agent" / "secrets" / "wordpress-stack-db.env").read_text(
+        encoding="utf-8"
+    )
+    wp_env = (
+        tmp_project / ".docker-agent" / "secrets" / "wordpress-stack-wordpress.env"
+    ).read_text(encoding="utf-8")
+    db_password = re.search(r"MYSQL_ROOT_PASSWORD=(.+)", db_env)
+    wp_password = re.search(r"WORDPRESS_DB_PASSWORD=(.+)", wp_env)
+    assert db_password is not None
+    assert wp_password is not None
+    assert db_password.group(1) == wp_password.group(1)
+    assert "MYSQL_DATABASE=wordpress" in db_env
+    assert any(
+        item.service == "wordpress" and "WORDPRESS_DB_PASSWORD" in item.keys
+        for item in result.auto_generated_secrets
+    )

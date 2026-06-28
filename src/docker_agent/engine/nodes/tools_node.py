@@ -38,6 +38,7 @@ READ_ONLY_ALLOWLIST = {
 
 EXECUTABLE_TOOLS = READ_ONLY_ALLOWLIST | {
     "destroy_stack",
+    "stop_stack",
     "remove_container",
 }
 

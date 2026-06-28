@@ -38,6 +38,36 @@ async def test_apply_with_rollback_success(make_loop_ctx) -> None:
 
 
 @pytest.mark.asyncio
+async def test_apply_with_rollback_success_with_warnings(make_loop_ctx) -> None:
+    ctx = make_loop_ctx()
+    events: list[object] = []
+    ok_result = ApplyStackResult(
+        ok=True,
+        exit_code=0,
+        yaml_path="/tmp/x.yaml",
+        warnings=["db: FATAL: password authentication failed"],
+    )
+
+    with patch(
+        "docker_agent.engine.nodes.apply_with_rollback._run_apply_tool",
+        new=AsyncMock(return_value=ok_result),
+    ):
+        result = await run_apply_with_rollback(
+            ApplyWithRollbackParams(
+                stack_name="web",
+                desired_yaml="services:",
+                config_files=[],
+                ctx=ctx,
+                emit=events.append,
+            )
+        )
+
+    assert result.ok is True
+    assert "CẢNH BÁO" in result.result_message
+    assert "password authentication failed" in result.result_message
+
+
+@pytest.mark.asyncio
 async def test_apply_with_rollback_failure_triggers_rollback(make_loop_ctx) -> None:
     ctx = make_loop_ctx()
     events: list[object] = []

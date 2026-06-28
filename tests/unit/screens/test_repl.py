@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -63,6 +64,8 @@ async def test_welcome_banner_visible(tmp_project) -> None:
     app = REPL(engine=make_engine(tmp_project), version="0.1.0-test", show_banner=True)
     async with app.run_test(size=(100, 30)) as pilot:
         banner = pilot.app.query_one(WelcomeBanner)
+        timeline = pilot.app.query_one("#timeline")
+        assert banner in timeline.walk_children(with_self=False)
         buffer = StringIO()
         Console(file=buffer, width=100).print(banner.content)
         rendered = buffer.getvalue()
@@ -285,3 +288,23 @@ async def test_model_picker_selects_and_closes(tmp_project) -> None:
             assert last_msg.type == "text"
             assert last_msg.role == "assistant"
             assert "Model set to gpt-4o (openai)" in last_msg.text
+
+
+@pytest.mark.asyncio
+async def test_stop_log_pane_after_escape_does_not_pop_main_screen(tmp_project) -> None:
+    from docker_agent.components.log_pane import LogPane
+
+    app = REPL(engine=make_engine(tmp_project), version="0.1.0-test", show_banner=False)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        pane = LogPane(stack_name="webapp", lines=[])
+        app._active_log_pane = pane
+        app.push_screen(pane, app._on_log_pane_closed)
+        await pilot.pause()
+        assert isinstance(pilot.app.screen, LogPane)
+        await pilot.press("escape")
+        await pilot.pause()
+        assert not isinstance(pilot.app.screen, LogPane)
+        app._stop_log_pane()
+        await pilot.pause()
+        assert len(app.screen_stack) >= 1

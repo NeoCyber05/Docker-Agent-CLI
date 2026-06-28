@@ -38,7 +38,7 @@ project-policies.yaml
 
 # Docker Agent Desired States (GitOps)
 !docker-stacks/
-
+run_demo/
 # Python ignore rules
 __pycache__/
 *.py[cod]

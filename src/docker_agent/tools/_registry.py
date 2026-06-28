@@ -21,6 +21,7 @@ from docker_agent.tools.pull_image import pull_image
 from docker_agent.tools.remove_container import remove_container
 from docker_agent.tools.remediate_drift import remediate_drift
 from docker_agent.tools.resolve_dependency import resolve_dependency
+from docker_agent.tools.stop_stack import stop_stack
 from docker_agent.tools.validate_spec import validate_spec
 
 _PREFLIGHT_TOOLS: list[Any] = [
@@ -35,6 +36,7 @@ def get_agent_tools() -> list[Any]:
         plan_stack,
         destroy_stack,
         destroy_all_stacks,
+        stop_stack,
         remove_container,
         list_stacks,
         inspect_drift,

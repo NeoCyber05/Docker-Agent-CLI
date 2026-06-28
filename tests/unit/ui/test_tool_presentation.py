@@ -188,6 +188,18 @@ def test_destroy_stack_permission_detail_describes_compose_down() -> None:
     assert "Input:" not in text
 
 
+def test_stop_stack_permission_detail_describes_compose_stop() -> None:
+    presentation = present_tool(
+        "stop_stack",
+        {"stackName": "wp-new", "services": ["wordpress"]},
+    )
+    text = "\n".join(presentation.detail_lines)
+    assert "wp-new" in text
+    assert "docker compose stop" in text
+    assert "wordpress" in text
+    assert "containers are not removed" in text.lower()
+
+
 def test_falls_back_for_unknown_tool_name() -> None:
     presentation = present_tool("unknown_tool", {"foo": "bar"}, {"result": 1})
     assert presentation.title == "Tool: unknown_tool"

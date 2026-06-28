@@ -12,19 +12,19 @@ from rich.text import Text
 from textual.widgets import Static
 
 WHALE = [
-    "          ##         .",
-    "    ## ## ##        ==",
-    " ## ## ## ##       ===",
-    '/"""""""""""""""\\___/ ===',
-    "{                   /  ===-",
-    "\\______ o         __/",
-    " \\    \\         __/",
-    "  \\____\\_______/",
+    "           ##         .",
+    "     ## ## ##        ==",
+    "  ## ## ## ##       ===",
+    ' /"""""""""""""""\\___/ ===',
+    "{                  /  ===-",
+    " \\______ o         __/",
+    "  \\    \\         __/",
+    "   \\____\\_______/",
 ]
 
 COMPACT_WELCOME_MAX_ROWS = 16
 COMPACT_WELCOME_MIN_COLUMNS = 84
-
+ 
 TIPS = [
     ("/help", "Show all commands & shortcuts"),
     ("/model", "Browse or set the active model"),
@@ -146,10 +146,9 @@ class WelcomeBanner(Static):
     DEFAULT_CSS = """
     WelcomeBanner {
         height: auto;
-        max-height: 15;
         border: round cyan;
         padding: 0 1;
-        overflow: hidden;
+        margin-bottom: 1;
     }
     """
 

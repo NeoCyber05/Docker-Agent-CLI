@@ -74,3 +74,19 @@ def test_render_plan_preview_shows_decision_status() -> None:
     )
     assert "Plan approved" in approved
     assert "Plan declined" in denied
+
+
+def test_render_plan_preview_no_changes_detected() -> None:
+    empty_diff = StackDiff(
+        stackName="demo",
+        status="missing",
+        serviceDiffs=[],
+    )
+    rendered = render_plan_preview(
+        compose_yaml="services:\n  web:\n    image: nginx",
+        diff=empty_diff,
+        status="pending",
+    )
+    text = str(rendered)
+    assert "No changes detected" in text
+    assert "No changes detected\nYAML Configuration" in text

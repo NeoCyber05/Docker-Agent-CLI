@@ -62,18 +62,29 @@ class PromptInput(Vertical):
     def watch_phase(self, phase: InteractionPhase) -> None:
         self.query_one("#phase-hint", Static).update(PHASE_HINTS.get(phase, ""))
 
+    def _input_widget(self) -> Input:
+        return self.query_one("#prompt-input", Input)
+
+    def _move_cursor_to_end(self) -> None:
+        widget = self._input_widget()
+        widget.cursor_position = len(widget.value)
+
     def watch_prefill(self, value: str | None) -> None:
         if value is None:
             return
-        self.query_one("#prompt-input", Input).value = value
+        widget = self._input_widget()
+        widget.value = value
+        self._move_cursor_to_end()
         self._suggestion_idx = 0
         self._update_suggestions()
 
     def _current_text(self) -> str:
-        return self.query_one("#prompt-input", Input).value
+        return self._input_widget().value
 
     def _set_text(self, text: str) -> None:
-        self.query_one("#prompt-input", Input).value = text
+        widget = self._input_widget()
+        widget.value = text
+        self._move_cursor_to_end()
         self._update_suggestions()
 
     def _suggestions(self) -> list[SlashCommandDef]:
@@ -106,6 +117,7 @@ class PromptInput(Vertical):
         if current == suggestion.insert_text.strip().lower():
             return False
         self._set_text(suggestion.insert_text)
+        self._input_widget().focus()
         self._history_idx = -1
         self._draft = ""
         return True

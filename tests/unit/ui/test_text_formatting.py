@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from docker_agent.ui.text_formatting import render_inline_markdown
+from docker_agent.ui.text_formatting import render_inline_markdown, render_markdown
 
 
 def test_render_inline_markdown_strips_bold_markers() -> None:
@@ -27,3 +27,31 @@ def test_render_inline_markdown_handles_italic_and_code() -> None:
 def test_render_inline_markdown_leaves_unclosed_markers() -> None:
     rendered = render_inline_markdown("broken **bold")
     assert rendered.plain == "broken **bold"
+
+
+def test_render_markdown_table_replaces_pipe_syntax() -> None:
+    rendered = render_markdown(
+        "\n".join(
+            [
+                "### Stack Status",
+                "",
+                "| Service | Container | State |",
+                "| --- | --- | --- |",
+                "| MySQL | wp-new-mysql-1 | Running |",
+                "| WordPress | wp-new-wordpress-1 | Running |",
+            ]
+        )
+    )
+    plain = rendered.plain
+    assert "MySQL" in plain
+    assert "wp-new-mysql-1" in plain
+    assert "WordPress" in plain
+    assert "| --- |" not in plain
+    assert "Stack Status" in plain
+    assert "###" not in plain
+
+
+def test_render_markdown_preserves_bold_paragraphs() -> None:
+    rendered = render_markdown("Status for stack **wp-new**:")
+    assert rendered.plain.strip() == "Status for stack wp-new:"
+    assert "**" not in rendered.plain

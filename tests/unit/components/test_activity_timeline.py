@@ -67,3 +67,25 @@ def test_activity_timeline_renders_assistant_bold_without_markers() -> None:
     text = str(content)
     assert "PostgreSQL" in text
     assert "**" not in text
+
+
+def test_activity_timeline_renders_assistant_table() -> None:
+    content = render_activity_timeline(
+        [
+            TextActivity(
+                id="a2",
+                role="assistant",
+                text=(
+                    "Stack status:\n\n"
+                    "| Service | State |\n"
+                    "| --- | --- |\n"
+                    "| MySQL | Running |\n"
+                ),
+            )
+        ],
+        active_tool_activity_id=None,
+    )
+    plain = str(content)
+    assert "MySQL" in plain
+    assert "Running" in plain
+    assert "| --- |" not in plain

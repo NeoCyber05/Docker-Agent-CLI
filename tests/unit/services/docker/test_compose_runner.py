@@ -1,11 +1,12 @@
 """Parity tests for compose_runner — mirrors src/services/docker/composeRunner.ts."""
 
+import asyncio
+import sys
 from collections.abc import AsyncIterator
 
 import pytest
 
-from docker_agent.services.docker.compose_runner import BoundComposeRunner
-
+from docker_agent.services.docker.compose_runner import BoundComposeRunner, _default_spawner_impl
 
 class FakeSpawner:
     def __init__(self, lines: list[str], exit_code: int = 0) -> None:
@@ -74,19 +75,42 @@ async def test_down_with_volumes() -> None:
 
 
 @pytest.mark.asyncio
+async def test_stop_all_services() -> None:
+    fake = FakeSpawner([" Container web-1  Stopped"])
+    runner = BoundComposeRunner("web", "/tmp/web.yaml", "/tmp", fake)
+    async for _ in runner.stop():
+        pass
+    args = fake.calls[0][1]
+    assert "stop" in args
+    assert args[-1] != "wordpress"
+
+
+@pytest.mark.asyncio
+async def test_stop_specific_services() -> None:
+    fake = FakeSpawner([])
+    runner = BoundComposeRunner("web", "/tmp/web.yaml", "/tmp", fake)
+    async for _ in runner.stop(services=["wordpress", "mysql"]):
+        pass
+    args = fake.calls[0][1]
+    assert args[-2:] == ["wordpress", "mysql"]
+
+
+@pytest.mark.asyncio
 async def test_ps_parses_json_lines() -> None:
     fake = FakeSpawner(
         [
             '{"Name": "web-1", "Service": "web", "State": "running", "Health": "healthy"}',
             "not-json",
             '{"Name": "web-2", "Service": "web", "State": "exited"}',
+            '{"Name": "web-3", "Service": "wordpress", "State": "running", "Health": ""}',
         ]
     )
     runner = BoundComposeRunner("web", "/tmp/web.yaml", "/tmp", fake)
     rows = await runner.ps(json=True)
-    assert len(rows) == 2
+    assert len(rows) == 3
     assert rows[0].name == "web-1"
     assert rows[1].health is None
+    assert rows[2].health is None
 
 
 @pytest.mark.asyncio
@@ -101,3 +125,19 @@ async def test_logs_args() -> None:
     assert "--tail" in args
     assert "10" in args
     assert "web" in args
+
+
+@pytest.mark.asyncio
+async def test_default_spawner_streams_before_process_exit() -> None:
+    script = (
+        "import time; print('first-line', flush=True); "
+        "time.sleep(0.2); print('second-line', flush=True)"
+    )
+    lines: list[str] = []
+    async for line in _default_spawner_impl(
+        sys.executable,
+        ["-c", script],
+        {"cwd": "."},
+    ):
+        lines.append(line)
+    assert lines[:2] == ["first-line", "second-line"]

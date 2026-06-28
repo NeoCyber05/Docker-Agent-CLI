@@ -95,7 +95,7 @@ async def _block_reason_for_container(
     if project and project in managed_projects:
         return (
             f"Container belongs to managed stack '{project}'; "
-            "use destroy_stack instead of remove_container."
+            "use stop_stack to stop services or destroy_stack to tear down."
         )
     return None
 
@@ -105,7 +105,7 @@ class _RemoveContainerTool:
     description = (
         "Remove specific orphan Docker containers by exact name or ID — for leftovers "
         "not tracked by destroy_stack. Do NOT bulk-remove all stopped containers. "
-        "Containers from stacks managed by docker-agent must use destroy_stack. "
+        "Containers from stacks managed by docker-agent must use stop_stack or destroy_stack. "
         "Set stopOnly=true to stop without removing."
     )
     input_schema = RemoveContainerInput

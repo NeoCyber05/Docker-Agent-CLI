@@ -25,6 +25,7 @@ class LogPane(ModalScreen[None]):
         self._stack_name = stack_name
         self._service = service
         self._lines = lines or []
+        self._awaiting_first_line = not self._lines
 
     def compose(self) -> ComposeResult:
         title = (
@@ -41,14 +42,35 @@ class LogPane(ModalScreen[None]):
         log = self.query_one("#log-output", RichLog)
         visible = self._lines[-MAX_VISIBLE_LINES:]
         if not visible:
-            log.write("no running containers / waiting for output...", shrink=False)
+            log.write("Loading logs...", shrink=False)
         else:
             for line in visible:
                 log.write(line.rstrip("\n"), shrink=False)
 
     def append_line(self, line: str) -> None:
-        self.query_one("#log-output", RichLog).write(line.rstrip("\n"), shrink=False)
+        if not self.is_attached:
+            return
+        try:
+            log = self.query_one("#log-output", RichLog)
+        except Exception:
+            return
+        if self._awaiting_first_line:
+            log.clear()
+            self._awaiting_first_line = False
+        log.write(line.rstrip("\n"), shrink=False)
+
+    def show_status(self, message: str) -> None:
+        if not self.is_attached:
+            return
+        try:
+            log = self.query_one("#log-output", RichLog)
+        except Exception:
+            return
+        log.clear()
+        self._awaiting_first_line = False
+        log.write(message, shrink=False)
 
     def on_key(self, event: Key) -> None:
         if event.key == "escape":
+            event.stop()
             self.dismiss(None)

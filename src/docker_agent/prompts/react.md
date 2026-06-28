@@ -83,11 +83,14 @@ call `get_health` and `get_logs`, then diagnose before acting. Use `inspect_drif
 - `destroy_stack` tears down stacks **managed by docker-agent** (with a stack YAML file).
   If it returns `stack_file_not_found`, the stack is not tracked — do NOT retry
   `destroy_stack` with guessed names.
+- `stop_stack` stops containers for a managed stack **without removing them**
+  (`docker compose stop`). Use this when the user wants to pause services but keep
+  the stack definition; use `apply_stack` to start again.
 - Use `remove_container` only for **specific orphan containers** blocking the current
   task (name conflict, leftover from a failed deploy). Pass exact container names from
   `exec_docker ps` — never batch-remove all stopped containers or unrelated projects.
 - Containers belonging to a stack still managed by docker-agent cannot be removed with
-  `remove_container`; use `destroy_stack` for that stack instead.
+  `remove_container`; use `stop_stack` to stop services or `destroy_stack` to tear down.
 - If deploy fails due to a name conflict, remove only the conflicting container(s) with
   `remove_container`, or suggest renaming the service before calling `plan_stack` again.
 

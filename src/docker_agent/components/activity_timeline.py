@@ -17,7 +17,7 @@ from docker_agent.ui.activity import (
     ToolActivity,
     UsageActivity,
 )
-from docker_agent.ui.text_formatting import render_inline_markdown
+from docker_agent.ui.text_formatting import render_markdown
 
 
 def _format_duration(ms: float) -> str:
@@ -62,7 +62,7 @@ def _render_text(item: TextActivity) -> Text:
         content.append(f"error: {item.text}", style="red")
     else:
         content.append("Agent\n", style="bold magenta")
-        content.append_text(render_inline_markdown(item.text))
+        content.append_text(render_markdown(item.text))
     content.append("\n")
     return content
 

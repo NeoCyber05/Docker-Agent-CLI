@@ -300,6 +300,23 @@ def present_tool(name: str, input_data: Any = None, output: Any = None) -> ToolP
         summary = f"Tear down stack {stack_name}{' (volumes removed)' if remove_volumes else ''}"
         detail_lines = _permission_detail_destroy_stack(input_dict)
         return _finalize_presentation(title, summary, detail_lines, output)
+    elif name == "stop_stack":
+        stack_name = input_dict.get("stackName", "unknown")
+        services = input_dict.get("services")
+        if isinstance(services, list) and services:
+            service_label = ", ".join(str(service) for service in services)
+            title = f"Stop stack: {stack_name}"
+            summary = f"Stop service(s) {service_label} in {stack_name} (containers kept)"
+        else:
+            title = f"Stop stack: {stack_name}"
+            summary = f"Stop all services in {stack_name} (containers kept)"
+        detail_lines = [
+            f"Stack: {stack_name}",
+            "Action: docker compose stop (containers are not removed)",
+        ]
+        if isinstance(services, list) and services:
+            detail_lines.append(f"Services: {', '.join(str(service) for service in services)}")
+        return _finalize_presentation(title, summary, detail_lines, output)
     elif name == "destroy_all_stacks":
         title = "Destroy all stacks"
         summary = "Tear down all stacks"

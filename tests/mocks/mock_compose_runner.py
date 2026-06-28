@@ -27,6 +27,7 @@ class MockBoundRunner:
         ]
         self.up_calls: list[dict[str, Any]] = []
         self.down_calls: list[dict[str, Any]] = []
+        self.stop_calls: list[dict[str, Any]] = []
         self.ps_calls: list[dict[str, Any]] = []
         self.logs_calls: list[dict[str, Any]] = []
         self.last_exit_code = 0
@@ -43,6 +44,12 @@ class MockBoundRunner:
     async def down(self, *, volumes: bool = False) -> AsyncIterator[str]:
         self.down_calls.append({"volumes": volumes})
         yield f"down: {self.stack_name}\n"
+        self.last_exit_code = 0
+
+    async def stop(self, *, services: list[str] | None = None) -> AsyncIterator[str]:
+        self.stop_calls.append({"services": services})
+        target = ", ".join(services) if services else "all"
+        yield f"stop: {self.stack_name} ({target})\n"
         self.last_exit_code = 0
 
     async def ps(self, *, json: bool = False) -> list[ComposePsRow]:

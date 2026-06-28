@@ -32,9 +32,26 @@ from docker_agent.types.stack import StackDefinition
 
 HEALTH_DEADLINE_MS_DEFAULT = 120_000
 POLL_INTERVAL_MS_DEFAULT = 2_000
+FAIL_FAST_GRACE_MS = 15_000
+RESTART_LOOP_THRESHOLD = 3
 FAILURE_LOG_TAIL = 15
+LOG_SCAN_TAIL = 30
 TERMINAL_STATES = frozenset({"exited", "dead"})
 POPULAR_HTTP_PORTS = frozenset({80, 8080, 3000, 3001, 5000, 8000, 9000, 9001})
+LOG_ERROR_PATTERNS = (
+    "could not connect",
+    "connection refused",
+    "econnrefused",
+    "password authentication failed",
+    "access denied",
+    "error establishing a database connection",
+    "database connection error",
+    "fatal:",
+    " fatal ",
+    "could not translate host name",
+    "getaddrinfo",
+    "sqlstate",
+)
 
 
 class ApplyStackInput(BaseModel):
@@ -53,6 +70,7 @@ class ApplyStackResult(BaseModel):
     healthy: bool | None = None
     unhealthy_services: list[str] | None = Field(default=None, alias="unhealthyServices")
     running_services: list[str] | None = Field(default=None, alias="runningServices")
+    warnings: list[str] | None = None
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -70,9 +88,39 @@ def _clamp(value: int, minimum: int, maximum: int) -> int:
 def _unhealthy_status(row: ComposePsRow | None) -> str | None:
     if row is None:
         return "not created"
-    if row.health is not None:
+    if row.health:
         return None if row.health == "healthy" else f"health: {row.health}"
     return None if row.state == "running" else row.state
+
+
+def _is_degraded(row: ComposePsRow | None) -> bool:
+    if row is None:
+        return False
+    if row.health:
+        return row.health == "unhealthy"
+    return row.state.lower() == "restarting"
+
+
+def _service_display_status(row: ComposePsRow | None) -> str:
+    if row is None:
+        return "pending"
+    if row.health:
+        return row.health
+    return row.state
+
+
+def _format_health_progress(
+    rows: list[ComposePsRow],
+    expected_services: list[str],
+    elapsed_s: int,
+    deadline_s: int,
+) -> str:
+    by_service = {row.service: row for row in rows}
+    parts = [
+        f"{service}={_service_display_status(by_service.get(service))}"
+        for service in expected_services
+    ]
+    return f"Health {elapsed_s}s/{deadline_s}s: {', '.join(parts)}"
 
 
 async def verify_health(
@@ -80,38 +128,68 @@ async def verify_health(
     expected_services: list[str],
     deadline_ms: int,
     abort: asyncio.Event,
-) -> dict[str, object]:
-    deadline = time.monotonic() + deadline_ms / 1000
+) -> AsyncIterator[ToolProgress | dict[str, object]]:
+    start = time.monotonic()
+    deadline = start + deadline_ms / 1000
+    deadline_s = max(1, deadline_ms // 1000)
+    degraded_since: dict[str, float] = {}
+    restart_seen: dict[str, int] = {}
     while True:
         if abort.is_set():
-            return {
+            yield {
                 "healthy": False,
                 "unhealthy": [
                     UnhealthyService(service=service, status="aborted")
                     for service in expected_services
                 ],
             }
+            return
         rows: list[ComposePsRow] = []
         with contextlib.suppress(Exception):
             rows = await bound.ps(json=True)
 
+        elapsed_s = int(time.monotonic() - start)
+        yield ToolProgress(
+            msg=_format_health_progress(rows, expected_services, elapsed_s, deadline_s)
+        )
+
         unhealthy: list[UnhealthyService] = []
         crashed = False
+        now = time.monotonic()
+        fail_fast = False
         for service in expected_services:
             row = next((r for r in rows if r.service == service), None)
             status = _unhealthy_status(row)
             if status is None:
-                continue
-            unhealthy.append(UnhealthyService(service=service, status=status))
-            if row is not None and row.state.lower() in TERMINAL_STATES:
-                crashed = True
+                degraded_since.pop(service, None)
+            else:
+                unhealthy.append(UnhealthyService(service=service, status=status))
+                if row is not None and row.state.lower() in TERMINAL_STATES:
+                    crashed = True
+
+            if row is not None and row.state.lower() == "restarting":
+                restart_seen[service] = restart_seen.get(service, 0) + 1
+            if _is_degraded(row):
+                degraded_since.setdefault(service, now)
+                if now - degraded_since[service] >= FAIL_FAST_GRACE_MS / 1000:
+                    fail_fast = True
+            elif status is not None:
+                degraded_since.pop(service, None)
+            if restart_seen.get(service, 0) >= RESTART_LOOP_THRESHOLD:
+                fail_fast = True
 
         if not unhealthy:
-            return {"healthy": True, "unhealthy": []}
+            yield {"healthy": True, "unhealthy": []}
+            return
         if crashed:
-            return {"healthy": False, "unhealthy": unhealthy}
+            yield {"healthy": False, "unhealthy": unhealthy}
+            return
+        if fail_fast:
+            yield {"healthy": False, "unhealthy": unhealthy}
+            return
         if time.monotonic() >= deadline:
-            return {"healthy": False, "unhealthy": unhealthy}
+            yield {"healthy": False, "unhealthy": unhealthy}
+            return
         await asyncio.sleep(POLL_INTERVAL_MS_DEFAULT / 1000)
 
 
@@ -136,6 +214,34 @@ async def _collect_failure_logs(
         )
         sections.append(f"--- {svc} ---\n{scrubbed}")
     return "\n\n".join(sections)
+
+
+def _line_matches_log_error(line: str) -> bool:
+    lowered = line.lower()
+    return any(pattern in lowered for pattern in LOG_ERROR_PATTERNS)
+
+
+async def _scan_logs_for_errors(
+    bound: BoundComposeRunner,
+    services: list[str],
+    secret_keys: set[str],
+) -> list[str]:
+    warnings: list[str] = []
+    for svc in services:
+        buf = ""
+        try:
+            async for line in bound.logs(service=svc, tail_lines=LOG_SCAN_TAIL):
+                buf += line
+        except Exception:  # noqa: BLE001
+            continue
+        lines = [line for line in buf.split("\n") if line.strip()]
+        for line in lines[-LOG_SCAN_TAIL:]:
+            if not _line_matches_log_error(line):
+                continue
+            scrubbed = scrub_line(line, secret_keys).rstrip()
+            warnings.append(f"{svc}: {scrubbed}")
+            break
+    return warnings
 
 
 def _stack_env_files(definition: StackDefinition) -> list[str]:
@@ -195,10 +301,15 @@ async def _probe_http_port(url: str, abort: asyncio.Event) -> dict[str, object]:
             if attempt == max_retries:
                 return {
                     "success": True,
+                    "inconclusive": True,
                     "message": f"Inconclusive: {err}",
                 }
             await asyncio.sleep(2)
-    return {"success": True, "message": "Inconclusive: max retries reached without success"}
+    return {
+        "success": True,
+        "inconclusive": True,
+        "message": "Inconclusive: max retries reached without success",
+    }
 
 
 async def _verify_http_services(
@@ -206,6 +317,7 @@ async def _verify_http_services(
     abort: asyncio.Event,
 ) -> dict[str, object]:
     failed_services: list[str] = []
+    warnings: list[str] = []
     last_error: str | None = None
 
     for service_name, spec in definition.services.items():
@@ -225,11 +337,15 @@ async def _verify_http_services(
                 if not probe.get("success"):
                     failed_services.append(service_name)
                     last_error = str(probe.get("message"))
+                elif probe.get("inconclusive"):
+                    message = str(probe.get("message") or "Inconclusive HTTP probe")
+                    warnings.append(f"{service_name}: {message}")
 
     return {
         "ok": not failed_services,
         "failed_services": failed_services,
         "error": last_error,
+        "warnings": warnings,
     }
 
 
@@ -414,15 +530,20 @@ class _ApplyStackTool:
             )
 
             yield ToolProgress(msg="Waiting for services to become healthy...")
-            health_result = await verify_health(
+            health_result: dict[str, object] | None = None
+            async for item in verify_health(
                 bound,
                 expected_services,
                 deadline_ms,
                 ctx.abort_signal,
-            )
+            ):
+                if isinstance(item, ToolProgress):
+                    yield item
+                else:
+                    health_result = item
 
-            if not health_result["healthy"]:
-                unhealthy = health_result["unhealthy"]
+            if health_result is None or not health_result["healthy"]:
+                unhealthy = health_result["unhealthy"] if health_result else []
                 assert isinstance(unhealthy, list)
                 failed_names = [item.service for item in unhealthy]
                 logs = await _collect_failure_logs(bound, failed_names, secret_keys)
@@ -467,6 +588,19 @@ class _ApplyStackTool:
                 )
                 return
 
+            deploy_warnings: list[str] = []
+            http_warnings = http_check.get("warnings")
+            if isinstance(http_warnings, list):
+                deploy_warnings.extend(str(item) for item in http_warnings)
+
+            yield ToolProgress(msg="Scanning service logs for errors...")
+            log_warnings = await _scan_logs_for_errors(
+                bound,
+                expected_services,
+                secret_keys,
+            )
+            deploy_warnings.extend(log_warnings)
+
             last_applied = datetime.now(UTC).isoformat().replace("+00:00", "Z")
             updated_meta = definition.x_docker_agent.model_copy(
                 update={"last_applied": last_applied}
@@ -482,6 +616,7 @@ class _ApplyStackTool:
                     yaml_path=yaml_path,
                     healthy=True,
                     unhealthy_services=[],
+                    warnings=deploy_warnings or None,
                 )
             )
         finally:

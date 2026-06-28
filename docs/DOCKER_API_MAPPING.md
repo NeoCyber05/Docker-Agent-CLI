@@ -43,7 +43,9 @@ Dưới đây là bảng tổng hợp ánh xạ từ Tool của Agent đến Hà
 | **`plan_stack`** | `high-level` | `src/tools/plan_stack.py` | *Không chạy trực tiếp lệnh thay đổi* | `GET /containers/json`<br>`GET /containers/{id}/json`<br>`GET /images/{name}/json` |
 | **`apply_stack`** *(nội bộ)* | `high-level` | `src/tools/apply_stack.py` | `docker compose -p <stack> --project-directory <cwd> -f <yaml> up -d` | *Thông qua lệnh Docker Compose CLI* |
 | **`destroy_stack`** | `high-level` | `src/tools/destroy_stack.py` | `docker compose -p <stack> --project-directory <cwd> -f <yaml> down [-v]` | *Thông qua lệnh Docker Compose CLI* |
+| **`stop_stack`** | `high-level` | `src/tools/stop_stack.py` | `docker compose -p <stack> --project-directory <cwd> -f <yaml> stop [<service>...]` | *Thông qua lệnh Docker Compose CLI* |
 | **`destroy_all_stacks`**| `high-level` | `src/tools/destroy_all_stacks.py` | Chạy tuần tự `docker compose down` cho từng stack | *Thông qua lệnh Docker Compose CLI* |
+| **`remove_container`** | `high-level` | `src/tools/remove_container.py` | `docker stop <container>` hoặc `docker rm [-f] <container>` | *Thông qua lệnh Docker CLI* |
 | **`get_stack_status`** | `read-only` | `src/tools/get_stack_status.py` | `docker compose -p <stack> ps --format json`<br>`docker compose -p <stack> logs --tail <n>` | *Thông qua lệnh Docker Compose CLI* |
 | **`get_logs`** | `read-only` | `src/tools/get_logs.py` | `docker compose -p <stack> logs [--tail <n>] [--since <ts>] [<service>]` | *Thông qua lệnh Docker Compose CLI* |
 | **`get_health`** | `read-only` | `src/tools/get_health.py` | *Không sử dụng CLI* | `GET /containers/json`<br>`GET /containers/{id}/json`<br>`GET /containers/{id}/stats` |
@@ -129,9 +131,26 @@ Dưới đây là bảng tổng hợp ánh xạ từ Tool của Agent đến Hà
   ```
 * **Lệnh Docker CLI thực thi dưới nền**:
   ```bash
-  docker compose -p <stackName> --project-directory <cwd> -f .docker-agent/states/<stackName>.yaml down
+  docker compose -p <stackName> --project-directory <cwd> -f docker-stacks/<stackName>.yaml down
   ```
   *(Nếu `removeVolumes: true`, tham số `-v` hoặc `--volumes` sẽ được đính kèm vào lệnh để xoá bỏ hoàn toàn volume)*.
+
+---
+
+### 3.3a. `stop_stack`
+* **Mục đích**: Dừng container của stack managed **mà không xóa** chúng. File YAML trong `docker-stacks/` và metadata trong state store được giữ nguyên; dùng `apply_stack` để khởi động lại.
+* **Hàm Python**: `src/tools/stop_stack.py`
+* **Input Schema (Pydantic)**:
+  ```python
+  class StopStackInput(BaseModel):
+      stack_name: str
+      services: list[str] | None = None   # Bỏ trống = stop toàn bộ stack
+  ```
+* **Lệnh Docker CLI thực thi dưới nền**:
+  ```bash
+  docker compose -p <stackName> --project-directory <cwd> -f docker-stacks/<stackName>.yaml stop [<service> ...]
+  ```
+* **Khác `destroy_stack`**: `stop` chỉ dừng process container; `down` gỡ container khỏi project và archive state.
 
 ---
 
@@ -262,6 +281,23 @@ Dưới đây là bảng tổng hợp ánh xạ từ Tool của Agent đến Hà
 
 ---
 
+### 3.12. `remove_container`
+* **Mục đích**: Stop hoặc remove container **orphan** (không thuộc stack managed trong `docker-stacks/`). Container thuộc stack managed bị chặn — dùng `stop_stack` hoặc `destroy_stack`.
+* **Hàm Python**: `src/tools/remove_container.py`
+* **Input Schema (Pydantic)**:
+  ```python
+  class RemoveContainerInput(BaseModel):
+      containers: list[str]              # Tối đa 8 tên/ID, không wildcard
+      force: bool = True
+      stop_only: bool = False            # alias stopOnly — chỉ docker stop
+  ```
+* **Lệnh Docker CLI thực thi dưới nền**:
+  * `stopOnly=true`: `docker stop <container>`
+  * `force=true` (mặc định): `docker rm -f <container>`
+  * `force=false`: `docker stop <container>` rồi `docker rm <container>`
+
+---
+
 ## 4. Các cơ chế tích hợp đặc biệt
 
 ### 4.1. Quản lý Secrets tự động (Automated Secrets Management)
@@ -290,7 +326,7 @@ graph TD
 Các thuộc tính được so sánh chi tiết giữa **Desired** và **Actual**:
 * **Image**: Trực tiếp so sánh tên và tag của image.
 * **Command**: So sánh lệnh khởi chạy container.
-* **Ports**: Đối chiếu cổng dịch vụ được ánh xạ.
+* **Ports**: Đối chiếu cổng dịch vụ được ánh xạ (dedupe binding trùng từ `docker inspect`).
 * **Volumes/Binds**: So sánh danh sách thư mục mount giữa host và container.
 * **Replica Count**: So sánh số lượng container thực tế so với cấu hình `scale`.
 * **Environment Variables**: So sánh các biến thông thường (so sánh trực tiếp giá trị) và các biến bảo mật (so sánh bằng mã băm SHA-256 của giá trị thực tế để tránh để lộ thông tin nhạy cảm trong log).

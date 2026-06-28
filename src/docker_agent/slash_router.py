@@ -208,6 +208,9 @@ def _dispatch_ctx(ctx: SlashRouterContext) -> SlashDispatchContext:
 
 def resolve_slash_key(parts: list[str]) -> HandlerKey | None:
     lowered = [part.lower() for part in parts]
+    aliases = {"/log": "/logs"}
+    if lowered and lowered[0] in aliases:
+        lowered[0] = aliases[lowered[0]]
     for length in range(min(3, len(lowered)), 0, -1):
         candidate = " ".join(lowered[:length])
         if candidate in HANDLER_KEYS:

@@ -124,7 +124,7 @@ Shortcut commands available inside the interactive shell:
 | `/stacks` | List managed stacks |
 | `/status <stack>` | Show status and drift for a stack |
 | `/yaml <stack>` | Print the stack's Compose YAML |
-| `/logs <stack> [service]` | Live-tail stack logs (Esc to stop) |
+| `/logs <stack> [service]` | Live-tail stack logs (Esc to stop); `/log` is an alias |
 | `/destroy <stack>` | Tear down one stack |
 | `/destroy all` | Tear down all stacks (requires typed `DESTROY ALL` confirmation) |
 | `/secrets list <stack>` | List secret env keys (values masked) |
@@ -166,6 +166,12 @@ Chat with the agent in plain language:
 > *"Kiểm tra xem stack my-web-app có bị drift (lệch cấu hình) không?"*
 >
 > *"What is the status of my database stack?"*
+
+**Stopping services (without removing)**
+
+> *"Tắt container WordPress của stack wp-new, đừng xóa."*
+>
+> *"Stop the redis service in my-cache stack but keep the stack definition."*
 
 **Destroying infrastructure**
 

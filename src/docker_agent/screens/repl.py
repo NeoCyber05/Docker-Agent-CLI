@@ -86,11 +86,6 @@ class REPL(App[None]):
         layout: vertical;
     }
 
-    #welcome {
-        height: auto;
-        max-height: 15;
-    }
-
     #header {
         height: auto;
         max-height: 3;
@@ -181,6 +176,13 @@ class REPL(App[None]):
             resolve_display_model(self.active_provider_name, self.active_model) or "unknown"
         )
 
+    def _should_show_welcome_banner(self) -> bool:
+        return (
+            self.show_banner
+            and self.resumed_record is None
+            and not self.session.activity_state.items
+        )
+
     def on_mount(self) -> None:
         log_dir = Path(self._cwd) / ".docker-agent" / "logs"
         self.engine.set_logger(StructuredLogger(str(log_dir), self.engine.session_id))
@@ -202,16 +204,7 @@ class REPL(App[None]):
         self._stop_log_pane()
 
     def compose(self) -> ComposeResult:
-        if self.show_banner:
-            _, term_rows = resolve_terminal_size()
-            yield WelcomeBanner(
-                version=self.version,
-                provider=self.active_provider_name,
-                model=self._display_model_label(),
-                compact=term_rows <= COMPACT_WELCOME_MAX_ROWS,
-                id="welcome",
-            )
-        else:
+        if not self.show_banner:
             yield Static(
                 (
                     f"docker-agent | provider: {self.active_provider_name} | "
@@ -220,6 +213,15 @@ class REPL(App[None]):
                 id="header",
             )
         with VerticalScroll(id="timeline"):
+            if self._should_show_welcome_banner():
+                _, term_rows = resolve_terminal_size()
+                yield WelcomeBanner(
+                    version=self.version,
+                    provider=self.active_provider_name,
+                    model=self._display_model_label(),
+                    compact=term_rows <= COMPACT_WELCOME_MAX_ROWS,
+                    id="welcome",
+                )
             yield ActivityTimeline(
                 items=self.session.activity_state.items,
                 active_tool_activity_id=self.session.activity_state.active_tool_activity_id,
@@ -452,13 +454,20 @@ class REPL(App[None]):
             self.session.respond(pending.id, message.response)
         self._dismiss_inline_confirm()
 
-    def _stop_log_pane(self) -> None:
+    def _cleanup_log_follower(self) -> None:
         if self._log_controller is not None:
             self._log_controller.set()
             self._log_controller = None
-        if self._active_log_pane is not None:
-            self.pop_screen()
-            self._active_log_pane = None
+
+    def _on_log_pane_closed(self, _result: object | None) -> None:
+        self._active_log_pane = None
+        self._cleanup_log_follower()
+
+    def _stop_log_pane(self) -> None:
+        self._cleanup_log_follower()
+        if len(self.screen_stack) > 1 and isinstance(self.screen, LogPane):
+            self.screen.dismiss(None)
+        self._active_log_pane = None
         self._log_lines = []
 
     def _start_log_pane(self, stack_name: str, service: str | None = None) -> None:
@@ -480,7 +489,7 @@ class REPL(App[None]):
         self._log_lines = []
         pane = LogPane(stack_name=stack_name, service=service, lines=[])
         self._active_log_pane = pane
-        self.push_screen(pane)
+        self.push_screen(pane, self._on_log_pane_closed)
         secret_keys = collect_secret_keys(
             stack_name,
             SecretKeysContext(cwd=self._cwd, state_store=self._state_store),
@@ -488,6 +497,7 @@ class REPL(App[None]):
         bound = self._compose_runner.for_stack(stack_name, yaml_path)
 
         async def follow_logs() -> None:
+            saw_output = False
             try:
                 async for chunk in bound.logs(
                     follow=True,
@@ -497,14 +507,25 @@ class REPL(App[None]):
                 ):
                     if controller.is_set():
                         break
+                    if not chunk.strip():
+                        continue
+                    saw_output = True
                     scrubbed = scrub_line(chunk, secret_keys)
                     self._log_lines.append(scrubbed)
                     if len(self._log_lines) > 200:
                         self._log_lines = self._log_lines[-200:]
                     if self._active_log_pane is not None:
                         self._active_log_pane.append_line(scrubbed)
-            except Exception:
+            except Exception as exc:
+                if self._active_log_pane is not None and not controller.is_set():
+                    self._active_log_pane.show_status(f"error: {exc}")
                 return
+            if (
+                not saw_output
+                and self._active_log_pane is not None
+                and not controller.is_set()
+            ):
+                self._active_log_pane.show_status("(no log output yet)")
 
         asyncio.create_task(follow_logs())
 

@@ -159,3 +159,33 @@ async def test_detect_drift_missing_service(tmp_path: Path) -> None:
     engine = FakeEngineClient([])
     diff = await detect_drift("web", store, engine, str(tmp_path))
     assert diff.status == "missing"
+
+
+@pytest.mark.asyncio
+async def test_detect_drift_ignores_duplicate_inspect_ports(tmp_path: Path) -> None:
+    store = _make_store(
+        tmp_path,
+        "web",
+        ServiceSpec(image="wordpress:6", ports=["8080:80"]),
+    )
+    engine = FakeEngineClient(
+        [
+            _fake_container_inspect(
+                image="wordpress:6",
+                cmd=None,
+                env=[],
+                binds=None,
+                ports={
+                    "80/tcp": [
+                        {"HostIp": "0.0.0.0", "HostPort": "8080"},
+                        {"HostIp": "0.0.0.0", "HostPort": "8080"},
+                    ]
+                },
+                service="web",
+                status="running",
+            )
+        ]
+    )
+    diff = await detect_drift("web", store, engine, str(tmp_path))
+    assert diff.status == "in_sync"
+    assert diff.service_diffs[0].changes == []

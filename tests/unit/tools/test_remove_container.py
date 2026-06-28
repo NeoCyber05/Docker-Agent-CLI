@@ -182,6 +182,7 @@ async def test_remove_container_blocks_managed_stack_containers(tmp_project: Pat
     assert result.ok is False
     assert result.removed == []
     assert len(result.blocked) == 1
+    assert "stop_stack" in result.blocked[0].reason
     assert "destroy_stack" in result.blocked[0].reason
 
 

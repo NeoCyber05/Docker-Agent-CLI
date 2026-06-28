@@ -46,37 +46,60 @@ async def _default_spawner_impl(
         abort_task = asyncio.create_task(signal.wait())
         abort_task.add_done_callback(lambda _: on_abort())
 
-    try:
-        stdout = proc.stdout
-        stderr = proc.stderr
-        assert stdout is not None and stderr is not None
+    queue: asyncio.Queue[str | None] = asyncio.Queue()
+    pump_tasks: list[asyncio.Task[None]] = []
 
-        async def read_all(reader: asyncio.StreamReader) -> list[str]:
-            chunks: list[str] = []
+    async def pump(reader: asyncio.StreamReader) -> None:
+        try:
             while True:
                 line = await reader.readline()
                 if not line:
                     break
-                chunks.append(line.decode("utf-8", errors="replace"))
-            return chunks
+                text = line.decode("utf-8", errors="replace").rstrip("\r\n")
+                if text:
+                    await queue.put(text)
+        finally:
+            await queue.put(None)
 
-        stdout_chunks, stderr_chunks = await asyncio.gather(
-            read_all(stdout), read_all(stderr)
-        )
-        line_buffer = ""
-        for text in stdout_chunks + stderr_chunks:
-            line_buffer += text
-            while "\n" in line_buffer:
-                out, line_buffer = line_buffer.split("\n", 1)
-                yield out.rstrip("\n")
-        if line_buffer:
-            yield line_buffer.rstrip("\n")
+    try:
+        stdout = proc.stdout
+        stderr = proc.stderr
+        assert stdout is not None and stderr is not None
+        pump_tasks = [
+            asyncio.create_task(pump(stdout)),
+            asyncio.create_task(pump(stderr)),
+        ]
+        finished = 0
+        while finished < len(pump_tasks):
+            if signal is not None and signal.is_set():
+                break
+            try:
+                item = await asyncio.wait_for(queue.get(), timeout=0.05)
+            except TimeoutError:
+                if proc.returncode is not None and queue.empty():
+                    break
+                continue
+            if item is None:
+                finished += 1
+                continue
+            yield item
+        while not queue.empty():
+            item = queue.get_nowait()
+            if item is not None:
+                yield item
     finally:
         if abort_task is not None and not abort_task.done():
             abort_task.cancel()
+        for task in pump_tasks:
+            if not task.done():
+                task.cancel()
         if proc.returncode is None:
             proc.terminate()
-        await proc.wait()
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=2)
+        except TimeoutError:
+            proc.kill()
+            await proc.wait()
     if spawner is not None:
         spawner.last_exit_code = proc.returncode or 0
 
@@ -148,6 +171,14 @@ class BoundComposeRunner:
             yield line
         self.last_exit_code = getattr(self.spawner, "last_exit_code", 0)
 
+    async def stop(self, *, services: list[str] | None = None) -> AsyncIterator[str]:
+        args = self.base_args() + ["stop"]
+        if services:
+            args.extend(services)
+        async for line in self.spawner.spawn("docker", args, {"cwd": self.cwd}):
+            yield line
+        self.last_exit_code = getattr(self.spawner, "last_exit_code", 0)
+
     async def ps(self, *, json: bool = False) -> list[ComposePsRow]:
         args = self.base_args() + ["ps"]
         if json:
@@ -164,7 +195,7 @@ class BoundComposeRunner:
                         name=data["Name"],
                         service=data["Service"],
                         state=data["State"],
-                        health=data.get("Health"),
+                        health=(data.get("Health") or None),
                     )
                 )
             except Exception:  # noqa: BLE001

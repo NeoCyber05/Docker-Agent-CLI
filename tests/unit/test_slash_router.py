@@ -272,6 +272,12 @@ async def test_logs_emits_start_log_pane(tmp_project) -> None:
 
 
 @pytest.mark.asyncio
+async def test_log_alias_emits_start_log_pane(tmp_project) -> None:
+    result = await route_slash_command("/log webapp", make_ctx(tmp_project))
+    assert result.effects == [{"type": "start_log_pane", "stack_name": "webapp"}]
+
+
+@pytest.mark.asyncio
 async def test_resume_emits_open_session_picker(tmp_project) -> None:
     ctx = make_ctx(tmp_project)
     session_store = SessionStore(str(tmp_project / ".docker-agent"))

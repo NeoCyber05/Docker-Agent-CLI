@@ -1,6 +1,6 @@
 # Agent Tools
 
-LLM agent có thể gọi các tool sau trong phiên REPL. Tool được phân loại theo mức độ tác động; tool **destructive** yêu cầu user approve trước khi chạy.
+LLM agent có thể gọi các tool sau trong phiên REPL. Tool được phân loại theo mức độ tác động; tool **destructive** hoặc **thay đổi runtime** yêu cầu user approve trước khi chạy.
 
 ---
 
@@ -9,9 +9,11 @@ LLM agent có thể gọi các tool sau trong phiên REPL. Tool được phân l
 | Tool | Category | Mục đích |
 | :--- | :--- | :--- |
 | `plan_stack` | high-level | Thiết kế stack và hiển thị plan preview |
-| `apply_stack` | high-level | Apply plan đã được duyệt (chạy sau khi user confirm) |
-| `destroy_stack` | high-level | Dừng và gỡ một stack |
+| `apply_stack` | high-level | Apply plan đã được duyệt (chạy sau khi user confirm; **không** exposed trực tiếp cho LLM) |
+| `stop_stack` | high-level | Dừng container của stack managed (`docker compose stop`), **không** xóa container |
+| `destroy_stack` | high-level | Dừng và gỡ một stack (`docker compose down`) |
 | `destroy_all_stacks` | high-level | Gỡ toàn bộ stack (yêu cầu gõ `DESTROY ALL`) |
+| `remove_container` | high-level | Stop/remove container **orphan** (không thuộc stack managed); `stopOnly=true` để chỉ dừng |
 | `list_stacks` | read-only | Liệt kê stack trong `docker-stacks/` |
 | `get_stack_status` | read-only | Trạng thái container của stack |
 | `get_logs` | read-only | Lấy log container |
@@ -26,11 +28,34 @@ LLM agent có thể gọi các tool sau trong phiên REPL. Tool được phân l
 
 ---
 
+## `stop_stack` vs `destroy_stack` vs `remove_container`
+
+| Nhu cầu | Tool |
+| :--- | :--- |
+| Tạm dừng stack/service managed, giữ YAML và container definition | `stop_stack` |
+| Gỡ hẳn stack managed (compose down, archive state) | `destroy_stack` |
+| Dọn container lẻ / orphan (không thuộc stack trong `docker-stacks/`) | `remove_container` |
+
+Container thuộc stack managed **không** dùng được `remove_container` — agent sẽ bị chặn và gợi ý `stop_stack` hoặc `destroy_stack`.
+
+Khởi động lại sau `stop_stack`: gọi `apply_stack` (hoặc nhờ agent deploy lại stack).
+
+---
+
 ## Phê duyệt và quyền
 
-Tool destructive (`apply_stack`, `destroy_stack`, `destroy_all_stacks`) **bắt buộc** user approve trong REPL.
+Các tool sau **bắt buộc** user approve trong REPL:
 
-- Flag `--yes` chỉ auto-approve permission **non-destructive**; destructive vẫn bị gate.
+| Tool | Ghi chú |
+| :--- | :--- |
+| `apply_stack` | Sau khi user duyệt plan |
+| `stop_stack` | Dừng container, không xóa |
+| `destroy_stack` | `removeVolumes: true` yêu cầu typed confirm `DESTROY <stack>` |
+| `destroy_all_stacks` | Yêu cầu typed confirm `DESTROY ALL` |
+| `remove_container` | ≥3 container yêu cầu typed confirm `REMOVE N CONTAINERS` |
+| `remediate_drift`, `pull_image`, `exec_docker` | Theo policy permission gate |
+
+- Flag `--yes` chỉ auto-approve permission **non-destructive**; các tool trên vẫn bị gate.
 - `plan_stack` và `remediate_drift` chạy qua [policy engine](./policies.md) trước khi user thấy plan preview.
 
 ---

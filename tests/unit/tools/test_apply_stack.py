@@ -6,12 +6,15 @@ import asyncio
 import subprocess
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import httpx
 import pytest
 
 from docker_agent.config import stack_state_yaml_path
 from docker_agent.services.docker.image_validator import ImageValidationResult
+from docker_agent.tool import ToolProgress
+from docker_agent.tools import apply_stack as apply_stack_module
 from docker_agent.tools.apply_stack import ApplyStackInput, apply_stack, verify_health
 from tests.mocks.mock_compose_runner import MockBoundRunner, MockComposeRunner
 from tests.mocks.mock_docker_engine import MockDockerEngine
@@ -29,6 +32,18 @@ services:
   web:
     image: nginx:1.27
 """
+
+
+async def _drain_verify_health(*args: object, **kwargs: object) -> tuple[list[ToolProgress], dict[str, object]]:
+    progress: list[ToolProgress] = []
+    result: dict[str, object] | None = None
+    async for item in verify_health(*args, **kwargs):  # type: ignore[arg-type]
+        if isinstance(item, ToolProgress):
+            progress.append(item)
+        else:
+            result = item
+    assert result is not None
+    return progress, result
 
 
 class FakeValidator:
@@ -403,6 +418,43 @@ async def test_apply_stack_http_probe_inconclusive_does_not_fail(tmp_project: Pa
 
     assert result.ok is True
     assert result.healthy is True
+    assert result.warnings is not None
+    assert any("Inconclusive" in item for item in result.warnings)
+
+
+@pytest.mark.asyncio
+async def test_apply_stack_log_scan_warns_on_db_connection_error(tmp_project: Path) -> None:
+    runner = MockComposeRunner(str(tmp_project))
+    ctx = make_ctx(tmp_project, docker_engine=MockDockerEngine(), compose_runner=runner)
+    yaml_path = stack_state_yaml_path("webapp", str(tmp_project))
+    pre_created = runner.for_stack("webapp", yaml_path)
+    pre_created.set_running_services(["web", "db"])
+    runner.for_stack_calls.clear()
+
+    async def logs_with_db_error(**kwargs: Any):
+        service = kwargs.get("service")
+        if service == "db":
+            yield "FATAL: password authentication failed for user \"postgres\"\n"
+        else:
+            yield "nginx started\n"
+
+    pre_created._logs_impl = logs_with_db_error  # type: ignore[method-assign]
+
+    yaml = WEBAPP_YAML.replace("name: webapp", "name: webapp") + (
+        "  db:\n    image: postgres:16-alpine\n"
+    )
+
+    result = await drain(
+        apply_stack.call(
+            ApplyStackInput(stack_name="webapp", compose_yaml=yaml),
+            ctx,
+        )
+    )
+
+    assert result.ok is True
+    assert result.healthy is True
+    assert result.warnings is not None
+    assert any("password authentication failed" in item for item in result.warnings)
 
 
 @pytest.mark.asyncio
@@ -413,9 +465,36 @@ async def test_verify_health_reports_running_service() -> None:
 
             return [ComposePsRow(name="s-web-1", service="web", state="running")]
 
-    result = await verify_health(FakeBound(), ["web"], 10_000, asyncio.Event())
+    progress, result = await _drain_verify_health(FakeBound(), ["web"], 10_000, asyncio.Event())
     assert result["healthy"] is True
     assert result["unhealthy"] == []
+    assert progress
+    assert any("Health" in item.msg and "web=running" in item.msg for item in progress)
+
+
+@pytest.mark.asyncio
+async def test_verify_health_treats_empty_health_as_running() -> None:
+    """A container without a healthcheck reports Health='' and must not block."""
+
+    class FakeBound:
+        async def ps(self, *, json: bool = False):
+            from docker_agent.services.docker.compose_runner import ComposePsRow
+
+            return [
+                ComposePsRow(
+                    name="s-wordpress-1",
+                    service="wordpress",
+                    state="running",
+                    health="",
+                )
+            ]
+
+    progress, result = await _drain_verify_health(
+        FakeBound(), ["wordpress"], 60_000, asyncio.Event()
+    )
+    assert result["healthy"] is True
+    assert result["unhealthy"] == []
+    assert any("wordpress=running" in item.msg for item in progress)
 
 
 @pytest.mark.asyncio
@@ -429,9 +508,96 @@ async def test_verify_health_fails_fast_on_exited_container() -> None:
                 ComposePsRow(name="s-db-1", service="db", state="exited"),
             ]
 
-    result = await verify_health(FakeBound(), ["web", "db"], 60_000, asyncio.Event())
+    progress, result = await _drain_verify_health(
+        FakeBound(), ["web", "db"], 60_000, asyncio.Event()
+    )
     assert result["healthy"] is False
     unhealthy = result["unhealthy"]
     assert len(unhealthy) == 1
     assert unhealthy[0].service == "db"
     assert unhealthy[0].status == "exited"
+    assert progress
+    assert any("db=exited" in item.msg for item in progress)
+
+
+@pytest.mark.asyncio
+async def test_verify_health_fails_fast_on_unhealthy() -> None:
+    class FakeBound:
+        async def ps(self, *, json: bool = False):
+            from docker_agent.services.docker.compose_runner import ComposePsRow
+
+            return [
+                ComposePsRow(
+                    name="s-db-1",
+                    service="db",
+                    state="running",
+                    health="unhealthy",
+                )
+            ]
+
+    with patch.object(apply_stack_module, "FAIL_FAST_GRACE_MS", 0):
+        progress, result = await _drain_verify_health(
+            FakeBound(), ["db"], 60_000, asyncio.Event()
+        )
+
+    assert result["healthy"] is False
+    unhealthy = result["unhealthy"]
+    assert len(unhealthy) == 1
+    assert unhealthy[0].service == "db"
+    assert unhealthy[0].status == "health: unhealthy"
+    assert progress
+    assert any("db=unhealthy" in item.msg for item in progress)
+
+
+@pytest.mark.asyncio
+async def test_verify_health_fails_fast_on_restart_loop() -> None:
+    class FakeBound:
+        async def ps(self, *, json: bool = False):
+            from docker_agent.services.docker.compose_runner import ComposePsRow
+
+            return [
+                ComposePsRow(name="s-web-1", service="web", state="restarting"),
+            ]
+
+    with patch.object(apply_stack_module, "RESTART_LOOP_THRESHOLD", 1):
+        progress, result = await _drain_verify_health(
+            FakeBound(), ["web"], 60_000, asyncio.Event()
+        )
+
+    assert result["healthy"] is False
+    unhealthy = result["unhealthy"]
+    assert len(unhealthy) == 1
+    assert unhealthy[0].service == "web"
+    assert unhealthy[0].status == "restarting"
+    assert progress
+    assert any("web=restarting" in item.msg for item in progress)
+
+
+@pytest.mark.asyncio
+async def test_verify_health_tolerates_transient_then_healthy() -> None:
+    class FakeBound:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def ps(self, *, json: bool = False):
+            from docker_agent.services.docker.compose_runner import ComposePsRow
+
+            self.calls += 1
+            if self.calls == 1:
+                return [ComposePsRow(name="s-web-1", service="web", state="restarting")]
+            return [ComposePsRow(name="s-web-1", service="web", state="running")]
+
+    with (
+        patch.object(apply_stack_module, "FAIL_FAST_GRACE_MS", 15_000),
+        patch.object(apply_stack_module, "RESTART_LOOP_THRESHOLD", 99),
+        patch.object(apply_stack_module, "POLL_INTERVAL_MS_DEFAULT", 0),
+    ):
+        progress, result = await _drain_verify_health(
+            FakeBound(), ["web"], 60_000, asyncio.Event()
+        )
+
+    assert result["healthy"] is True
+    assert result["unhealthy"] == []
+    assert progress
+    assert any("web=restarting" in item.msg for item in progress)
+    assert any("web=running" in item.msg for item in progress)

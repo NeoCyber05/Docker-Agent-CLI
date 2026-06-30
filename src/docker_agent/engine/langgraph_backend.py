@@ -15,9 +15,9 @@ from langgraph.types import Command
 
 from docker_agent.agent import AgentBackend, BackendQueryParams
 from docker_agent.config import load_user_config
+from docker_agent.core.iteration_limits import derive_recursion_limit
 from docker_agent.engine.adapters.tool_adapter import run_tool
 from docker_agent.engine.graph import GraphDeps, build_graph
-from docker_agent.iteration_limits import derive_recursion_limit
 from docker_agent.engine.state import AgentState
 from docker_agent.policy.policy_engine import PolicyEngine
 from docker_agent.tools.destroy_all_stacks import destroy_all_stacks

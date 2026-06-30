@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from docker_agent.config import stack_state_yaml_path
 from docker_agent.state.secret_redactor import scrub_line
-from docker_agent.tool import ToolContext, ToolDone, ToolProgress
+from docker_agent.tools.base import ToolContext, ToolDone, ToolProgress
 from docker_agent.tools.shared.secret_keys import SecretKeysContext, collect_secret_keys
 
 _MODEL_CONFIG = ConfigDict(extra="forbid", populate_by_name=True)

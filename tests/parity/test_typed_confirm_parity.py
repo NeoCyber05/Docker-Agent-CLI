@@ -78,11 +78,32 @@ async def test_destroy_all_stacks_typed_confirm_mismatch_aborts(make_context) ->
 
 
 @pytest.mark.asyncio
-async def test_destroy_stack_remove_volumes_typed_confirm_match(make_context) -> None:
+async def test_destroy_stack_remove_volumes_typed_confirm_match(make_context, tmp_project) -> None:
+    from docker_agent.state.state_store import StateStore
+
+    state_store = StateStore(str(tmp_project))
+    compose_runner = MockComposeRunner(str(tmp_project))
+    state_store.write(
+        "test",
+        StackDefinition(
+            x_docker_agent=DockerAgentMeta(
+                name="test",
+                createdAt=datetime.now(UTC).isoformat(),
+                lastApplied=None,
+                intent="test",
+                provider="fake",
+                generatedBy="test",
+                envFileSources={},
+            ),
+            services={"web": ServiceSpec(image="nginx:1.27")},
+        ),
+    )
     events: list[LoopEvent] = []
     ctx = make_context(
         emit=lambda ev: events.append(_dict_to_event(ev)),
         typed_confirm_response=TypedConfirmValue(value="DESTROY test"),
+        state_store=state_store,
+        compose_runner=compose_runner,
     )
     collected = await _run_backend(
         ctx, "destroy_stack", {"stackName": "test", "removeVolumes": True}

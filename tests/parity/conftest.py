@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 
 from docker_agent.agent import BackendQueryParams, create_backend
-from docker_agent.loop_context import PlanReadyPayload
+from docker_agent.core.loop_context import PlanReadyPayload
 from docker_agent.services.api.types import (
     MessageStopEvent,
     TextDeltaEvent,

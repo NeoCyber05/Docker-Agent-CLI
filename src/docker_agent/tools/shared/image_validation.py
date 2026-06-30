@@ -14,7 +14,7 @@ from docker_agent.services.docker.image_validator import (
     format_image_validation_error,
     image_validation_warnings,
 )
-from docker_agent.tool import ToolContext
+from docker_agent.tools.base import ToolContext
 
 
 @dataclass

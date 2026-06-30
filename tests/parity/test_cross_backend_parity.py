@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from datetime import UTC, datetime
 
 import pytest
 
@@ -16,6 +17,7 @@ from docker_agent.services.api.types import (
 )
 from docker_agent.types.message import UserMessage
 from docker_agent.types.permissions import Deny, TypedConfirmValue
+from docker_agent.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
 from tests.parity.conftest import fake_provider, output_field, text_done, tool_use_call
 
 
@@ -106,11 +108,11 @@ async def test_permission_denied_emits_permission_request_only(
     ctx = make_context(emit=lambda ev: collected_events.append(ev), permission_response=Deny())
     backend_events = await run_backend(
         backend_name=backend_name,
-        messages=[UserMessage(content="pull nginx")],
+        messages=[UserMessage(content="run docker ps")],
         ctx=ctx,
         provider=fake_provider(
             [
-                tool_use_call("pull_image", {"image": "nginx:latest"}),
+                tool_use_call("exec_docker", {"args": ["ps"]}),
                 text_done(),
             ]
         ),
@@ -196,8 +198,35 @@ async def test_direct_destroy_all_mismatch_aborts(backend_name, make_context, ru
 
 @pytest.mark.parametrize("backend_name", ["current", "langgraph"])
 @pytest.mark.asyncio
-async def test_direct_destroy_stack_with_volumes(backend_name, make_context, run_backend) -> None:
-    ctx = make_context(typed_confirm_response=TypedConfirmValue(value="DESTROY webapp"))
+async def test_direct_destroy_stack_with_volumes(
+    backend_name, make_context, run_backend, tmp_project
+) -> None:
+    from docker_agent.state.state_store import StateStore
+
+    from tests.mocks.mock_compose_runner import MockComposeRunner
+
+    state_store = StateStore(str(tmp_project))
+    compose_runner = MockComposeRunner(str(tmp_project))
+    state_store.write(
+        "webapp",
+        StackDefinition(
+            x_docker_agent=DockerAgentMeta(
+                name="webapp",
+                createdAt=datetime.now(UTC).isoformat(),
+                lastApplied=None,
+                intent="test",
+                provider="fake",
+                generatedBy="test",
+                envFileSources={},
+            ),
+            services={"web": ServiceSpec(image="nginx:1.27")},
+        ),
+    )
+    ctx = make_context(
+        typed_confirm_response=TypedConfirmValue(value="DESTROY webapp"),
+        state_store=state_store,
+        compose_runner=compose_runner,
+    )
     events = await run_backend(
         backend_name=backend_name,
         messages=[UserMessage(content="Destroy stack webapp with volumes")],

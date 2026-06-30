@@ -11,7 +11,7 @@ import yaml
 from pydantic import BaseModel, Field
 
 from docker_agent.state.drift_detector import detect_drift
-from docker_agent.tool import ToolContext, ToolDone, ToolProgress
+from docker_agent.tools.base import ToolContext, ToolDone, ToolProgress
 from docker_agent.types.stack import StackDiff
 
 

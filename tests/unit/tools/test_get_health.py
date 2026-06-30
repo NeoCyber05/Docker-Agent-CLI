@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from docker_agent.services.docker.types import ContainerStats, ContainerSummary
-from docker_agent.tool import ToolContext
+from docker_agent.tools.base import ToolContext
 from docker_agent.tools.get_health import compute_stats, get_health
 from tests.unit.tools.conftest import drain_with_progress, make_ctx
 

@@ -9,7 +9,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from docker_agent.context import build_system_prompt
+from docker_agent.core.prompt_builder import build_system_prompt
 from docker_agent.services.api.types import (
     CallModelParams,
     ErrorEvent,

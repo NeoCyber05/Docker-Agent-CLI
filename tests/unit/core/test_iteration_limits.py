@@ -1,6 +1,6 @@
 """Tests for iteration_limits helpers."""
 
-from docker_agent.iteration_limits import (
+from docker_agent.core.iteration_limits import (
     MAX_ITERATIONS,
     build_graceful_summary,
     derive_recursion_limit,

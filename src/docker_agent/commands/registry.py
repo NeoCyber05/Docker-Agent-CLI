@@ -8,7 +8,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from docker_agent.slash_router import SLASH_COMMAND_DEFS
+from docker_agent.slash.router import SLASH_COMMAND_DEFS
 
 
 @dataclass

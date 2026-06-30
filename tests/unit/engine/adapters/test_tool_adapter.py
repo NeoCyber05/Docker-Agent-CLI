@@ -1,7 +1,7 @@
 import pytest
 
 from docker_agent.engine.adapters.tool_adapter import run_tool
-from docker_agent.tool import ToolContext, ToolDone, ToolProgress
+from docker_agent.tools.base import ToolContext, ToolDone, ToolProgress
 
 
 class EchoTool:

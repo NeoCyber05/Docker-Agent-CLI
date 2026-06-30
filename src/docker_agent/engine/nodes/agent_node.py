@@ -11,11 +11,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from docker_agent.engine.adapters.provider_adapter import drive_provider
-from docker_agent.iteration_limits import (
+from docker_agent.core.iteration_limits import (
     MAX_ITERATIONS,
     build_graceful_summary,
 )
+from docker_agent.engine.adapters.provider_adapter import drive_provider
 from docker_agent.engine.state import AgentState
 from docker_agent.services.api.types import Provider
 from docker_agent.state.logger import LogEntry

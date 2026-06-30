@@ -1,9 +1,9 @@
-"""Parity tests for docker_agent.tool — mirrors src/Tool.ts."""
+"""Parity tests for docker_agent.tools.base — mirrors src/Tool.ts."""
 
 from dataclasses import fields
 
-from docker_agent.tool import ToolContext, ToolProgress, find_tool_by_name
 from docker_agent.tools import get_agent_tools
+from docker_agent.tools.base import ToolContext, ToolProgress, find_tool_by_name
 
 
 def test_tool_progress_defaults() -> None:

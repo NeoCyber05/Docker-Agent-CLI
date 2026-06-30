@@ -19,7 +19,7 @@ from docker_agent.engine.nodes.apply_with_rollback import (
 from docker_agent.engine.state import AgentState
 from docker_agent.policy.policy_engine import PolicyEngine
 from docker_agent.state.state_store import HistoryEvent
-from docker_agent.tool import ToolDone
+from docker_agent.tools.base import ToolDone
 from docker_agent.tools.remediate_drift import remediate_drift
 from docker_agent.types.events import ToolCall, ToolProgress, ToolResult
 from docker_agent.types.message import ToolResultMessage

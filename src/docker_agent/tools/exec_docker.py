@@ -10,7 +10,7 @@ from collections.abc import AsyncIterator
 
 from pydantic import BaseModel, Field, field_validator
 
-from docker_agent.tool import ToolContext, ToolDone, ToolProgress
+from docker_agent.tools.base import ToolContext, ToolDone, ToolProgress
 
 _SIMPLE_READ_ONLY = frozenset({"ps", "inspect", "logs", "images"})
 _READ_ONLY_GROUPS = frozenset({"network", "volume"})

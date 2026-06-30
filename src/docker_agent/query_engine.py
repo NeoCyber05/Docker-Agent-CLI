@@ -19,8 +19,8 @@ from pydantic import TypeAdapter
 
 from docker_agent.agent import BackendQueryParams, create_backend
 from docker_agent.config import is_valid_provider
-from docker_agent.iteration_limits import MAX_ITERATIONS
-from docker_agent.loop_context import PlanReadyPayload
+from docker_agent.core.iteration_limits import MAX_ITERATIONS
+from docker_agent.core.loop_context import PlanReadyPayload
 from docker_agent.services.api.types import Provider
 from docker_agent.services.docker.compose_runner import ComposeRunner
 from docker_agent.state.logger import LogEntry, StructuredLogger
@@ -46,7 +46,11 @@ from docker_agent.types.events import (
 )
 from docker_agent.types.message import Message, UserMessage
 from docker_agent.types.permissions import PermissionResponse, PermissionResponseAdapter
-from docker_agent.ui.activity import ActivityItem, deserialize_activity_items, serialize_activity_items
+from docker_agent.ui.activity import (
+    ActivityItem,
+    deserialize_activity_items,
+    serialize_activity_items,
+)
 from docker_agent.utils.async_queue import AsyncQueue
 
 _MessageListAdapter: TypeAdapter[list[Message]] = TypeAdapter(list[Message])

@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from docker_agent.config import stack_state_yaml_path
 from docker_agent.state.state_store import HistoryEvent
-from docker_agent.tool import ToolContext, ToolDone, ToolProgress
+from docker_agent.tools.base import ToolContext, ToolDone, ToolProgress
 
 
 class DestroyStackInput(BaseModel):

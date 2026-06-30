@@ -11,7 +11,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from docker_agent.services.docker.image_validator import create_image_validator
-from docker_agent.tool import ToolContext, ToolDone, ToolProgress
+from docker_agent.tools.base import ToolContext, ToolDone, ToolProgress
 
 
 class PullImageInput(BaseModel):

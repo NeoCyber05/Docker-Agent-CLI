@@ -8,7 +8,7 @@ from typing import Any, Literal, cast
 
 from pydantic import BaseModel, Field, ValidationError
 
-from docker_agent.tool import ToolContext, ToolDone, ToolProgress
+from docker_agent.tools.base import ToolContext, ToolDone, ToolProgress
 from docker_agent.tools.shared.config_files import (
     StagedConfigFile,
     detect_missing_config_files,

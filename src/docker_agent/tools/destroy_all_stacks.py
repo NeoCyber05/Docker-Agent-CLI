@@ -9,7 +9,7 @@ from collections.abc import AsyncIterator
 
 from pydantic import BaseModel, Field
 
-from docker_agent.tool import ToolContext, ToolDone, ToolProgress
+from docker_agent.tools.base import ToolContext, ToolDone, ToolProgress
 from docker_agent.tools.destroy_stack import DestroyStackInput, destroy_stack
 
 

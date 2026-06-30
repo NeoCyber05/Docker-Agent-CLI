@@ -12,8 +12,8 @@ from textual.reactive import reactive
 from textual.widgets import Input, ListItem, ListView, Static
 
 from docker_agent.components.slash_highlighter import SlashCommandHighlighter
-from docker_agent.slash_commands import get_slash_command_suggestions
-from docker_agent.slash_router import SlashCommandDef
+from docker_agent.slash.commands import get_slash_command_suggestions
+from docker_agent.slash.router import SlashCommandDef
 from docker_agent.ui.interaction_state import InteractionPhase
 
 PHASE_HINTS: dict[InteractionPhase, str] = {

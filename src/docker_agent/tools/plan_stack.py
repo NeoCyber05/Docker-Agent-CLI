@@ -12,7 +12,7 @@ from typing import Any, Literal, cast
 from docker_agent.state.drift_detector import detect_drift
 from docker_agent.state.env_file import merge_env, read_env_file, write_env_file
 from docker_agent.state.secret_redactor import should_redact
-from docker_agent.tool import ToolContext, ToolDone, ToolProgress
+from docker_agent.tools.base import ToolContext, ToolDone, ToolProgress
 from docker_agent.tools.check_port_conflict import (
     CheckPortConflictResult,
     check_port_conflicts,

@@ -22,7 +22,7 @@ from docker_agent.services.docker.compose_runner import BoundComposeRunner, Comp
 from docker_agent.services.docker.git_guard import check_env_file_git_status
 from docker_agent.state.secret_redactor import scrub_line
 from docker_agent.state.state_store import HistoryEvent
-from docker_agent.tool import ToolContext, ToolDone, ToolProgress
+from docker_agent.tools.base import ToolContext, ToolDone, ToolProgress
 from docker_agent.tools.check_port_conflict import parse_published_ports
 from docker_agent.tools.shared.config_files import find_invalid_file_binds
 from docker_agent.tools.shared.image_validation import validate_images_for_tool

@@ -7,7 +7,7 @@ import re
 from rich.highlighter import Highlighter
 from rich.text import Text
 
-from docker_agent.slash_router import HANDLER_KEYS
+from docker_agent.slash.router import HANDLER_KEYS
 
 _SLASH_COMMAND_STYLE = "bold cyan"
 

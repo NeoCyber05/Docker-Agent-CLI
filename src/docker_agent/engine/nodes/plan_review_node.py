@@ -21,7 +21,7 @@ from docker_agent.engine.state import AgentState
 from docker_agent.policy.policy_engine import PolicyEngine
 from docker_agent.query import format_plan_blocker
 from docker_agent.state.secret_redactor import scrub_line
-from docker_agent.tool import ToolDone
+from docker_agent.tools.base import ToolDone
 from docker_agent.tools.plan_stack import PlanStackResultOk, plan_stack
 from docker_agent.tools.shared.secret_keys import SecretKeysContext, collect_secret_keys
 from docker_agent.tools.shared.spec_schemas import StackDraft

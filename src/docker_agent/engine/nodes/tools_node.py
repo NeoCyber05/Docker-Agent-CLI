@@ -14,8 +14,8 @@ from pydantic import ValidationError
 
 from docker_agent.engine.adapters.tool_adapter import run_tool
 from docker_agent.engine.state import AgentState, PendingToolResult
-from docker_agent.tool import find_tool_by_name
 from docker_agent.tools import get_agent_tools
+from docker_agent.tools.base import find_tool_by_name
 from docker_agent.tools.destroy_stack import DestroyStackInput
 from docker_agent.tools.remove_container import RemoveContainerInput
 from docker_agent.tools.shared.spec_schemas import format_validation_error

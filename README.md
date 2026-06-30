@@ -13,7 +13,7 @@ Instead of writing complex `docker-compose.yaml` files, configuring networks, vo
 
 ---
 
-![Demo](demo.jpg)
+![Demo](docs/demo.jpg)
 
 
 

@@ -13,9 +13,9 @@ import pytest
 
 from docker_agent.config import stack_state_yaml_path
 from docker_agent.services.docker.image_validator import ImageValidationResult
-from docker_agent.tool import ToolProgress
 from docker_agent.tools import apply_stack as apply_stack_module
 from docker_agent.tools.apply_stack import ApplyStackInput, apply_stack, verify_health
+from docker_agent.tools.base import ToolProgress
 from tests.mocks.mock_compose_runner import MockBoundRunner, MockComposeRunner
 from tests.mocks.mock_docker_engine import MockDockerEngine
 from tests.unit.tools.conftest import drain, drain_with_progress, make_ctx

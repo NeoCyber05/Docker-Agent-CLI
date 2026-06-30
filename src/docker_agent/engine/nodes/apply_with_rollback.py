@@ -11,9 +11,9 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from docker_agent.state.rollback import capture_known_good, plan_rollback
-from docker_agent.tool import ToolDone
 from docker_agent.state.state_store import HistoryEvent
 from docker_agent.tools.apply_stack import apply_stack
+from docker_agent.tools.base import ToolDone
 from docker_agent.tools.destroy_stack import destroy_stack
 from docker_agent.tools.shared.config_files import (
     StagedConfigFile,

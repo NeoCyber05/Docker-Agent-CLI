@@ -12,7 +12,7 @@ from typing import Any
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 
-from docker_agent.iteration_limits import MAX_ITERATIONS, derive_recursion_limit
+from docker_agent.core.iteration_limits import MAX_ITERATIONS, derive_recursion_limit
 from docker_agent.engine.nodes.agent_node import (
     AgentNodeDeps,
     agent_node,

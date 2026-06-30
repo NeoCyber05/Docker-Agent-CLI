@@ -10,7 +10,7 @@ from collections.abc import AsyncIterator
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from docker_agent.tool import ToolContext, ToolDone, ToolProgress
+from docker_agent.tools.base import ToolContext, ToolDone, ToolProgress
 from docker_agent.tools.shared.spec_schemas import (
     HybridServiceIntent,
     NetworkIntent,

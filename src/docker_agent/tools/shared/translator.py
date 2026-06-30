@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from docker_agent.tool import ToolContext
+from docker_agent.tools.base import ToolContext
 from docker_agent.tools.shared.db_healthcheck import inject_db_healthchecks
 from docker_agent.tools.shared.spec_schemas import (
     NetworkIntent,

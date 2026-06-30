@@ -8,7 +8,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field, field_validator
 
 from docker_agent.config import stack_state_yaml_path
-from docker_agent.tool import ToolContext, ToolDone, ToolProgress
+from docker_agent.tools.base import ToolContext, ToolDone, ToolProgress
 
 
 class StopStackInput(BaseModel):

@@ -10,7 +10,7 @@ from typing import Literal, TypedDict
 
 from docker_agent.config import ProviderName
 from docker_agent.services.model_catalog import parse_provider_model
-from docker_agent.slash_dispatch import (
+from docker_agent.slash.dispatch import (
     SlashDispatchContext,
     destroy_stack_prompt,
     dispatch_secrets_list,

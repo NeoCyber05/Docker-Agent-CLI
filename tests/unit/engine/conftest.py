@@ -10,9 +10,9 @@ from typing import Any
 import pytest
 
 from docker_agent.services.docker.compose_runner import ComposeRunner
-from docker_agent.services.docker.engine_client import create_engine_client
 from docker_agent.state.state_store import StateStore
-from docker_agent.tool import ToolContext
+from docker_agent.tools.base import ToolContext
+from tests.mocks.mock_docker_engine import MockDockerEngine
 
 
 @pytest.fixture
@@ -25,7 +25,7 @@ def _build_tool_ctx(tmp_project: Path) -> ToolContext:
     return ToolContext(
         cwd=str(tmp_project),
         state_store=StateStore(str(tmp_project / ".docker-agent")),
-        docker_engine=create_engine_client(),
+        docker_engine=MockDockerEngine(),
         compose_runner=ComposeRunner(str(tmp_project)),
         abort_signal=asyncio.Event(),
     )

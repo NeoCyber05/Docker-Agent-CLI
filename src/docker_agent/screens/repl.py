@@ -16,8 +16,6 @@ from textual.containers import VerticalScroll
 from textual.reactive import reactive
 from textual.widgets import Input, Static
 
-
-from docker_agent.config import persist_model_choice, resolve_display_model
 from docker_agent.components.activity_timeline import ActivityTimeline
 from docker_agent.components.api_key_input_dialog import ApiKeyInputDialog
 from docker_agent.components.command_palette import CommandPalette
@@ -28,17 +26,17 @@ from docker_agent.components.model_picker_dialog import (
     ModelPickerClosed,
     ModelPickerDialog,
 )
-from docker_agent.components.session_picker_dialog import (
-    SessionChoice,
-    SessionPickerClosed,
-    SessionPickerDialog,
-)
 from docker_agent.components.ollama_setup_dialog import OllamaSetupDialog
 from docker_agent.components.permission_dialog import PermissionAnswered, PermissionDialog
 from docker_agent.components.prompt_input import PromptInput, PromptSubmitted, ResumeQueue
 from docker_agent.components.provider_connect_dialog import ProviderConnectDialog
 from docker_agent.components.queue_panel import QueuePanel
 from docker_agent.components.secrets_input_dialog import SecretsInputDialog
+from docker_agent.components.session_picker_dialog import (
+    SessionChoice,
+    SessionPickerClosed,
+    SessionPickerDialog,
+)
 from docker_agent.components.thinking_indicator import ThinkingIndicator
 from docker_agent.components.tool_details_panel import ToolDetailsPanel
 from docker_agent.components.typed_confirm_dialog import (
@@ -51,14 +49,20 @@ from docker_agent.components.welcome_banner import (
     WelcomeBanner,
     resolve_terminal_size,
 )
-from docker_agent.config import PROVIDER_NAMES, ProviderName, stack_state_yaml_path
+from docker_agent.config import (
+    PROVIDER_NAMES,
+    ProviderName,
+    persist_model_choice,
+    resolve_display_model,
+    stack_state_yaml_path,
+)
 from docker_agent.query_engine import QueryEngine, restore_session_from_record
 from docker_agent.screens.apply_slash_effects import SlashEffectApplierDeps, apply_slash_effects
 from docker_agent.screens.use_interaction_session import InteractionSession
 from docker_agent.services.api import resolve_provider_for_request
 from docker_agent.services.model_catalog import build_model_catalog, flatten_catalog
 from docker_agent.services.provider_status import get_provider_statuses
-from docker_agent.slash_router import SlashRouterContext, route_slash_command
+from docker_agent.slash.router import SlashRouterContext, route_slash_command
 from docker_agent.state.logger import StructuredLogger
 from docker_agent.state.secret_redactor import scrub_line
 from docker_agent.tools.shared.secret_keys import SecretKeysContext, collect_secret_keys

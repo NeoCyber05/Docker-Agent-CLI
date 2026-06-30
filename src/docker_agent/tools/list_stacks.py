@@ -9,7 +9,7 @@ from collections.abc import AsyncIterator
 
 from pydantic import BaseModel, ConfigDict
 
-from docker_agent.tool import ToolContext, ToolDone, ToolProgress
+from docker_agent.tools.base import ToolContext, ToolDone, ToolProgress
 from docker_agent.types.stack import StackSummary
 
 _MODEL_CONFIG = ConfigDict(extra="forbid", populate_by_name=True)

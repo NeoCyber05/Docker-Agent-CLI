@@ -172,15 +172,13 @@ async def test_get_logs(tmp_project, make_context) -> None:
 
 
 @pytest.mark.asyncio
-async def test_pull_image(tmp_project, make_context) -> None:
-    events, _ = await _run_tool_test(
-        tmp_project,
-        make_context,
-        tool_name="pull_image",
-        input_data={"image": "nginx:latest"},
-        expect_permission_request=True,
-    )
-    _expect_event_order(events, "permission_request", "tool_call", "tool_result")
+async def test_pull_image_not_agent_facing(tmp_project, make_context) -> None:
+    ctx = make_context()
+    events = await _run_backend(ctx, "pull_image", {"image": "nginx:latest"})
+    types = [e.type for e in events]
+    assert "tool_call" not in types
+    assert "tool_result" not in types
+    assert "permission_request" not in types
 
 
 @pytest.mark.asyncio

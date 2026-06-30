@@ -14,7 +14,7 @@ from docker_agent.config import persist_model_choice
 from docker_agent.query_engine import QueryEngine, restore_session_from_record
 from docker_agent.screens.use_interaction_session import InteractionSession
 from docker_agent.services.api import resolve_provider_for_request
-from docker_agent.slash_router import (
+from docker_agent.slash.router import (
     ClearSession,
     EmitAssistantText,
     EmitError,

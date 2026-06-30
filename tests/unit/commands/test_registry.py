@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from docker_agent.commands.registry import Command, CommandRegistry, create_default_registry
-from docker_agent.slash_commands import SLASH_COMMANDS
+from docker_agent.slash.commands import SLASH_COMMANDS
 
 
 def test_register_and_get_all() -> None:

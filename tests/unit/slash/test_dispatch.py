@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from docker_agent.slash_dispatch import (
+from docker_agent.slash.dispatch import (
     SlashDispatchContext,
     destroy_stack_prompt,
     dispatch_secrets_list,

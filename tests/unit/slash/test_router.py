@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from docker_agent.slash_router import (
+from docker_agent.slash.router import (
     SLASH_COMMAND_DEFS,
     SlashRouterContext,
     resolve_slash_key,

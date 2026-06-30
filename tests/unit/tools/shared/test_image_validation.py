@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 
 from docker_agent.services.docker.image_validator import ImageValidationResult
-from docker_agent.tool import ToolContext
+from docker_agent.tools.base import ToolContext
 from docker_agent.tools.shared.image_validation import validate_images_for_tool
 
 

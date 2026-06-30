@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 
 from docker_agent.state.state_store import StateStore
-from docker_agent.tool import ToolContext
+from docker_agent.tools.base import ToolContext
 from docker_agent.tools.shared.spec_schemas import StackDraft
 from docker_agent.tools.shared.translator import (
     calculate_canonical_hash,

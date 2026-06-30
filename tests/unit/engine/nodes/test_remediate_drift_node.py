@@ -51,7 +51,7 @@ async def test_remediate_drift_not_remediable(make_loop_ctx, tmp_project) -> Non
     )
 
     async def _gen(*_args, **_kwargs):
-        from docker_agent.tool import ToolDone, ToolProgress
+        from docker_agent.tools.base import ToolDone, ToolProgress
 
         yield ToolProgress(msg="checking")
         yield ToolDone(tool_result)
@@ -83,7 +83,7 @@ async def test_remediate_drift_success(make_loop_ctx, tmp_project) -> None:
     from docker_agent.engine.nodes.apply_with_rollback import ApplyWithRollbackResult
 
     async def _gen(*_args, **_kwargs):
-        from docker_agent.tool import ToolDone, ToolProgress
+        from docker_agent.tools.base import ToolDone, ToolProgress
 
         yield ToolProgress(msg="checking")
         yield ToolDone(tool_result)
@@ -144,7 +144,7 @@ async def test_remediate_drift_orphan_warning(make_loop_ctx, tmp_project) -> Non
     from docker_agent.engine.nodes.apply_with_rollback import ApplyWithRollbackResult
 
     async def _gen(*_args, **_kwargs):
-        from docker_agent.tool import ToolDone, ToolProgress
+        from docker_agent.tools.base import ToolDone, ToolProgress
 
         yield ToolProgress(msg="checking")
         yield ToolDone(tool_result)

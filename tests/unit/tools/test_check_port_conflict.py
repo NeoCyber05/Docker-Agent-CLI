@@ -7,7 +7,7 @@ from mocks.mock_compose_runner import MockComposeRunner
 from mocks.mock_docker_engine import MockDockerEngine
 
 from docker_agent.services.docker.types import ContainerSummary
-from docker_agent.tool import ToolContext
+from docker_agent.tools.base import ToolContext
 from docker_agent.tools.check_port_conflict import (
     PublishedPort,
     check_port_conflicts,

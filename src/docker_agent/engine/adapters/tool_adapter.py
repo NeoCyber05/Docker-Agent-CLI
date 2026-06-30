@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from docker_agent.tool import Tool, ToolDone, ToolProgress
+from docker_agent.tools.base import Tool, ToolDone, ToolProgress
 
 
 @dataclass

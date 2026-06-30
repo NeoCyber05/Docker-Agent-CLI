@@ -10,9 +10,9 @@ from typing import Any, TypeVar
 import pytest
 
 from docker_agent.services.docker.compose_runner import ComposeRunner
-from docker_agent.services.docker.engine_client import create_engine_client
 from docker_agent.state.state_store import StateStore
-from docker_agent.tool import ToolContext, ToolDone
+from docker_agent.tools.base import ToolContext, ToolDone
+from tests.mocks.mock_docker_engine import MockDockerEngine
 
 T = TypeVar("T")
 
@@ -51,7 +51,7 @@ def make_ctx(
     return ToolContext(
         cwd=str(tmp_project),
         state_store=StateStore(str(state_dir)),
-        docker_engine=docker_engine or create_engine_client(),
+        docker_engine=docker_engine or MockDockerEngine(),
         compose_runner=compose_runner or ComposeRunner(str(tmp_project)),
         abort_signal=asyncio.Event(),
     )

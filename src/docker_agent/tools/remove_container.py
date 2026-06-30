@@ -8,7 +8,7 @@ from collections.abc import AsyncIterator
 
 from pydantic import BaseModel, Field, field_validator
 
-from docker_agent.tool import ToolContext, ToolDone, ToolProgress
+from docker_agent.tools.base import ToolContext, ToolDone, ToolProgress
 
 MAX_CONTAINERS_PER_CALL = 8
 _BULK_NAME_PATTERN = re.compile(r"[\*\?]|\$\(|docker\s+(container\s+)?prune", re.I)

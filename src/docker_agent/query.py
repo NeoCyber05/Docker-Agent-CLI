@@ -14,18 +14,19 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 from docker_agent.config import load_user_config
-from docker_agent.context import build_system_prompt
-from docker_agent.loop_context import LoopContext
+from docker_agent.core.iteration_limits import MAX_ITERATIONS, build_graceful_summary
+from docker_agent.core.loop_context import LoopContext
+from docker_agent.core.prompt_builder import build_system_prompt
 from docker_agent.policy.policy_engine import PolicyEngine
 from docker_agent.services.api.types import CallModelParams, Provider, ToolSchema
-from docker_agent.slash_dispatch import is_destroy_all_prompt, parse_direct_destroy_stack
+from docker_agent.slash.dispatch import is_destroy_all_prompt, parse_direct_destroy_stack
 from docker_agent.state.rollback import capture_known_good, plan_rollback
 from docker_agent.state.secret_redactor import scrub_line
 from docker_agent.state.state_store import HistoryEvent
-from docker_agent.tool import Tool, ToolDone, find_tool_by_name
-from docker_agent.tool import ToolProgress as ToolProgressMsg
 from docker_agent.tools import get_agent_tools
 from docker_agent.tools.apply_stack import apply_stack
+from docker_agent.tools.base import Tool, ToolDone, find_tool_by_name
+from docker_agent.tools.base import ToolProgress as ToolProgressMsg
 from docker_agent.tools.destroy_all_stacks import destroy_all_stacks
 from docker_agent.tools.destroy_stack import destroy_stack
 from docker_agent.tools.plan_stack import PlanStackResultBlocked, plan_stack  # noqa: F401
@@ -56,8 +57,6 @@ from docker_agent.types.message import (
     ToolResultMessage,
     UserMessage,
 )
-
-from docker_agent.iteration_limits import MAX_ITERATIONS, build_graceful_summary
 
 
 def format_plan_blocker(result: PlanStackResultBlocked) -> str:

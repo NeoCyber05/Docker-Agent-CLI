@@ -12,7 +12,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from docker_agent.services.docker.types import ContainerStats
-from docker_agent.tool import ToolContext, ToolDone, ToolProgress
+from docker_agent.tools.base import ToolContext, ToolDone, ToolProgress
 
 CRASH_LOOP_THRESHOLD = 3
 _BYTES_PER_MB = 1024 * 1024

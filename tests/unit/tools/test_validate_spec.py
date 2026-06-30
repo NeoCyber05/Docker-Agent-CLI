@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from docker_agent.services.docker.image_validator import ImageValidationResult
-from docker_agent.tool import ToolContext
+from docker_agent.tools.base import ToolContext
 from docker_agent.tools.validate_spec import (
     SpecIssue,
     ValidateSpecResult,

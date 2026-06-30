@@ -5,7 +5,7 @@ Parity: ``src/slashCommands.ts``.
 
 from __future__ import annotations
 
-from docker_agent.slash_router import SLASH_COMMAND_DEFS, SlashCommandDef
+from docker_agent.slash.router import SLASH_COMMAND_DEFS, SlashCommandDef
 
 SLASH_COMMANDS: tuple[SlashCommandDef, ...] = SLASH_COMMAND_DEFS
 

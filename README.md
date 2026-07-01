@@ -1,11 +1,14 @@
 # Docker Agent CLI
 
+<p align="center">
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-AI%20Agent-orange?logo=langchain&logoColor=white)](https://github.com/langchain-ai/langgraph)
 [![Textual](https://img.shields.io/badge/Textual-TUI%20Framework-blueviolet?logo=python&logoColor=white)](https://github.com/Textualize/textual)
 [![Docker](https://img.shields.io/badge/Docker-Infrastructure-blue?logo=docker&logoColor=white)](https://www.docker.com/)
 [![Pydantic](https://img.shields.io/badge/Pydantic-Validation-red?logo=pydantic&logoColor=white)](https://docs.pydantic.dev/)
+</p>
 
 An advanced, natural-language Command Line Interface (CLI) powered by an LLM agent using the **ReAct** (Reasoning + Acting) pattern to autonomously manage and provision Docker infrastructure.
 
@@ -67,7 +70,6 @@ User preferences are stored in `~/.docker-agent/config.json` (override with `DOC
 | :--- | :--- |
 | `provider` | LLM provider used on startup (default: `gemini`) |
 | `model` | Preferred model id (optional) |
-| `theme` | TUI theme |
 | `defaults` | Policy and approval defaults |
 
 On startup, the REPL loads `provider` and `model` from this file. Choosing a model via `/model` or the model picker **saves** your choice for the next session.

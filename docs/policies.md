@@ -15,14 +15,20 @@ Vi phạm mức `deny` → deployment bị chặn. Vi phạm mức `warn` → c�
 
 | Phạm vi | Đường dẫn mặc định | Ghi chú |
 |---------|-------------------|---------|
-| **Global** | `~/.docker-agent/policies.yaml` | Áp dụng cho mọi project |
+| **Global** | `~/.docker-agent/policies.yaml` | Áp dụng cho mọi project; **tự tạo baseline** lần chạy đầu nếu chưa có |
 | **Project** | `<project>/project-policies.yaml` | **Khuyến nghị** — đặt ở root repo |
-| **Legacy** | `<project>/.docker-agent/policies.yaml` | Vẫn hỗ trợ; CLI in cảnh báo migration |
+
 
 Thứ tự ưu tiên khi tìm project policy:
 
 1. `project-policies.yaml` (root)
 2. `.docker-agent/policies.yaml` (legacy)
+
+### Global policy — khởi tạo tự động
+
+Lần đầu `PolicyEngine` chạy (khi CLI deploy/plan), nếu `~/.docker-agent/policies.yaml` chưa tồn tại, CLI **tự tạo** file baseline bảo mật (cùng nội dung mục [Global — baseline bảo mật](#global--baseline-bảo-mật) bên dưới). File đã có sẵn **không bị ghi đè**.
+
+Override đường dẫn: biến môi trường `DOCKER_AGENT_GLOBAL_POLICY`.
 
 ---
 

@@ -14,6 +14,7 @@ from typing import Any, Literal
 import yaml
 
 from docker_agent.config import UserConfig
+from docker_agent.policy.defaults import global_policy_path as default_global_policy_path
 from docker_agent.policy.types import (
     DenyRule,
     HealthcheckConfig,
@@ -104,7 +105,7 @@ class PolicyEngine:
         self._missing_project_policy_mode: Literal["use-global", "deny"] = "deny"
 
         if global_policy_path is None:
-            global_policy_path = str(Path.home() / ".docker-agent" / "policies.yaml")
+            global_policy_path = default_global_policy_path()
 
         if project_policy_path is None:
             cwd = os.getcwd()

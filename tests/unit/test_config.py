@@ -75,16 +75,9 @@ def test_load_user_config_merges_existing_values(tmp_path: Path) -> None:
     cfg = load_user_config(p)
     assert cfg.provider == "openai"
     assert cfg.model == "gpt-4o"
-    assert cfg.theme == "dark"
     # defaults still filled
     assert cfg.defaults.auto_approve_non_destructive is False
 
-
-def test_load_user_config_accepts_theme(tmp_path: Path) -> None:
-    p = tmp_path / "config.json"
-    p.write_text(json.dumps({"provider": "ollama", "theme": "light"}))
-    cfg = load_user_config(p)
-    assert cfg.theme == "light"
 
 
 def test_load_user_config_ignores_unknown_top_level_keys(tmp_path: Path) -> None:
@@ -171,9 +164,9 @@ def test_save_user_config_writes_json(tmp_path: Path) -> None:
 
 def test_persist_model_choice_merges_existing(tmp_path: Path) -> None:
     path = tmp_path / "config.json"
-    save_user_config(UserConfig(theme="light"), path)
+    save_user_config(UserConfig(defaults={"auto_approve_non_destructive": True}), path)
     persist_model_choice("openrouter", "openai/gpt-4o", path=path)
     loaded = load_user_config(path)
     assert loaded.provider == "openrouter"
     assert loaded.model == "openai/gpt-4o"
-    assert loaded.theme == "light"
+    assert loaded.defaults.auto_approve_non_destructive is True

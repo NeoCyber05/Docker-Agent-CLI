@@ -17,6 +17,7 @@ from docker_agent.config import load_user_config
 from docker_agent.core.iteration_limits import MAX_ITERATIONS, build_graceful_summary
 from docker_agent.core.loop_context import LoopContext
 from docker_agent.core.prompt_builder import build_system_prompt
+from docker_agent.policy.defaults import ensure_global_policy
 from docker_agent.policy.policy_engine import PolicyEngine
 from docker_agent.services.api.types import CallModelParams, Provider, ToolSchema
 from docker_agent.slash.dispatch import is_destroy_all_prompt, parse_direct_destroy_stack
@@ -720,6 +721,7 @@ async def query(
                         delta=f"[docker-agent] Failed to initialize project policy: {err}\n"
                     )
 
+    ensure_global_policy()
     policy_engine = PolicyEngine(user_config=user_config, project_policy_path=project_policy_path)
     # Mutate the caller's list in place so appended assistant/tool-result messages
     # propagate back to QueryEngine for persistence and resume.

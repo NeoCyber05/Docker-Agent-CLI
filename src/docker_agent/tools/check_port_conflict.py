@@ -10,12 +10,14 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from docker_agent.tools.base import ToolContext, ToolDone, ToolProgress
 from docker_agent.tools.shared.spec_schemas import (
     HybridServiceIntent,
+    NetworkIntent,
     StackDraft,
+    VolumeIntent,
     format_validation_error,
 )
 from docker_agent.tools.shared.translator import prepare_stack_draft
@@ -49,8 +51,13 @@ class CheckPortConflictResult:
 
 
 class _CheckPortConflictInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
     stack_name: str | None = Field(default=None, alias="stackName")
     intent: str | None = None
+    network_name: str | None = Field(default=None, alias="networkName")
+    networks: list[NetworkIntent] | None = None
+    volumes: list[VolumeIntent] | None = None
     services: list[HybridServiceIntent]
 
 
@@ -305,14 +312,23 @@ class _CheckPortConflictTool:
         self, input: _CheckPortConflictInput, ctx: ToolContext
     ) -> AsyncIterator[ToolProgress | ToolDone]:
         yield ToolProgress(msg="Checking published ports...")
+        payload: dict[str, Any] = {
+            "stackName": input.stack_name or "validate-temp-stack",
+            "intent": input.intent or "validation only",
+            "services": input.services,
+        }
+        if input.network_name is not None:
+            payload["networkName"] = input.network_name
+        if input.networks:
+            payload["networks"] = [
+                n.model_dump(by_alias=True, exclude_none=True) for n in input.networks
+            ]
+        if input.volumes:
+            payload["volumes"] = [
+                v.model_dump(by_alias=True, exclude_none=True) for v in input.volumes
+            ]
         try:
-            draft = StackDraft.model_validate(
-                {
-                    "stackName": input.stack_name or "validate-temp-stack",
-                    "intent": input.intent or "validation only",
-                    "services": input.services,
-                }
-            )
+            draft = StackDraft.model_validate(payload)
         except ValidationError as err:
             yield ToolDone(
                 CheckPortConflictResult(

@@ -203,8 +203,8 @@ File append-only — phù hợp để grep hoặc ingest vào hệ thống log.
 |--------|----------|
 | `<project>/docker-stacks/` | Desired state YAML **của project này** |
 | `<project>/.docker-agent/` | Archive, sessions, secrets, locks, logs, history |
-| `~/.docker-agent/config.json` | Cấu hình user (provider, model, theme, defaults). `/model` ghi provider + model vào đây |
-| `~/.docker-agent/policies.yaml` | Policy **toàn cục** (áp dụng mọi project) |
+| `~/.docker-agent/config.json` | Cấu hình user (provider, model, defaults). `/model` ghi provider + model vào đây |
+| `~/.docker-agent/policies.yaml` | Policy **toàn cục** (áp dụng mọi project); tự tạo baseline lần chạy đầu |
 | `~/.docker-agent/api-keys/` | API keys (Windows; macOS/Linux dùng keychain) |
 
 Override đường dẫn:

@@ -100,6 +100,13 @@ DEFAULT_LOGGING = LoggingSpec.model_validate(
     }
 )
 
+# The LLM-facing DSL (``HybridServiceIntent``) has no field to request a
+# restart policy — the prompt explicitly tells the agent not to set the raw
+# compose ``restart`` key. Without this default, ``restart_policy`` require
+# rules (see docs/policies.md) can never be satisfied and plan_stack loops
+# forever rejecting every draft.
+DEFAULT_RESTART = "unless-stopped"
+
 
 @dataclass
 class PreparedStack:
@@ -266,6 +273,7 @@ async def prepare_stack_draft(input: StackDraft, ctx: ToolContext) -> PrepareRes
             environment=dict(intent.environment or {}),
             networks=service_networks,
             logging=DEFAULT_LOGGING,
+            restart=DEFAULT_RESTART,
         )
 
         if intent.depends_on:
@@ -392,6 +400,7 @@ async def prepare_stack_draft(input: StackDraft, ctx: ToolContext) -> PrepareRes
 __all__ = [
     "CATALOG_REGISTRY",
     "DEFAULT_LOGGING",
+    "DEFAULT_RESTART",
     "PrepareResult",
     "PreparedStack",
     "RESOURCE_LIMITS_MAP",

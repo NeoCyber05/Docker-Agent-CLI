@@ -153,6 +153,70 @@ async def test_reports_unsafe_config_path(tmp_project) -> None:
 
 
 @pytest.mark.asyncio
+async def test_accepts_declared_top_level_networks(tmp_project) -> None:
+    _, result = await drain_with_progress(
+        validate_spec.call(
+            validate_spec.input_schema.model_validate(
+                {
+                    "services": [
+                        {
+                            "name": "web",
+                            "kind": "catalog",
+                            "catalogId": "nginx:1.27",
+                            "exposure": "public",
+                            "networks": ["frontend"],
+                        },
+                        {
+                            "name": "api",
+                            "kind": "custom",
+                            "image": "node:20-alpine",
+                            "networks": ["frontend", "backend"],
+                            "depends_on": ["db"],
+                        },
+                        {
+                            "name": "db",
+                            "kind": "catalog",
+                            "catalogId": "postgresql:16",
+                            "networks": ["backend"],
+                        },
+                    ],
+                    "networks": [
+                        {"name": "frontend"},
+                        {"name": "backend", "internal": True},
+                    ],
+                }
+            ),
+            make_ctx(tmp_project),
+        )
+    )
+    assert result.valid is True
+
+
+@pytest.mark.asyncio
+async def test_rejects_undeclared_service_network(tmp_project) -> None:
+    _, result = await drain_with_progress(
+        validate_spec.call(
+            validate_spec.input_schema.model_validate(
+                {
+                    "services": [
+                        {
+                            "name": "web",
+                            "kind": "custom",
+                            "image": "nginx:1.27-alpine",
+                            "networks": ["frontend"],
+                        }
+                    ]
+                }
+            ),
+            make_ctx(tmp_project),
+        )
+    )
+    assert result.valid is False
+    assert result.issues[0].code == "invalid_spec"
+    assert "frontend" in result.issues[0].message
+
+
+@pytest.mark.asyncio
 async def test_reports_invalid_image(tmp_project) -> None:
     base_ctx = make_ctx(tmp_project)
     ctx = ToolContext(

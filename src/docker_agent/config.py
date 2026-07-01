@@ -16,7 +16,6 @@ import pydantic
 from pydantic import BaseModel, ConfigDict, Field
 
 ProviderName = Literal["gemini", "openai", "ollama", "openrouter"]
-ThemeName = Literal["dark", "light"]
 PROVIDER_NAMES: list[ProviderName] = ["gemini", "openai", "ollama", "openrouter"]
 STACK_STATES_DIR_NAME = "docker-stacks"
 
@@ -48,7 +47,6 @@ class UserConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
     provider: ProviderName = "gemini"
     model: str | None = None
-    theme: ThemeName = "dark"
     defaults: UserDefaults = Field(default_factory=UserDefaults)
 
     @pydantic.field_validator("provider", mode="before")
@@ -208,7 +206,6 @@ __all__ = [
     "PROVIDER_NAMES",
     "STACK_STATES_DIR_NAME",
     "ProviderName",
-    "ThemeName",
     "UserConfig",
     "UserDefaults",
     "is_valid_provider",

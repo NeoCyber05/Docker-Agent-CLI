@@ -19,6 +19,7 @@ from docker_agent.core.iteration_limits import derive_recursion_limit
 from docker_agent.engine.adapters.tool_adapter import run_tool
 from docker_agent.engine.graph import GraphDeps, build_graph
 from docker_agent.engine.state import AgentState
+from docker_agent.policy.defaults import ensure_global_policy
 from docker_agent.policy.policy_engine import PolicyEngine
 from docker_agent.tools.destroy_all_stacks import destroy_all_stacks
 from docker_agent.tools.destroy_stack import destroy_stack
@@ -124,6 +125,7 @@ class LangGraphBackend(AgentBackend):
                                     )
                                 )
 
+                ensure_global_policy()
                 policy_engine = PolicyEngine(
                     user_config=user_config,
                     project_policy_path=project_policy_path,

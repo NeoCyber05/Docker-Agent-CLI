@@ -22,7 +22,7 @@ LLM agent có thể gọi các tool sau trong phiên REPL. Tool được phân l
 | `remediate_drift` | high-level | Khắc phục drift về desired state |
 | `pull_image` | escape-hatch | Validate và pre-pull Docker image |
 | `exec_docker` | escape-hatch | Chạy lệnh `docker` chỉ đọc (`ps`, `inspect`, `logs`, …) |
-| `validate_spec` | read-only | Preflight — kiểm tra spec trước deploy |
+| `validate_spec` | read-only | Preflight — kiểm tra spec (image, config, network/volume top-level) trước deploy |
 | `resolve_dependency` | read-only | Preflight — phân tích phụ thuộc service |
 | `check_port_conflict` | read-only | Preflight — phát hiện xung đột cổng |
 

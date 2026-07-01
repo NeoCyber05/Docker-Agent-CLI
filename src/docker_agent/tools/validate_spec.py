@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any, Literal, cast
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from docker_agent.tools.base import ToolContext, ToolDone, ToolProgress
 from docker_agent.tools.shared.config_files import (
@@ -15,16 +15,25 @@ from docker_agent.tools.shared.config_files import (
     stage_config_files,
 )
 from docker_agent.tools.shared.image_validation import validate_images_for_tool
+from docker_agent.tools.shared.network_guard import check_network_references
 from docker_agent.tools.shared.spec_schemas import (
     HybridServiceIntent,
+    NetworkIntent,
     StackDraft,
+    VolumeIntent,
     format_validation_error,
 )
+from docker_agent.tools.shared.volume_guard import check_volume_references
 from docker_agent.tools.shared.translator import prepare_stack_draft
 from docker_agent.types.stack import ServiceSpec
 
 SpecIssueCode = Literal[
-    "invalid_image", "invalid_config_path", "missing_config_file", "invalid_spec"
+    "invalid_image",
+    "invalid_config_path",
+    "missing_config_file",
+    "invalid_spec",
+    "undeclared_network",
+    "undeclared_volume",
 ]
 
 
@@ -43,8 +52,13 @@ class ValidateSpecResult:
 
 
 class _ValidateSpecInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
     stack_name: str | None = Field(default=None, alias="stackName")
     intent: str | None = None
+    network_name: str | None = Field(default=None, alias="networkName")
+    networks: list[NetworkIntent] | None = None
+    volumes: list[VolumeIntent] | None = None
     services: list[HybridServiceIntent]
     config_files: dict[str, str] | None = Field(default=None, alias="configFiles")
 
@@ -106,11 +120,33 @@ async def validate_spec_input(
     )
 
 
+def _stack_draft_payload(input: _ValidateSpecInput) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "stackName": input.stack_name or "validate-temp-stack",
+        "intent": input.intent or "validation only",
+        "services": input.services,
+    }
+    if input.network_name is not None:
+        payload["networkName"] = input.network_name
+    if input.networks:
+        payload["networks"] = [
+            n.model_dump(by_alias=True, exclude_none=True) for n in input.networks
+        ]
+    if input.volumes:
+        payload["volumes"] = [
+            v.model_dump(by_alias=True, exclude_none=True) for v in input.volumes
+        ]
+    if input.config_files is not None:
+        payload["configFiles"] = input.config_files
+    return payload
+
+
 class _ValidateSpecTool:
     name = "validate_spec"
     description = (
         "Validate a draft stack service spec: Docker images, bind-mounted "
-        "config paths, and missing config file content."
+        "config paths, missing config file content, and top-level network/volume "
+        "declarations."
     )
     input_schema = _ValidateSpecInput
     category = "read-only"
@@ -123,14 +159,7 @@ class _ValidateSpecTool:
     ) -> AsyncIterator[ToolProgress | ToolDone]:
         yield ToolProgress(msg="Validating stack spec...")
         try:
-            draft = StackDraft.model_validate(
-                {
-                    "stackName": input.stack_name or "validate-temp-stack",
-                    "intent": input.intent or "validation only",
-                    "services": input.services,
-                    "configFiles": input.config_files,
-                }
-            )
+            draft = StackDraft.model_validate(_stack_draft_payload(input))
         except ValidationError as err:
             yield ToolDone(
                 ValidateSpecResult(
@@ -163,7 +192,49 @@ class _ValidateSpecTool:
             )
             return
         assert prep.prepared is not None
-        spec_input: dict[str, Any] = {"services": prep.prepared.services}
+        prepared = prep.prepared
+
+        network_issues = check_network_references(
+            prepared.services, prepared.networks
+        )
+        if network_issues:
+            yield ToolDone(
+                ValidateSpecResult(
+                    valid=False,
+                    issues=[
+                        SpecIssue(
+                            code="undeclared_network",
+                            path=f"services.{issue.service}.networks",
+                            message=issue.message,
+                        )
+                        for issue in network_issues
+                    ],
+                    warnings=[],
+                )
+            )
+            return
+
+        volume_ref_issues = check_volume_references(
+            prepared.services, prepared.volumes
+        )
+        if volume_ref_issues:
+            yield ToolDone(
+                ValidateSpecResult(
+                    valid=False,
+                    issues=[
+                        SpecIssue(
+                            code="undeclared_volume",
+                            path=f"services.{issue.service}.volumeMounts",
+                            message=issue.message,
+                        )
+                        for issue in volume_ref_issues
+                    ],
+                    warnings=[],
+                )
+            )
+            return
+
+        spec_input: dict[str, Any] = {"services": prepared.services}
         if input.config_files is not None:
             spec_input["config_files"] = input.config_files
         yield ToolDone(await validate_spec_input(spec_input, ctx))

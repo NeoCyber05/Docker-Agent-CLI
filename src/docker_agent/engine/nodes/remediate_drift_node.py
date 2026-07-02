@@ -88,9 +88,8 @@ async def remediate_drift_node(
         return {"messages": [_tool_result(tool_use_id, msg, is_error=False)]}
 
     violations = deps.policy_engine.evaluate(result.desired_yaml)
-    deny_violations = [v for v in violations if v.severity == "deny"]
-    if deny_violations:
-        msgs = "\n".join(f"[{v.service}] {v.rule}: {v.message}" for v in deny_violations)
+    if violations:
+        msgs = "\n".join(f"[{v.service}] {v.rule}: {v.message}" for v in violations)
         msg = f"Policy violation(s) detected. Remediation is blocked:\n{msgs}"
         return {"messages": [_tool_result(tool_use_id, msg, is_error=True)]}
 

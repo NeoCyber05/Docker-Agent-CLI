@@ -83,7 +83,6 @@ _REQUIRE_RULE_NAMES = Literal[
     "healthcheck",
     "restart_policy",
     "non_root_user",
-    "read_only_root_filesystem_when_possible",
     "project_labels",
 ]
 
@@ -134,7 +133,6 @@ class PolicyViolation(BaseModel):
     service: str
     rule: str
     message: str
-    severity: Literal["deny", "warn"]
 
 
 __all__ = [

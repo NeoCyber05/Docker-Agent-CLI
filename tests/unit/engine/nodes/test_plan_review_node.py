@@ -76,7 +76,6 @@ async def test_plan_review_policy_deny(make_loop_ctx, tmp_project) -> None:
         "Violation",
         (),
         {
-            "severity": "deny",
             "service": "web",
             "rule": "privileged_containers",
             "message": "no",

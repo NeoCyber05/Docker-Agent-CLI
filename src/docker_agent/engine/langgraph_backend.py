@@ -83,12 +83,9 @@ class LangGraphBackend(AgentBackend):
                 user_config = load_user_config()
                 cwd = Path(params.ctx.cwd)
                 root_policy = cwd / "project-policies.yaml"
-                legacy_policy = cwd / ".docker-agent" / "policies.yaml"
-                project_policy_path = str(
-                    root_policy if root_policy.exists() else legacy_policy
-                )
+                project_policy_path = str(root_policy)
 
-                if not root_policy.exists() and not legacy_policy.exists():
+                if not root_policy.exists():
                     mode = user_config.defaults.missing_project_policy
                     if mode == "deny":
                         default_content = "project:\n  hardDeny: []\n  require: []\n"

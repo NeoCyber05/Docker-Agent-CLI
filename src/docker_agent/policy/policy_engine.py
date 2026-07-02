@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import os
 import re
-import sys
 from pathlib import Path
 from typing import Any, Literal
 
@@ -108,19 +107,7 @@ class PolicyEngine:
             global_policy_path = default_global_policy_path()
 
         if project_policy_path is None:
-            cwd = os.getcwd()
-            root_path = Path(cwd) / "project-policies.yaml"
-            legacy_path = Path(cwd) / ".docker-agent" / "policies.yaml"
-            if root_path.exists():
-                project_policy_path = str(root_path)
-            else:
-                project_policy_path = str(legacy_path)
-                if legacy_path.exists():
-                    print(
-                        "[docker-agent] Warning: Using legacy .docker-agent/policies.yaml. "
-                        "Please migrate to project-policies.yaml in the root directory.",
-                        file=sys.stderr,
-                    )
+            project_policy_path = str(Path(os.getcwd()) / "project-policies.yaml")
 
         self._missing_project_policy_mode = (
             user_config.defaults.missing_project_policy
@@ -358,7 +345,6 @@ class PolicyEngine:
                     service="*",
                     rule="project_policy_missing",
                     message="Project policy not found. Deployment is denied.",
-                    severity="deny",
                 )
             )
             return violations
@@ -371,7 +357,6 @@ class PolicyEngine:
                     service="*",
                     rule="invalid_yaml",
                     message=f"Failed to parse Compose YAML: {err}",
-                    severity="deny",
                 )
             )
             return violations
@@ -400,7 +385,6 @@ class PolicyEngine:
                     service=name,
                     rule="privileged_containers",
                     message="Privileged container is not allowed",
-                    severity="deny",
                 )
             )
 
@@ -413,7 +397,6 @@ class PolicyEngine:
                             service=name,
                             rule="mount_docker_socket",
                             message="Mounting docker socket (/var/run/docker.sock) is not allowed",
-                            severity="deny",
                         )
                     )
 
@@ -430,7 +413,6 @@ class PolicyEngine:
                                 f"Mounting host root or system directory ({host_path}) "
                                 "is not allowed"
                             ),
-                            severity="deny",
                         )
                     )
 
@@ -440,7 +422,6 @@ class PolicyEngine:
                     service=name,
                     rule="host_pid_namespace",
                     message="Host PID namespace configuration is not allowed",
-                    severity="deny",
                 )
             )
 
@@ -450,7 +431,6 @@ class PolicyEngine:
                     service=name,
                     rule="host_network",
                     message="Host network mode is not allowed",
-                    severity="deny",
                 )
             )
 
@@ -462,7 +442,6 @@ class PolicyEngine:
                         service=name,
                         rule="add_all_linux_capabilities",
                         message="Adding ALL Linux capabilities is not allowed",
-                        severity="deny",
                     )
                 )
 
@@ -474,7 +453,6 @@ class PolicyEngine:
                             service=name,
                             rule="disable_seccomp",
                             message="Disabling seccomp (seccomp:unconfined) is not allowed",
-                            severity="deny",
                         )
                     )
 
@@ -491,7 +469,6 @@ class PolicyEngine:
                             f"Image uses untrusted registry '{registry}'. "
                             f"Allowed registries: {', '.join(allowed)}"
                         ),
-                        severity="deny",
                     )
                 )
 
@@ -516,7 +493,6 @@ class PolicyEngine:
                                     "allowed. Expose it to 127.0.0.1 or keep it within the "
                                     "container network."
                                 ),
-                                severity="deny",
                             )
                         )
 
@@ -528,7 +504,6 @@ class PolicyEngine:
                         service=name,
                         rule="restart_policy",
                         message="A restart policy (other than 'no') must be configured",
-                        severity="deny",
                     )
                 )
 
@@ -541,7 +516,6 @@ class PolicyEngine:
                         service=name,
                         rule="resource_limits",
                         message="CPU limits are required",
-                        severity="deny",
                     )
                 )
             if conf.memory_required and not limits.get("memory"):
@@ -550,7 +524,6 @@ class PolicyEngine:
                         service=name,
                         rule="resource_limits",
                         message="Memory limits are required",
-                        severity="deny",
                     )
                 )
             if (
@@ -567,7 +540,6 @@ class PolicyEngine:
                             f"Memory limit ({limits['memory']}) exceeds maximum allowed "
                             f"limit ({conf.max_memory})"
                         ),
-                        severity="deny",
                     )
                 )
 
@@ -580,7 +552,6 @@ class PolicyEngine:
                         service=name,
                         rule="logging_rotation",
                         message="Logging driver 'json-file' must be configured for log rotation",
-                        severity="deny",
                     )
                 )
             else:
@@ -600,7 +571,6 @@ class PolicyEngine:
                                 f"Log max-size ({max_size or 'unlimited'}) is missing or "
                                 f"exceeds allowed size ({conf.max_size})"
                             ),
-                            severity="deny",
                         )
                     )
                 max_files_exceeded = conf.max_files is not None and (
@@ -615,7 +585,6 @@ class PolicyEngine:
                                 f"Log max-file ({max_files or 'unlimited'}) is missing or "
                                 f"exceeds allowed files ({conf.max_files})"
                             ),
-                            severity="deny",
                         )
                     )
 
@@ -628,7 +597,6 @@ class PolicyEngine:
                         service=name,
                         rule="healthcheck",
                         message="Healthcheck is required",
-                        severity="deny",
                     )
                 )
             elif hc and hc.get("disable") is not True:
@@ -646,7 +614,6 @@ class PolicyEngine:
                                 f"Healthcheck interval ({interval}) exceeds maximum interval "
                                 f"({conf.max_interval_seconds}s)"
                             ),
-                            severity="deny",
                         )
                     )
                 timeout = hc.get("timeout")
@@ -663,7 +630,6 @@ class PolicyEngine:
                                 f"Healthcheck timeout ({timeout}) exceeds maximum timeout "
                                 f"({conf.max_timeout_seconds}s)"
                             ),
-                            severity="deny",
                         )
                     )
 
@@ -673,20 +639,6 @@ class PolicyEngine:
                     service=name,
                     rule="non_root_user",
                     message="Running as non-root user (e.g., user: '1000:1000') is required",
-                    severity="deny",
-                )
-            )
-
-        if (
-            "read_only_root_filesystem_when_possible" in effective.require
-            and svc.get("read_only") is not True
-        ):
-            violations.append(
-                PolicyViolation(
-                    service=name,
-                    rule="read_only_root_filesystem_when_possible",
-                    message="Read-only root filesystem is recommended (read_only: true)",
-                    severity="warn",
                 )
             )
 
@@ -696,7 +648,6 @@ class PolicyEngine:
                     service=name,
                     rule="project_labels",
                     message="Project labels are required",
-                    severity="deny",
                 )
             )
 

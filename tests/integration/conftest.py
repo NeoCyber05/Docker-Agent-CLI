@@ -49,7 +49,7 @@ def plan_stack_events(input_data: object) -> list[Any]:
 @pytest.fixture
 def tmp_project(tmp_path: Path) -> Path:
     (tmp_path / ".docker-agent").mkdir(parents=True)
-    (tmp_path / ".docker-agent" / "policies.yaml").write_text("project: {}", encoding="utf-8")
+    (tmp_path / "project-policies.yaml").write_text("project: {}", encoding="utf-8")
     return tmp_path
 
 

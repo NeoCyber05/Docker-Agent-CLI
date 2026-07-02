@@ -500,10 +500,9 @@ async def handle_plan_stack_tool_use(
             SecretKeysContext(cwd=ctx.cwd, state_store=ctx.state_store),
         )
         violations = policy_engine.evaluate(plan_result.compose_yaml)
-        deny_violations = [v for v in violations if v.severity == "deny"]
-        if deny_violations:
+        if violations:
             msgs = "\n".join(
-                f"[{v.service}] {v.rule}: {v.message}" for v in deny_violations
+                f"[{v.service}] {v.rule}: {v.message}" for v in violations
             )
             return events, {
                 "is_error": True,
@@ -586,9 +585,8 @@ async def handle_remediate_drift_tool_use(
         }
 
     violations = policy_engine.evaluate(result.desired_yaml)
-    deny_violations = [v for v in violations if v.severity == "deny"]
-    if deny_violations:
-        msgs = "\n".join(f"[{v.service}] {v.rule}: {v.message}" for v in deny_violations)
+    if violations:
+        msgs = "\n".join(f"[{v.service}] {v.rule}: {v.message}" for v in violations)
         return events, {
             "is_error": True,
             "result_message": (
@@ -686,12 +684,9 @@ async def query(
     """CurrentBackend loop: provider-driven tool execution."""
     user_config = load_user_config()
     root_policy_path = Path(ctx.cwd) / "project-policies.yaml"
-    legacy_policy_path = Path(ctx.cwd) / ".docker-agent" / "policies.yaml"
-    project_policy_path = (
-        str(root_policy_path) if root_policy_path.exists() else str(legacy_policy_path)
-    )
+    project_policy_path = str(root_policy_path)
 
-    if not root_policy_path.exists() and not legacy_policy_path.exists():
+    if not root_policy_path.exists():
         mode = user_config.defaults.missing_project_policy
         if mode == "deny":
             default_content = "project:\n  hardDeny: []\n  require: []\n"

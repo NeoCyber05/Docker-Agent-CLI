@@ -7,7 +7,7 @@ Policy được đánh giá bởi `policy_engine` khi:
 - Agent gọi `plan_stack` (sau khi sinh YAML, trước khi user approve)
 - Agent gọi `remediate_drift` (trước khi apply bản khắc phục)
 
-Vi phạm mức `deny` → deployment bị chặn. Vi phạm mức `warn` → cảnh báo, không chặn.
+Mọi vi phạm policy đều là blocker: nếu `policy_engine.evaluate()` trả về violation, deployment/remediation bị chặn trước khi user approve.
 
 ---
 
@@ -16,13 +16,7 @@ Vi phạm mức `deny` → deployment bị chặn. Vi phạm mức `warn` → c�
 | Phạm vi | Đường dẫn mặc định | Ghi chú |
 |---------|-------------------|---------|
 | **Global** | `~/.docker-agent/policies.yaml` | Áp dụng cho mọi project; **tự tạo baseline** lần chạy đầu nếu chưa có |
-| **Project** | `<project>/project-policies.yaml` | **Khuyến nghị** — đặt ở root repo |
-
-
-Thứ tự ưu tiên khi tìm project policy:
-
-1. `project-policies.yaml` (root)
-2. `.docker-agent/policies.yaml` (legacy)
+| **Project** | `<project>/project-policies.yaml` | Đặt ở root repo |
 
 ### Global policy — khởi tạo tự động
 
@@ -51,7 +45,7 @@ project:
 ```
 
 - `global` — định nghĩa trong `~/.docker-agent/policies.yaml`
-- `project` — định nghĩa trong `project-policies.yaml` (hoặc legacy path)
+- `project` — định nghĩa trong `project-policies.yaml`
 
 Cả hai nhóm được **merge**: rule từ global và project đều có hiệu lực. Project policy **không được nới lỏng** global policy (xem [Hierarchy](#hierarchy-global-và-project)).
 
@@ -123,16 +117,17 @@ hardDeny:
 
 ---
 
-## Nhóm `require` — Bắt buộc / khuyến nghị
+## Nhóm `require` — Bắt buộc
 
 ### Rule đơn giản (không tham số)
 
-| Rule | Mô tả | Severity | Điều kiện vi phạm |
-|------|-------|----------|-------------------|
-| `restart_policy` | Phải có restart policy | `deny` | Thiếu `restart` hoặc `restart: no` |
-| `non_root_user` | Phải chạy non-root | `deny` | Thiếu `user` |
-| `project_labels` | Phải có labels | `deny` | Thiếu `labels` |
-| `read_only_root_filesystem_when_possible` | Khuyến nghị read-only root FS | `warn` | `read_only` không phải `true` |
+Các rule trong `require` là baseline bắt buộc. Nếu vi phạm, deployment/remediation bị chặn.
+
+| Rule | Mô tả | Điều kiện vi phạm |
+|------|-------|-------------------|
+| `restart_policy` | Phải có restart policy | Thiếu `restart` hoặc `restart: no` |
+| `non_root_user` | Phải chạy non-root | Thiếu `user` |
+| `project_labels` | Phải có labels | Thiếu `labels` |
 
 ### Rule có tham số
 
@@ -194,7 +189,6 @@ class PolicyViolation(BaseModel):
     service: str                 # tên service, hoặc "*" cho lỗi toàn cục
     rule: str                    # tên rule
     message: str                 # mô tả lỗi
-    severity: Literal["deny", "warn"]
 ```
 
 ### Rule đặc biệt (không khai báo trong YAML)
@@ -262,7 +256,6 @@ project:
         required: true
         maxIntervalSeconds: 30
     - project_labels
-    - read_only_root_filesystem_when_possible
     - resource_limits:
         cpuRequired: true
         maxMemory: 2GiB      # siết hơn global 8GiB — hợp lệ
@@ -282,7 +275,7 @@ flowchart TD
   E --> G{require rules}
   F --> H[Thu thập violations]
   G --> H
-  H --> I{Có severity deny?}
+  H --> I{Có violation?}
   I -->|Yes| D
   I -->|No| J[Hiện plan preview cho user]
   J --> K[User approve → apply_stack]

@@ -212,18 +212,6 @@ Override đường dẫn:
 - `DOCKER_AGENT_CONFIG` — file config JSON
 - `DOCKER_AGENT_SECRET_DIR` — thư mục lưu API keys (Windows)
 
----
-
-## Legacy: `policies.yaml` trong `.docker-agent`
-
-Phiên bản cũ lưu policy project tại:
-
-```text
-.docker-agent/policies.yaml
-```
-
-Hiện tại **khuyến nghị** dùng `project-policies.yaml` ở **root project**. Nếu vẫn còn file legacy, CLI vẫn đọc được nhưng in cảnh báo migration.
-
 Chi tiết policy: xem [policies.md](./policies.md). Agent tools và session persistence: xem [agent-tools.md](./agent-tools.md).
 
 ---

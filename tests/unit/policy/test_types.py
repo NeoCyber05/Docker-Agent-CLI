@@ -1,8 +1,12 @@
 """Parity tests for policy types — mirrors src/policy/types.ts."""
 
+import pytest
+from pydantic import ValidationError
+
 from docker_agent.policy.types import (
     DenyRule,
     PolicyConfig,
+    PolicyViolation,
     RequireRule,
     ResourceLimitsConfig,
 )
@@ -36,6 +40,23 @@ def test_require_rule_resource_limits_variant() -> None:
     assert r.config is not None
     assert isinstance(r.config, ResourceLimitsConfig)
     assert r.config.cpu_required is True
+
+
+def test_require_rule_rejects_advisory_read_only_rule() -> None:
+    with pytest.raises(ValidationError):
+        RequireRule.model_validate("read_only_root_filesystem_when_possible")
+
+
+def test_policy_violation_rejects_severity_field() -> None:
+    with pytest.raises(ValidationError):
+        PolicyViolation.model_validate(
+            {
+                "service": "web",
+                "rule": "restart_policy",
+                "message": "A restart policy must be configured",
+                "severity": "deny",
+            }
+        )
 
 
 def test_policy_config_parses_yaml_shape() -> None:

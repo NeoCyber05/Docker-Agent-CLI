@@ -39,7 +39,7 @@ def text_done() -> list[Any]:
 @pytest.fixture
 def plan_review_project(tmp_path: Any):
     (tmp_path / ".docker-agent").mkdir(parents=True)
-    (tmp_path / ".docker-agent" / "policies.yaml").write_text("project: {}", encoding="utf-8")
+    (tmp_path / "project-policies.yaml").write_text("project: {}", encoding="utf-8")
     from docker_agent.state.state_store import StateStore
 
     state_store = StateStore(str(tmp_path / ".docker-agent"))

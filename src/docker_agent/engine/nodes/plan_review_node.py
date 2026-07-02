@@ -175,9 +175,8 @@ async def plan_review_node(deps: PlanReviewNodeDeps, state: AgentState) -> dict[
     )
 
     violations = deps.policy_engine.evaluate(plan_result.compose_yaml)
-    deny_violations = [v for v in violations if v.severity == "deny"]
-    if deny_violations:
-        msgs = "\n".join(f"[{v.service}] {v.rule}: {v.message}" for v in deny_violations)
+    if violations:
+        msgs = "\n".join(f"[{v.service}] {v.rule}: {v.message}" for v in violations)
         msg = f"Policy violation(s) detected. Deployment is blocked:\n{msgs}"
         return {"messages": [_tool_result(tool_use_id, msg, is_error=True)]}
 

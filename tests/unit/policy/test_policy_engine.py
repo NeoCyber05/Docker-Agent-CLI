@@ -67,22 +67,6 @@ def test_policy_engine_resolves_default_project_policy_path(
     assert "host_network" in effective.hard_deny
 
 
-def test_policy_engine_warns_on_legacy_project_policy_path(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture,
-) -> None:
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / ".docker-agent").mkdir()
-    legacy_policy = "project:\n  hardDeny:\n    - host_network\n"
-    (tmp_path / ".docker-agent" / "policies.yaml").write_text(legacy_policy)
-    engine = PolicyEngine()
-    captured = capsys.readouterr()
-    assert "legacy" in captured.err.lower()
-    effective = engine.get_effective_policy()
-    assert "host_network" in effective.hard_deny
-
-
 def test_policy_engine_missing_project_policy_deny_mode(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -259,14 +243,6 @@ def test_non_root_user_required() -> None:
     violations = engine.evaluate("services:\n  web:\n    image: nginx\n")
     assert any(v.rule == "non_root_user" for v in violations)
 
-
-def test_read_only_root_filesystem_warns() -> None:
-    engine = _engine_with_require("read_only_root_filesystem_when_possible")
-    violations = engine.evaluate("services:\n  web:\n    image: nginx\n")
-    assert any(
-        v.rule == "read_only_root_filesystem_when_possible" and v.severity == "warn"
-        for v in violations
-    )
 
 
 def test_project_labels_required() -> None:

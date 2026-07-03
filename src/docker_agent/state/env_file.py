@@ -87,6 +87,11 @@ def read_env_file(file_path: str | os.PathLike[str]) -> dict[str, str]:
     return parse_env_file(path.read_text(encoding="utf-8"))
 
 
+def render_env_file(values: dict[str, str]) -> str:
+    """Serialize a value map into ``.env`` file content."""
+    return _generate_env_file_content(values)
+
+
 def write_env_file(
     file_path: str | os.PathLike[str], values: dict[str, str]
 ) -> None:
@@ -97,7 +102,7 @@ def write_env_file(
     """
     path = Path(file_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(_generate_env_file_content(values), encoding="utf-8")
+    path.write_text(render_env_file(values), encoding="utf-8")
     os.chmod(path, 0o600)
 
 
@@ -116,5 +121,6 @@ __all__ = [
     "merge_env",
     "parse_env_file",
     "read_env_file",
+    "render_env_file",
     "write_env_file",
 ]

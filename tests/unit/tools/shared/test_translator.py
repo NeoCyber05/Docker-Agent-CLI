@@ -173,7 +173,38 @@ async def test_prepare_stack_draft_resource_limits(tmp_path: Any) -> None:
     assert deploy.resources is not None
     assert deploy.resources.limits is not None
     assert deploy.resources.limits.cpus == "1.0"
-    assert deploy.resources.limits.memory == "1Gi"
+    assert deploy.resources.limits.memory == "1g"
+
+
+@pytest.mark.asyncio
+async def test_prepare_stack_draft_large_resource_limits_use_compose_units(
+    tmp_path: Any,
+) -> None:
+    store = StateStore(str(tmp_path / ".docker-agent"))
+    ctx = _make_ctx(tmp_path, store)
+    draft = StackDraft.model_validate(
+        {
+            "stackName": "demo",
+            "intent": "web",
+            "services": [
+                {
+                    "name": "web",
+                    "kind": "custom",
+                    "image": "nginx:1.27-alpine",
+                    "resources": "large",
+                }
+            ],
+        }
+    )
+    result = await prepare_stack_draft(draft, ctx)
+    assert result.ok is True
+    assert result.prepared is not None
+    deploy = result.prepared.services["web"].deploy
+    assert deploy is not None
+    assert deploy.resources is not None
+    assert deploy.resources.limits is not None
+    assert deploy.resources.limits.memory == "2g"
+    assert "i" not in deploy.resources.limits.memory.lower()
 
 
 def test_extract_host_port() -> None:

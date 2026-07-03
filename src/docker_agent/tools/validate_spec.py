@@ -9,6 +9,7 @@ from typing import Any, Literal, cast
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from docker_agent.tools.base import ToolContext, ToolDone, ToolProgress
+from docker_agent.tools.shared.app_source_guard import check_app_source_artifacts
 from docker_agent.tools.shared.config_files import (
     StagedConfigFile,
     detect_missing_config_files,
@@ -23,14 +24,15 @@ from docker_agent.tools.shared.spec_schemas import (
     VolumeIntent,
     format_validation_error,
 )
-from docker_agent.tools.shared.volume_guard import check_volume_references
 from docker_agent.tools.shared.translator import prepare_stack_draft
+from docker_agent.tools.shared.volume_guard import check_volume_references
 from docker_agent.types.stack import ServiceSpec
 
 SpecIssueCode = Literal[
     "invalid_image",
     "invalid_config_path",
     "missing_config_file",
+    "missing_app_source",
     "invalid_spec",
     "undeclared_network",
     "undeclared_volume",
@@ -85,6 +87,7 @@ async def validate_spec_input(
             )
         )
 
+    staged_files: list[StagedConfigFile] = []
     staged = stage_config_files(ctx.cwd, services, config_files)
     if not staged.get("ok"):
         issues.append(
@@ -112,6 +115,15 @@ async def validate_spec_input(
                     ),
                 )
             )
+
+    for issue in check_app_source_artifacts(services, {f.path for f in staged_files}):
+        issues.append(
+            SpecIssue(
+                code="missing_app_source",
+                path=f"services.{issue.service}.command",
+                message=issue.message,
+            )
+        )
 
     return ValidateSpecResult(
         valid=len(issues) == 0,

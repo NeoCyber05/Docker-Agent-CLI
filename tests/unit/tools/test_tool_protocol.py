@@ -23,6 +23,8 @@ def test_tool_context_fields() -> None:
         "image_validator",
         "session_id",
         "health_check_deadline_ms",
+        "provider_name",
+        "model",
     }
 
 

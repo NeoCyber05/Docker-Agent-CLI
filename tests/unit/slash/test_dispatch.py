@@ -110,6 +110,23 @@ def test_destroy_stack_prompt_and_parse_direct_destroy_stack_round_trip() -> Non
     assert is_destroy_all_prompt("destroy all stacks") is True
 
 
+def test_stop_stack_prompt_and_parse_direct_stop_stack_round_trip() -> None:
+    from docker_agent.slash.dispatch import parse_direct_stop_stack, stop_stack_prompt
+
+    assert stop_stack_prompt("webapp") == "Stop stack webapp"
+    assert stop_stack_prompt("webapp", ["api", "web"]) == "Stop stack webapp services api, web"
+    assert parse_direct_stop_stack("Stop stack webapp") == {"stack_name": "webapp"}
+    assert parse_direct_stop_stack("stop webapp") == {"stack_name": "webapp"}
+    assert parse_direct_stop_stack("Stop stack webapp services api, web") == {
+        "stack_name": "webapp",
+        "services": ["api", "web"],
+    }
+    assert parse_direct_stop_stack("stop webapp services api web") == {
+        "stack_name": "webapp",
+        "services": ["api", "web"],
+    }
+
+
 def test_dispatch_secrets_list_reports_when_no_keys_are_tracked(tmp_project) -> None:
     store = StateStore(str(tmp_project / ".docker-agent"))
     ctx = SlashDispatchContext(cwd=str(tmp_project), state_store=store)

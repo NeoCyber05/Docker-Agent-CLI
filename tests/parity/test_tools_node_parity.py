@@ -11,7 +11,13 @@ from docker_agent.engine.langgraph_backend import LangGraphBackend
 from docker_agent.types.events import LoopEvent
 from docker_agent.types.message import UserMessage
 from docker_agent.types.permissions import AlwaysAllowInSession, Deny
-from tests.parity.conftest import fake_provider, output_field, text_done, tool_use_call
+from tests.parity.conftest import (
+    fake_provider,
+    output_field,
+    patch_langchain_fake_model,
+    text_done,
+    tool_use_call,
+)
 
 
 def _expect_event_order(events: list[LoopEvent], *types: str) -> None:
@@ -21,6 +27,16 @@ def _expect_event_order(events: list[LoopEvent], *types: str) -> None:
         assert indices[i] < indices[i + 1]
 
 
+class _FakeExecDockerProc:
+    returncode = 0
+
+    async def communicate(self) -> tuple[bytes, bytes]:
+        return b"CONTAINER ID\n", b""
+
+
+async def _fake_create_subprocess_exec(*_args: object, **_kwargs: object):
+    return _FakeExecDockerProc()
+
 async def _run_backend(
     ctx: Any,
     tool_name: str,
@@ -28,16 +44,23 @@ async def _run_backend(
 ) -> list[LoopEvent]:
     backend = LangGraphBackend()
     events: list[LoopEvent] = []
-    async for ev in backend.query(
-        BackendQueryParams(
-            messages=[UserMessage(content=f"run {tool_name}")],
-            ctx=ctx,
-            provider=fake_provider([tool_use_call(tool_name, input_data), text_done()]),
-        )
-    ):
-        events.append(ev)
+    provider = fake_provider([tool_use_call(tool_name, input_data), text_done()])
+    with pytest.MonkeyPatch.context() as mp:
+        if tool_name == "exec_docker":
+            mp.setattr(
+                "docker_agent.tools.exec_docker.asyncio.create_subprocess_exec",
+                _fake_create_subprocess_exec,
+            )
+        patch_langchain_fake_model(mp, provider)
+        async for ev in backend.query(
+            BackendQueryParams(
+                messages=[UserMessage(content=f"run {tool_name}")],
+                ctx=ctx,
+                provider=provider,
+            )
+        ):
+            events.append(ev)
     return events
-
 
 async def _run_tool_test(
     tmp_project: Any,

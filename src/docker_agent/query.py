@@ -6,7 +6,6 @@ Parity: ``src/query.ts``.
 from __future__ import annotations
 
 import json
-import os
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -20,7 +19,11 @@ from docker_agent.core.prompt_builder import build_system_prompt
 from docker_agent.policy.defaults import ensure_global_policy
 from docker_agent.policy.policy_engine import PolicyEngine
 from docker_agent.services.api.types import CallModelParams, Provider, ToolSchema
-from docker_agent.slash.dispatch import is_destroy_all_prompt, parse_direct_destroy_stack
+from docker_agent.slash.dispatch import (
+    is_destroy_all_prompt,
+    parse_direct_destroy_stack,
+    parse_direct_stop_stack,
+)
 from docker_agent.state.rollback import capture_known_good, plan_rollback
 from docker_agent.state.secret_redactor import scrub_line
 from docker_agent.state.state_store import HistoryEvent
@@ -30,6 +33,7 @@ from docker_agent.tools.base import Tool, ToolDone, find_tool_by_name
 from docker_agent.tools.base import ToolProgress as ToolProgressMsg
 from docker_agent.tools.destroy_all_stacks import destroy_all_stacks
 from docker_agent.tools.destroy_stack import destroy_stack
+from docker_agent.tools.stop_stack import stop_stack
 from docker_agent.tools.plan_stack import PlanStackResultBlocked, plan_stack  # noqa: F401
 from docker_agent.tools.remediate_drift import remediate_drift
 from docker_agent.tools.shared.config_files import (
@@ -39,6 +43,12 @@ from docker_agent.tools.shared.config_files import (
     write_config_files,
 )
 from docker_agent.tools.shared.secret_keys import SecretKeysContext, collect_secret_keys
+from docker_agent.tools.shared.secret_staging import (
+    StagedSecretFile,
+    restore_secret_files,
+    snapshot_secret_files,
+    write_secret_files,
+)
 from docker_agent.types.events import (
     AssistantText,
     Error,
@@ -105,6 +115,10 @@ def format_plan_blocker(result: PlanStackResultBlocked) -> str:
         return (
             f"plan_stack blocked: Missing content for config file(s): {', '.join(paths)}."
         )
+    if reason == "missing_app_source":
+        issues = result.app_source_issues or []
+        body = "\n".join(f"- {issue.message}" for issue in issues)
+        return f"plan_stack blocked: Missing application source artifact(s):\n{body}"
     if reason == "missing_required_env":
         lines = ["plan_stack blocked: Missing required environment variables."]
         for svc, keys in (result.missing_by_service or {}).items():
@@ -307,17 +321,22 @@ async def apply_with_rollback(
     scale_overrides: dict[str, int] | None,
     config_files: list[StagedConfigFile],
     ctx: LoopContext,
+    secret_files: list[StagedSecretFile] | None = None,
 ) -> tuple[list[LoopEvent], dict[str, Any]]:
     events: list[LoopEvent] = []
     known = capture_known_good(stack_name, {"state_store": ctx.state_store})
     snapshots = snapshot_config_files(ctx.cwd, config_files)
+    staged_secrets = secret_files or []
+    secret_snapshots = snapshot_secret_files(staged_secrets)
     try:
         write_config_files(ctx.cwd, config_files)
+        write_secret_files(staged_secrets)
     except OSError as err:
         restore_config_files(snapshots)
+        restore_secret_files(secret_snapshots)
         return events, {
             "ok": False,
-            "result_message": f"failed to write config files: {err}",
+            "result_message": f"failed to write staged files: {err}",
         }
 
     apply_input = apply_stack.input_schema.model_validate(
@@ -386,6 +405,7 @@ async def apply_with_rollback(
         rollback_ok = False
 
     restore_config_files(snapshots)
+    restore_secret_files(secret_snapshots)
 
     ctx.state_store.append_history(
         HistoryEvent(
@@ -423,13 +443,6 @@ async def request_secrets_and_patch(
     if _response_kind(resp) != "secrets_input_values":
         return None
     values = resp.get("values", {}) if isinstance(resp, dict) else resp.values
-    secrets_dir = Path(ctx.cwd) / ".docker-agent" / "secrets"
-    secrets_dir.mkdir(parents=True, exist_ok=True)
-    stack_name = current_input.stack_name
-    env_file = secrets_dir / f"{stack_name}-{service}.env"
-    lines = "\n".join(f"{k}={v}" for k, v in values.items()) + "\n"
-    env_file.write_text(lines, encoding="utf-8")
-    os.chmod(env_file, 0o600)
     for svc in current_input.services:
         if svc.name == service:
             if svc.environment is None:
@@ -485,6 +498,16 @@ async def handle_plan_stack_tool_use(
                         "with its full content."
                     ),
                 }
+            if plan_result.reason == "missing_app_source":
+                issues = plan_result.app_source_issues or []
+                body = "\n".join(f"- {issue.message}" for issue in issues)
+                return events, {
+                    "is_error": True,
+                    "result_message": (
+                        "Missing application source artifact(s). Provide source via "
+                        f"configFiles or ask the user:\n{body}"
+                    ),
+                }
             for service, keys in (plan_result.missing_by_service or {}).items():
                 patched = await request_secrets_and_patch(service, keys, ctx, parsed)
                 if patched is None:
@@ -510,6 +533,16 @@ async def handle_plan_stack_tool_use(
                     f"Policy violation(s) detected. Deployment is blocked:\n{msgs}"
                 ),
             }
+
+        ctx.state_store.append_history(
+            HistoryEvent(
+                ts=datetime.now(UTC).isoformat(),
+                session_id=ctx.session_id or "unknown",
+                stack_name=parsed.stack_name,
+                action="plan",
+                details={"hash": plan_result.hash},
+            )
+        )
 
         confirm_payload: dict[str, Any] = {
             "compose_yaml": plan_result.compose_yaml,
@@ -549,6 +582,7 @@ async def handle_plan_stack_tool_use(
             scale,
             plan_result.config_files,
             ctx,
+            plan_result.staged_secret_files,
         )
         events.extend(apply_events)
         return events, {
@@ -674,6 +708,29 @@ async def run_direct_destroy_stack(
         yield ev
 
 
+async def run_direct_stop_stack(
+    stack_name: str,
+    services: list[str] | None,
+    ctx: LoopContext,
+) -> AsyncIterator[LoopEvent]:
+    input_data = stop_stack.input_schema.model_validate(
+        {
+            "stack_name": stack_name,
+            **({"services": services} if services else {}),
+        }
+    )
+    if "stop_stack" not in ctx.allow_set:
+        resp = await ctx.request_permission("stop_stack", input_data)
+        if _response_kind(resp) == "deny":
+            yield AssistantText(delta="stop_stack aborted: permission denied")
+            return
+        if _response_kind(resp) == "always_allow_in_session":
+            ctx.allow_set.add("stop_stack")
+
+    async for ev in run_tool(cast(Tool[Any, Any], stop_stack), input_data, ctx):
+        yield ev
+
+
 async def query(
     *,
     messages: list[Message],
@@ -748,6 +805,17 @@ async def query(
         async for ev in run_direct_destroy_stack(
             str(direct_destroy["stack_name"]),
             bool(direct_destroy["remove_volumes"]),
+            ctx,
+        ):
+            yield ev
+        return
+
+    direct_stop = parse_direct_stop_stack(last_user.content) if last_user is not None else None
+    if direct_stop is not None:
+        services = direct_stop.get("services")
+        async for ev in run_direct_stop_stack(
+            str(direct_stop["stack_name"]),
+            list(services) if isinstance(services, list) else None,
             ctx,
         ):
             yield ev

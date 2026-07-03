@@ -127,9 +127,7 @@ def _is_named_volume_mount(volume: str) -> bool:
     host_part = volume.split(":")[0]
     if not host_part:
         return False
-    if host_part.startswith((".", "~", "/")):
-        return False
-    return True
+    return not host_part.startswith((".", "~", "/"))
 
 
 def check_volume_references(

@@ -38,6 +38,8 @@ class LoopContext(Protocol):
     image_validator: ImageValidator | None
     session_id: str | None
     health_check_deadline_ms: int | None
+    provider_name: str
+    model: str | None
     request_permission: Any
     request_confirm: Any
     request_typed_confirm: Any

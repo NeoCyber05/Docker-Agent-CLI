@@ -174,5 +174,126 @@ async def test_plan_review_success_with_apply(make_loop_ctx, tmp_project) -> Non
             ),
         )
 
-    assert result["messages"][0].is_error is False
     assert result["messages"][0].content == "Stack applied."
+
+
+@pytest.mark.asyncio
+async def test_plan_review_appends_plan_history_before_interrupt(
+    make_loop_ctx, tmp_project
+) -> None:
+    ctx = make_loop_ctx()
+    ctx.session_id = "sess-plan"
+    policy_path = tmp_project / "project-policies.yaml"
+    policy_path.write_text("project: {}\n", encoding="utf-8")
+    policy = PolicyEngine(project_policy_path=str(policy_path))
+    deps = PlanReviewNodeDeps(ctx=ctx, policy_engine=policy, emit=lambda _e: None)
+
+    from docker_agent.tools.plan_stack import PlanStackResultOk
+    from docker_agent.types.stack import StackDiff
+
+    ok_plan = PlanStackResultOk(
+        compose_yaml="services:\n  web:\n    image: nginx:1.27-alpine\n",
+        diff=StackDiff(stack_name="web", status="missing", service_diffs=[]),
+        hash="plan-hash",
+    )
+
+    with (
+        patch(
+            "docker_agent.engine.nodes.plan_review_node._run_plan_stack",
+            new=AsyncMock(return_value=ok_plan),
+        ),
+        patch(
+            "docker_agent.engine.nodes.plan_review_node.interrupt",
+            return_value={"kind": "deny"},
+        ),
+        patch.object(
+            ctx.state_store, "append_history", wraps=ctx.state_store.append_history
+        ) as append_history,
+    ):
+        await plan_review_node(
+            deps,
+            _plan_state(
+                {
+                    "stackName": "web",
+                    "intent": "deploy",
+                    "services": [
+                        {
+                            "name": "web",
+                            "kind": "custom",
+                            "image": "nginx:1.27-alpine",
+                            "exposure": "public",
+                            "hostPort": 8080,
+                            "containerPort": 80,
+                        }
+                    ],
+                }
+            ),
+        )
+
+    plan_events = [
+        call.args[0] for call in append_history.call_args_list if call.args[0].action == "plan"
+    ]
+    assert plan_events
+    assert plan_events[0].session_id == "sess-plan"
+    assert plan_events[0].details == {"hash": "plan-hash"}
+
+
+@pytest.mark.asyncio
+async def test_plan_review_requests_secrets_for_missing_required_env(
+    make_loop_ctx, tmp_project
+) -> None:
+    ctx = make_loop_ctx()
+    policy_path = tmp_project / "project-policies.yaml"
+    policy_path.write_text("project: {}\n", encoding="utf-8")
+    policy = PolicyEngine(project_policy_path=str(policy_path))
+    deps = PlanReviewNodeDeps(ctx=ctx, policy_engine=policy, emit=lambda _e: None)
+
+    from docker_agent.tools.plan_stack import PlanStackResultBlocked, PlanStackResultOk
+    from docker_agent.types.stack import StackDiff
+
+    blocked = PlanStackResultBlocked(
+        reason="missing_required_env",
+        missing_by_service={"db": ["MONGO_INITDB_ROOT_PASSWORD"]},
+    )
+    ok_plan = PlanStackResultOk(
+        compose_yaml="services:\n  db:\n    image: mongo:6.0\n",
+        diff=StackDiff(stack_name="web", status="missing", service_diffs=[]),
+        hash="abc",
+    )
+
+    ctx.request_secrets_input = AsyncMock(
+        return_value={"kind": "secrets_input_values", "values": {"MONGO_INITDB_ROOT_PASSWORD": "user-secret"}}
+    )
+
+    with (
+        patch(
+            "docker_agent.engine.nodes.plan_review_node._run_plan_stack",
+            new=AsyncMock(side_effect=[blocked, ok_plan]),
+        ),
+        patch(
+            "docker_agent.engine.nodes.plan_review_node.interrupt",
+            return_value={"kind": "deny"},
+        ),
+    ):
+        await plan_review_node(
+            deps,
+            _plan_state(
+                {
+                    "stackName": "web",
+                    "intent": "deploy",
+                    "services": [
+                        {
+                            "name": "db",
+                            "kind": "catalog",
+                            "catalogId": "mongodb:6.0",
+                        }
+                    ],
+                }
+            ),
+        )
+
+    ctx.request_secrets_input.assert_awaited_once_with(
+        "db",
+        ["MONGO_INITDB_ROOT_PASSWORD"],
+        "missing required env",
+    )

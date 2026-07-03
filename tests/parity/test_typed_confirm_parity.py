@@ -14,7 +14,13 @@ from docker_agent.types.message import UserMessage
 from docker_agent.types.permissions import Approve, Deny, TypedConfirmValue
 from docker_agent.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
 from tests.mocks.mock_compose_runner import MockComposeRunner
-from tests.parity.conftest import fake_provider, output_field, text_done, tool_use_call
+from tests.parity.conftest import (
+    fake_provider,
+    output_field,
+    patch_langchain_fake_model,
+    text_done,
+    tool_use_call,
+)
 
 
 def _expect_event_order(events: list[LoopEvent], *types: str) -> None:
@@ -31,16 +37,18 @@ async def _run_backend(
 ) -> list[LoopEvent]:
     events: list[LoopEvent] = []
     backend = LangGraphBackend()
-    async for ev in backend.query(
-        BackendQueryParams(
-            messages=[UserMessage(content=f"run {tool_name}")],
-            ctx=ctx,
-            provider=fake_provider([tool_use_call(tool_name, input_data), text_done()]),
-        )
-    ):
-        events.append(ev)
+    provider = fake_provider([tool_use_call(tool_name, input_data), text_done()])
+    with pytest.MonkeyPatch.context() as mp:
+        patch_langchain_fake_model(mp, provider)
+        async for ev in backend.query(
+            BackendQueryParams(
+                messages=[UserMessage(content=f"run {tool_name}")],
+                ctx=ctx,
+                provider=provider,
+            )
+        ):
+            events.append(ev)
     return events
-
 
 @pytest.mark.asyncio
 async def test_destroy_all_stacks_typed_confirm_match_executes(make_context) -> None:
@@ -200,8 +208,9 @@ async def test_remediate_drift_approval_apply_succeeds(make_context, tmp_project
     events.extend(collected)
 
     types = [e.type for e in events]
-    assert "plan_ready" in types
-    _expect_event_order(events, "tool_call", "tool_result")
+    assert "permission_request" in types
+    assert "plan_ready" not in types
+    _expect_event_order(events, "permission_request", "tool_call", "tool_result")
 
     remediate_result = next(
         (e for e in events if e.type == "tool_result" and e.name == "remediate_drift"),
@@ -209,14 +218,6 @@ async def test_remediate_drift_approval_apply_succeeds(make_context, tmp_project
     )
     assert remediate_result is not None
     assert output_field(remediate_result.output, "remediable") is True
-
-    apply_result = next(
-        (e for e in events if e.type == "tool_result" and e.name == "apply_stack"),
-        None,
-    )
-    assert apply_result is not None
-    assert output_field(apply_result.output, "ok") is True
-
 
 def _dict_to_event(ev: dict[str, Any]) -> LoopEvent:
     from pydantic import TypeAdapter

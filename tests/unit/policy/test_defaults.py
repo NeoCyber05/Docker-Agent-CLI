@@ -14,7 +14,10 @@ from docker_agent.policy.policy_engine import PolicyEngine
 from docker_agent.policy.types import PolicyConfig
 
 
-def test_global_policy_path_honors_env_override(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_global_policy_path_honors_env_override(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     custom = str(tmp_path / "custom-policies.yaml")
     monkeypatch.setenv("DOCKER_AGENT_GLOBAL_POLICY", custom)
     assert global_policy_path() == custom

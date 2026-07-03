@@ -101,3 +101,38 @@ def test_scrub_line_multiple_keys() -> None:
 def test_scrub_line_escapes_regex_metacharacters_in_key() -> None:
     line = "API.KEY=xyz"
     assert scrub_line(line, {"API.KEY"}) == "API.KEY=***"
+
+
+def test_redact_text_shell_style_secret() -> None:
+    from docker_agent.state.secret_redactor import redact_text
+
+    assert redact_text("password=abc123") == "password=***"
+
+
+def test_redact_value_deep_nested_dict_key() -> None:
+    from docker_agent.state.secret_redactor import redact_value_deep
+
+    out = redact_value_deep({"api_key": "secret-value", "safe": "ok"})
+    assert out["api_key"] == "***"
+    assert out["safe"] == "ok"
+
+
+def test_looks_like_credential_uri_detects_embedded_password() -> None:
+    from docker_agent.state.secret_redactor import looks_like_credential_uri
+
+    assert looks_like_credential_uri("mongodb://user:pass@mongo:27017/db")
+    assert not looks_like_credential_uri("mongodb://mongo:27017/db")
+
+
+def test_redact_text_masks_credential_uri() -> None:
+    from docker_agent.state.secret_redactor import redact_text
+
+    assert (
+        redact_text('MONGO_URI="mongodb://admin:secret@db:27017/app"')
+        == 'MONGO_URI="mongodb://***@db:27017/app"'
+    )
+
+
+def test_scrub_line_masks_credential_uri_without_known_key() -> None:
+    line = "MONGO_URI=mongodb://admin:secret@db:27017/app"
+    assert scrub_line(line, set()) == "MONGO_URI=mongodb://***@db:27017/app"

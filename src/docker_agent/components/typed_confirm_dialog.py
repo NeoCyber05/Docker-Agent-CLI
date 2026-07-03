@@ -14,7 +14,6 @@ from textual.widgets import Input, Static
 
 from docker_agent.types.permissions import Deny, PermissionResponse, TypedConfirmValue
 
-
 # ── Legacy modal (kept for existing unit tests) ──────────────────────────────
 
 class TypedConfirmDialog(ModalScreen[PermissionResponse]):

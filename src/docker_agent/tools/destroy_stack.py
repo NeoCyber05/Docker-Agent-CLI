@@ -73,7 +73,7 @@ class _DestroyStackTool:
         ctx.state_store.append_history(
             HistoryEvent(
                 ts=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-                session_id="unknown",
+                session_id=ctx.session_id or "unknown",
                 stack_name=input.stack_name,
                 action="destroy",
                 details={

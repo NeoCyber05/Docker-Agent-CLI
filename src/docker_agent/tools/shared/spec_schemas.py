@@ -6,9 +6,7 @@ Parity: ``src/tools/shared/specSchemas.ts``.
 from __future__ import annotations
 
 import re
-from typing import Literal, Self
-
-from typing import Any
+from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 

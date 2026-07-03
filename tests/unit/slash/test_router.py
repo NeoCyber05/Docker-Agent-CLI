@@ -161,6 +161,34 @@ async def test_status_without_arg_shows_usage_error(tmp_project) -> None:
 
 
 @pytest.mark.asyncio
+async def test_stop_stack_rewrites_to_stop_prompt(tmp_project) -> None:
+    result = await route_slash_command("/stop webapp", make_ctx(tmp_project))
+    assert result.effects == [
+        {"type": "emit_user_text", "text": "/stop webapp"},
+        {"type": "submit_prompt", "prompt": "Stop stack webapp"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_stop_stack_with_services_rewrites_to_stop_prompt(tmp_project) -> None:
+    result = await route_slash_command("/stop webapp api web", make_ctx(tmp_project))
+    assert result.effects == [
+        {"type": "emit_user_text", "text": "/stop webapp api web"},
+        {"type": "submit_prompt", "prompt": "Stop stack webapp services api, web"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_stop_without_arg_shows_usage_error(tmp_project) -> None:
+    result = await route_slash_command("/stop", make_ctx(tmp_project))
+    assert any(
+        effect["type"] == "emit_error"
+        and effect["message"] == "Usage: /stop <stack> [service...]"
+        for effect in result.effects
+    )
+
+
+@pytest.mark.asyncio
 async def test_destroy_all_rewrites_case_insensitively(tmp_project) -> None:
     result = await route_slash_command("/destroy ALL", make_ctx(tmp_project))
     assert result.effects == [

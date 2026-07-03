@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from textual.app import App, ComposeResult
-
 from io import StringIO
 
 from rich.console import Console
+from textual.app import App, ComposeResult
 
 from docker_agent.components.welcome_banner import WelcomeBanner, build_welcome_content
 
@@ -43,7 +42,9 @@ def test_welcome_banner_shows_tips() -> None:
     from rich.console import Console
 
     buffer = StringIO()
-    Console(file=buffer, width=100).print(build_welcome_content("0.1.0", username="alice", compact=False))
+    Console(file=buffer, width=100).print(
+        build_welcome_content("0.1.0", username="alice", compact=False)
+    )
     text = buffer.getvalue()
     assert "/help" in text
     assert "Tips for getting started" in text

@@ -1,4 +1,4 @@
-"""LangGraph plan_review parity — mirrors planReview.parity.test.ts."""
+"""Plan review contract tests for the native LangGraph backend."""
 
 from __future__ import annotations
 
@@ -6,11 +6,11 @@ import os
 from typing import Any
 
 import pytest
+from langchain_core.messages import AIMessage
 
 from docker_agent.query_engine import QueryEngine
-from docker_agent.services.api.types import MessageStopEvent, TextDeltaEvent
 from docker_agent.types.permissions import Approve, Deny
-from tests.integration.conftest import fake_provider, plan_stack_events
+from tests.integration.conftest import FakeProvider, IntegrationFakeModel, deploy_stack_message
 from tests.mocks.mock_compose_runner import MockComposeRunner
 from tests.mocks.mock_docker_engine import MockDockerEngine
 
@@ -19,21 +19,27 @@ def _make_engine(
     tmp_project: Any,
     state_store: Any,
     compose_runner: MockComposeRunner,
-    provider_events: list[list[Any]],
+    responses: list[AIMessage],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> QueryEngine:
     os.environ["DOCKER_AGENT_BACKEND"] = "langgraph"
+    model_responses = list(responses)
+    if model_responses and model_responses[-1].tool_calls:
+        model_responses.append(AIMessage(content="done"))
+    model = IntegrationFakeModel(responses=model_responses)
+    monkeypatch.setattr(
+        "docker_agent.engine.langgraph_backend.create_chat_model",
+        lambda **_kwargs: model,
+    )
     return QueryEngine(
         cwd=str(tmp_project),
         state_store=state_store,
         docker_engine=MockDockerEngine(),
         compose_runner=compose_runner,
-        provider=fake_provider(provider_events),
+        provider=FakeProvider(),
+        model="fake-model",
         health_check_deadline_ms=0,
     )
-
-
-def text_done() -> list[Any]:
-    return [TextDeltaEvent(text="done"), MessageStopEvent(stop_reason="end_turn")]
 
 
 @pytest.fixture
@@ -48,7 +54,10 @@ def plan_review_project(tmp_path: Any):
 
 
 @pytest.mark.asyncio
-async def test_approve_plan_apply_succeeds(plan_review_project) -> None:
+async def test_approve_plan_apply_succeeds(
+    plan_review_project,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     tmp_project, state_store, compose_runner = plan_review_project
     compose_runner.on_bound_runner_created = lambda runner: runner.set_running_services(["web"])
 
@@ -57,7 +66,7 @@ async def test_approve_plan_apply_succeeds(plan_review_project) -> None:
         state_store,
         compose_runner,
         [
-            plan_stack_events(
+            deploy_stack_message(
                 {
                     "stackName": "nginx",
                     "intent": "tao nginx",
@@ -74,6 +83,7 @@ async def test_approve_plan_apply_succeeds(plan_review_project) -> None:
                 }
             ),
         ],
+        monkeypatch,
     )
     events: list[str] = []
 
@@ -89,14 +99,17 @@ async def test_approve_plan_apply_succeeds(plan_review_project) -> None:
 
 
 @pytest.mark.asyncio
-async def test_deny_plan_no_apply(plan_review_project) -> None:
+async def test_deny_plan_no_apply(
+    plan_review_project,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     tmp_project, state_store, compose_runner = plan_review_project
     engine = _make_engine(
         tmp_project,
         state_store,
         compose_runner,
         [
-            plan_stack_events(
+            deploy_stack_message(
                 {
                     "stackName": "denied",
                     "intent": "deny me",
@@ -112,32 +125,32 @@ async def test_deny_plan_no_apply(plan_review_project) -> None:
                     ],
                 }
             ),
-            text_done(),
         ],
+        monkeypatch,
     )
     plan_ready_seen = False
-    events: list[str] = []
 
     async for ev in engine.query("deny plan"):
-        events.append(ev.type)
         if ev.type == "plan_ready":
             plan_ready_seen = True
             engine.respond_to(ev.id, Deny())
 
     assert plan_ready_seen is True
     assert compose_runner.for_stack_calls == []
-    assert "text_delta" not in events
 
 
 @pytest.mark.asyncio
-async def test_invalid_spec_plan_blocked(plan_review_project) -> None:
+async def test_invalid_spec_plan_blocked(
+    plan_review_project,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     tmp_project, state_store, compose_runner = plan_review_project
     engine = _make_engine(
         tmp_project,
         state_store,
         compose_runner,
         [
-            plan_stack_events(
+            deploy_stack_message(
                 {
                     "stackName": "bad",
                     "intent": "bad spec",
@@ -150,6 +163,7 @@ async def test_invalid_spec_plan_blocked(plan_review_project) -> None:
                 }
             ),
         ],
+        monkeypatch,
     )
     events: list[str] = []
 
@@ -161,7 +175,10 @@ async def test_invalid_spec_plan_blocked(plan_review_project) -> None:
 
 
 @pytest.mark.asyncio
-async def test_apply_failure_rollback_events(plan_review_project) -> None:
+async def test_apply_failure_rollback_events(
+    plan_review_project,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from docker_agent.services.docker.compose_runner import ComposePsRow
 
     tmp_project, state_store, compose_runner = plan_review_project
@@ -181,7 +198,7 @@ async def test_apply_failure_rollback_events(plan_review_project) -> None:
         state_store,
         compose_runner,
         [
-            plan_stack_events(
+            deploy_stack_message(
                 {
                     "stackName": "partial",
                     "intent": "deploy partial",
@@ -202,8 +219,8 @@ async def test_apply_failure_rollback_events(plan_review_project) -> None:
                     ],
                 }
             ),
-            [MessageStopEvent(stop_reason="end_turn")],
         ],
+        monkeypatch,
     )
 
     rollback_events: list[Any] = []

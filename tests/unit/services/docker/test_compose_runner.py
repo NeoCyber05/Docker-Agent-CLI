@@ -1,12 +1,12 @@
 """Parity tests for compose_runner — mirrors src/services/docker/composeRunner.ts."""
 
-import asyncio
 import sys
 from collections.abc import AsyncIterator
 
 import pytest
 
 from docker_agent.services.docker.compose_runner import BoundComposeRunner, _default_spawner_impl
+
 
 class FakeSpawner:
     def __init__(self, lines: list[str], exit_code: int = 0) -> None:
@@ -134,10 +134,15 @@ async def test_default_spawner_streams_before_process_exit() -> None:
         "time.sleep(0.2); print('second-line', flush=True)"
     )
     lines: list[str] = []
-    async for line in _default_spawner_impl(
-        sys.executable,
-        ["-c", script],
-        {"cwd": "."},
-    ):
-        lines.append(line)
+    try:
+        async for line in _default_spawner_impl(
+            sys.executable,
+            ["-c", script],
+            {"cwd": "."},
+        ):
+            lines.append(line)
+    except PermissionError as err:
+        if sys.platform == "win32":
+            pytest.skip(f"Windows sandbox blocked subprocess pipes: {err}")
+        raise
     assert lines[:2] == ["first-line", "second-line"]

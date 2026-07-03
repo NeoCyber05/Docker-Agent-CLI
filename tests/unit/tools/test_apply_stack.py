@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -34,7 +35,10 @@ services:
 """
 
 
-async def _drain_verify_health(*args: object, **kwargs: object) -> tuple[list[ToolProgress], dict[str, object]]:
+async def _drain_verify_health(
+    *args: object,
+    **kwargs: object,
+) -> tuple[list[ToolProgress], dict[str, object]]:
     progress: list[ToolProgress] = []
     result: dict[str, object] | None = None
     async for item in verify_health(*args, **kwargs):  # type: ignore[arg-type]
@@ -120,6 +124,36 @@ async def test_apply_stack_writes_yaml_and_runs_compose_up(tmp_project: Path) ->
     stored = ctx.state_store.read("webapp")
     assert stored is not None
     assert stored.x_docker_agent.last_applied is not None
+
+
+@pytest.mark.asyncio
+async def test_apply_stack_history_uses_session_id(tmp_project: Path) -> None:
+    runner = MockComposeRunner(str(tmp_project))
+    ctx = replace(
+        make_ctx(tmp_project, docker_engine=MockDockerEngine(), compose_runner=runner),
+        session_id="sess-apply",
+    )
+    yaml_path = stack_state_yaml_path("webapp", str(tmp_project))
+    pre_created = runner.for_stack("webapp", yaml_path)
+    pre_created.set_running_services(["web"])
+    runner.for_stack_calls.clear()
+
+    with patch.object(
+        ctx.state_store, "append_history", wraps=ctx.state_store.append_history
+    ) as append_history:
+        result = await drain(
+            apply_stack.call(
+                ApplyStackInput(stack_name="webapp", compose_yaml=WEBAPP_YAML),
+                ctx,
+            )
+        )
+
+    assert result.ok is True
+    apply_events = [
+        call.args[0] for call in append_history.call_args_list if call.args[0].action == "apply"
+    ]
+    assert apply_events
+    assert apply_events[0].session_id == "sess-apply"
 
 
 @pytest.mark.asyncio

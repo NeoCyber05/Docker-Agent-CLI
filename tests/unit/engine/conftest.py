@@ -56,6 +56,8 @@ def _build_loop_ctx(tmp_project: Path) -> Any:
             "request_secrets_input": AsyncMock(return_value={"kind": "deny"}),
             "allow_set": set(),
             "logger": None,
+            "provider_name": "unknown",
+            "model": None,
         },
     )(**ctx.__dict__)
 

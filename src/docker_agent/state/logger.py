@@ -11,13 +11,13 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from docker_agent.state.secret_redactor import should_redact
+from docker_agent.state.secret_redactor import redact_text, redact_value_deep
 
 LogLevel = Literal["debug", "info", "warn", "error"]
 
 
 class LogEntry(BaseModel):
-    """One log row. Only ``data`` is recursively redacted by the logger."""
+    """One log row. ``message`` and ``data`` are redacted by the logger."""
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
     ts: str
@@ -63,9 +63,12 @@ class StructuredLogger:
         self._flush()
 
     def _redact_entry(self, entry: LogEntry) -> LogEntry:
-        if not entry.data:
-            return entry
-        return entry.model_copy(update={"data": _redact_object(entry.data)})
+        updates: dict[str, Any] = {"message": redact_text(entry.message)}
+        if entry.data is not None:
+            redacted = redact_value_deep(entry.data)
+            if isinstance(redacted, dict):
+                updates["data"] = redacted
+        return entry.model_copy(update=updates)
 
     def _flush(self) -> None:
         with self._lock:
@@ -80,18 +83,6 @@ class StructuredLogger:
         except Exception:  # noqa: BLE001
             # Best-effort: log writes must never crash the agent loop.
             pass
-
-
-def _redact_object(obj: dict[str, Any]) -> dict[str, Any]:
-    out: dict[str, Any] = {}
-    for key, value in obj.items():
-        if should_redact(key):
-            out[key] = "***"
-        elif isinstance(value, dict):
-            out[key] = _redact_object(value)
-        else:
-            out[key] = value
-    return out
 
 
 __all__ = ["LogEntry", "LogLevel", "StructuredLogger"]

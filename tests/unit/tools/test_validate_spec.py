@@ -245,3 +245,27 @@ async def test_reports_invalid_image(tmp_project) -> None:
     )
     assert result.valid is False
     assert result.issues[0].code == "invalid_image"
+
+
+@pytest.mark.asyncio
+async def test_blocks_custom_node_service_without_app_source(tmp_project) -> None:
+    _, result = await drain_with_progress(
+        validate_spec.call(
+            validate_spec.input_schema.model_validate(
+                {
+                    "services": [
+                        {
+                            "name": "api",
+                            "kind": "custom",
+                            "image": "node:20-alpine",
+                            "command": "node server.js",
+                        }
+                    ]
+                }
+            ),
+            make_ctx(tmp_project),
+        )
+    )
+    assert result.valid is False
+    assert any(issue.code == "missing_app_source" for issue in result.issues)
+    assert "server.js" in result.issues[0].message

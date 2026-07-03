@@ -1,4 +1,4 @@
-"""Integration plan-flow parity — mirrors tests/integration/plan-flow.test.ts."""
+"""Integration tests for the native LangChain plan and apply flow."""
 
 from __future__ import annotations
 
@@ -6,15 +6,9 @@ from typing import Any
 
 import pytest
 
-from docker_agent.services.api.types import (
-    MessageStopEvent,
-    ToolUseDeltaEvent,
-    ToolUseStartEvent,
-    ToolUseStopEvent,
-)
 from docker_agent.types.permissions import Approve, TypedConfirmValue
 from docker_agent.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
-from tests.integration.conftest import plan_stack_events
+from tests.integration.conftest import deploy_stack_message, tool_call_message
 
 
 def _seed_stack(state_store: Any, name: str) -> None:
@@ -40,7 +34,7 @@ async def test_nginx_plan_confirm_apply(make_engine, compose_runner, tmp_project
     compose_runner.on_bound_runner_created = lambda runner: runner.set_running_services(["web"])
     engine = make_engine(
         [
-            plan_stack_events(
+            deploy_stack_message(
                 {
                     "stackName": "nginx",
                     "intent": "tao nginx",
@@ -73,10 +67,15 @@ async def test_nginx_plan_confirm_apply(make_engine, compose_runner, tmp_project
 
 
 @pytest.mark.asyncio
-async def test_postgres_auto_generates_secret_file(make_engine, tmp_project) -> None:
+async def test_postgres_auto_generates_secret_file(
+    make_engine,
+    compose_runner,
+    tmp_project,
+) -> None:
+    compose_runner.on_bound_runner_created = lambda runner: runner.set_running_services(["db"])
     engine = make_engine(
         [
-            plan_stack_events(
+            deploy_stack_message(
                 {
                     "stackName": "pg",
                     "intent": "tao postgres",
@@ -113,17 +112,7 @@ async def test_destroy_all_aborts_without_typed_destroy_all(
 ) -> None:
     _seed_stack(state_store, "webapp")
     stack_path = tmp_project / "docker-stacks" / "webapp.yaml"
-    engine = make_engine(
-        [
-            [
-                ToolUseStartEvent(id="t1", name="destroy_all_stacks"),
-                ToolUseDeltaEvent(id="t1", args_partial_json="{}"),
-                ToolUseStopEvent(id="t1"),
-                MessageStopEvent(stop_reason="tool_use"),
-            ],
-            [MessageStopEvent(stop_reason="end_turn")],
-        ]
-    )
+    engine = make_engine([tool_call_message("destroy_all_stacks", {})])
     typed_confirm_requested = False
 
     async for ev in engine.query("destroy all"):
@@ -154,7 +143,7 @@ async def test_rollback_started_includes_running_services_on_partial_failure(
 
     engine = make_engine(
         [
-            plan_stack_events(
+            deploy_stack_message(
                 {
                     "stackName": "partial",
                     "intent": "deploy partial",
@@ -175,7 +164,6 @@ async def test_rollback_started_includes_running_services_on_partial_failure(
                     ],
                 }
             ),
-            [MessageStopEvent(stop_reason="end_turn")],
         ]
     )
 

@@ -21,6 +21,12 @@ from docker_agent.tools.shared.config_files import (
     snapshot_config_files,
     write_config_files,
 )
+from docker_agent.tools.shared.secret_staging import (
+    StagedSecretFile,
+    restore_secret_files,
+    snapshot_secret_files,
+    write_secret_files,
+)
 from docker_agent.types.events import (
     RollbackResult,
     RollbackStarted,
@@ -38,6 +44,7 @@ class ApplyWithRollbackParams:
     ctx: Any
     emit: Callable[[Any], None]
     scale_overrides: dict[str, int] | None = None
+    secret_files: list[StagedSecretFile] | None = None
 
 
 @dataclass
@@ -70,12 +77,16 @@ async def run_apply_with_rollback(params: ApplyWithRollbackParams) -> ApplyWithR
 
     known = capture_known_good(stack_name, {"state_store": ctx.state_store})
     snapshots = snapshot_config_files(ctx.cwd, params.config_files)
+    secret_files = params.secret_files or []
+    secret_snapshots = snapshot_secret_files(secret_files)
     try:
         write_config_files(ctx.cwd, params.config_files)
+        write_secret_files(secret_files)
     except Exception as err:
         restore_config_files(snapshots)
+        restore_secret_files(secret_snapshots)
         return ApplyWithRollbackResult(
-            ok=False, result_message=f"failed to write config files: {err}"
+            ok=False, result_message=f"failed to write staged files: {err}"
         )
 
     apply_input = apply_stack.input_schema.model_validate(
@@ -144,6 +155,7 @@ async def run_apply_with_rollback(params: ApplyWithRollbackParams) -> ApplyWithR
         rollback_ok = False
 
     restore_config_files(snapshots)
+    restore_secret_files(secret_snapshots)
 
     ctx.state_store.append_history(
         HistoryEvent(

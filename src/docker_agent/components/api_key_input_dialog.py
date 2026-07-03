@@ -1,4 +1,4 @@
-"""API key input modal."""
+"""API key input inline panel."""
 
 from __future__ import annotations
 
@@ -7,13 +7,51 @@ from typing import Any
 from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.events import Key
-from textual.screen import ModalScreen
+from textual.message import Message
 from textual.widgets import Input, Static
 
 from docker_agent.vault.api_key_store import ApiKeyProviderName
 
 
-class ApiKeyInputDialog(ModalScreen[str | None]):
+class ApiKeyInputClosed(Message):
+    """Posted when the inline API key input is dismissed."""
+
+    def __init__(self, result: str | None) -> None:
+        super().__init__()
+        self.result = result
+
+
+class ApiKeyInputDialog(Vertical):
+    """Inline API key input rendered inside the REPL."""
+
+    can_focus = True
+
+    BINDINGS = [
+        ("escape", "cancel", "Cancel"),
+    ]
+
+    DEFAULT_CSS = """
+    ApiKeyInputDialog {
+        height: auto;
+        max-height: 10;
+        border: round cyan;
+        padding: 0 1;
+        margin: 1 0;
+    }
+
+    ApiKeyInputDialog .title {
+        text-style: bold;
+    }
+
+    ApiKeyInputDialog .dim {
+        color: $text-muted;
+    }
+
+    ApiKeyInputDialog .error {
+        color: $error;
+    }
+    """
+
     def __init__(
         self,
         provider: ApiKeyProviderName,
@@ -35,12 +73,20 @@ class ApiKeyInputDialog(ModalScreen[str | None]):
             yield Static("Enter to save, Esc to cancel", classes="dim")
 
     def on_mount(self) -> None:
-        self.query_one("#api-key-input", Input).focus()
+        self.call_after_refresh(lambda: self.query_one("#api-key-input", Input).focus())
+
+    def _close(self, result: str | None) -> None:
+        if self._answered:
+            return
+        self._answered = True
+        self.post_message(ApiKeyInputClosed(result))
+
+    def action_cancel(self) -> None:
+        self._close(None)
 
     def on_key(self, event: Key) -> None:
-        if event.key == "escape" and not self._answered:
-            self._answered = True
-            self.dismiss(None)
+        if event.key == "escape":
+            self._close(None)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id != "api-key-input" or self._answered:
@@ -49,5 +95,4 @@ class ApiKeyInputDialog(ModalScreen[str | None]):
         if not value:
             self.query_one("#error-label", Static).update("API key cannot be empty")
             return
-        self._answered = True
-        self.dismiss(value)
+        self._close(value)

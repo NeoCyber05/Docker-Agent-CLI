@@ -268,6 +268,13 @@ def _plan_secret_refs(raw: list[Any] | None) -> list[PlanSecretRef]:
                     keys=[str(key) for key in item.get("keys", [])],
                 )
             )
+        elif hasattr(item, "service") and hasattr(item, "keys"):
+            refs.append(
+                PlanSecretRef(
+                    service=str(item.service),
+                    keys=[str(key) for key in item.keys],
+                )
+            )
     return refs
 
 
@@ -284,6 +291,14 @@ def _plan_config_refs(raw: list[Any] | None) -> list[PlanConfigRef]:
                     path=str(item.get("path", "")),
                     content=str(item.get("content", "")),
                     bytes=int(item.get("bytes", 0)),
+                )
+            )
+        elif hasattr(item, "path") and hasattr(item, "content"):
+            refs.append(
+                PlanConfigRef(
+                    path=str(item.path),
+                    content=str(item.content),
+                    bytes=int(getattr(item, "bytes", 0)),
                 )
             )
     return refs

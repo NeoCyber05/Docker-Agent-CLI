@@ -16,6 +16,7 @@ from docker_agent.slash.dispatch import (
     dispatch_secrets_list,
     dispatch_stacks,
     dispatch_yaml,
+    stop_stack_prompt,
 )
 from docker_agent.state.session_store import SessionStore
 from docker_agent.state.state_store import StateStore
@@ -131,6 +132,11 @@ SLASH_COMMAND_DEFS: tuple[SlashCommandDef, ...] = (
         "Live-tail a stack's logs (Esc to stop)",
         "/logs ",
     ),
+    SlashCommandDef(
+        "/stop <stack> [service...]",
+        "Stop stack containers without removing them",
+        "/stop ",
+    ),
     SlashCommandDef("/destroy <stack>", "Destroy one stack", "/destroy "),
     SlashCommandDef(
         "/destroy all", "Destroy every stack after confirmation", "/destroy all"
@@ -167,6 +173,7 @@ HANDLER_KEYS = [
     "/stacks",
     "/status",
     "/logs",
+    "/stop",
     "/destroy",
     "/secrets",
     "/connect",
@@ -372,6 +379,31 @@ async def route_slash_command(
                     {
                         "type": "submit_prompt",
                         "prompt": f"Show status and drift for stack {stack_name}",
+                    },
+                ],
+            )
+        case "/stop":
+            stop_parts = [part for part in parts[1:] if part]
+            if not stop_parts:
+                return SlashRouteResult(
+                    handled=True,
+                    effects=[
+                        {"type": "emit_user_text", "text": input_text},
+                        {
+                            "type": "emit_error",
+                            "message": "Usage: /stop <stack> [service...]",
+                        },
+                    ],
+                )
+            stack_name = stop_parts[0]
+            services = stop_parts[1:] if len(stop_parts) > 1 else None
+            return SlashRouteResult(
+                handled=True,
+                effects=[
+                    {"type": "emit_user_text", "text": input_text},
+                    {
+                        "type": "submit_prompt",
+                        "prompt": stop_stack_prompt(stack_name, services),
                     },
                 ],
             )

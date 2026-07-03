@@ -55,6 +55,15 @@ def parse_size_to_bytes(size_str: str) -> float:
     return value * multipliers[unit]
 
 
+def _is_kubernetes_memory_unit(memory: str) -> bool:
+    """Return True when memory uses Kubernetes-style binary suffix (Ki/Mi/Gi/Ti)."""
+    match = re.match(r"^(\d+(?:\.\d+)?)\s*([a-zA-Z]+)$", memory.strip())
+    if not match:
+        return False
+    unit = match.group(2)
+    return bool(re.fullmatch(r"[KMGTP]i(B)?", unit, re.IGNORECASE))
+
+
 def parse_duration_to_seconds(duration_str: str) -> float:
     """Parse a duration string (e.g. '10s', '2m', '1h') into seconds."""
     match = re.match(r"^(\d+(?:\.\d+)?)\s*(s|m|h)?$", duration_str.strip())
@@ -524,6 +533,18 @@ class PolicyEngine:
                         service=name,
                         rule="resource_limits",
                         message="Memory limits are required",
+                    )
+                )
+            memory_limit = limits.get("memory")
+            if isinstance(memory_limit, str) and _is_kubernetes_memory_unit(memory_limit):
+                violations.append(
+                    PolicyViolation(
+                        service=name,
+                        rule="resource_limits",
+                        message=(
+                            f"Memory limit ({memory_limit}) uses Kubernetes-style unit; "
+                            "Docker Compose requires b/k/m/g without 'i' suffix (e.g. 1g, 512m)"
+                        ),
                     )
                 )
             if (

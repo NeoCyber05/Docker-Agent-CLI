@@ -74,6 +74,8 @@ class _QueryLoopContext:
         abort_signal: asyncio.Event,
         session_id: str,
         health_check_deadline_ms: int | None,
+        provider_name: str,
+        model: str | None,
         request_permission: Callable[..., Awaitable[PermissionResponse]],
         request_confirm: Callable[..., Awaitable[PermissionResponse]],
         request_typed_confirm: Callable[..., Awaitable[PermissionResponse]],
@@ -89,6 +91,8 @@ class _QueryLoopContext:
         self.image_validator = None
         self.session_id = session_id
         self.health_check_deadline_ms = health_check_deadline_ms
+        self.provider_name = provider_name
+        self.model = model
         self.request_permission = request_permission
         self.request_confirm = request_confirm
         self.request_typed_confirm = request_typed_confirm
@@ -248,6 +252,8 @@ class QueryEngine:
             abort_signal=controller,
             session_id=self._session_id,
             health_check_deadline_ms=self._health_check_deadline_ms,
+            provider_name=self.provider.name,
+            model=self.model,
             request_permission=request_permission,
             request_confirm=request_confirm,
             request_typed_confirm=request_typed_confirm,

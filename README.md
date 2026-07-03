@@ -127,6 +127,7 @@ Shortcut commands available inside the interactive shell:
 | `/status <stack>` | Show status and drift for a stack |
 | `/yaml <stack>` | Print the stack's Compose YAML |
 | `/logs <stack> [service]` | Live-tail stack logs (Esc to stop); `/log` is an alias |
+| `/stop <stack> [service...]` | Stop stack containers without removing them (keeps YAML and state) |
 | `/destroy <stack>` | Tear down one stack |
 | `/destroy all` | Tear down all stacks (requires typed `DESTROY ALL` confirmation) |
 | `/secrets list <stack>` | List secret env keys (values masked) |

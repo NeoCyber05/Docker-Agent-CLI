@@ -89,8 +89,8 @@ CATALOG_REGISTRY: dict[str, dict[str, Any]] = {
 
 RESOURCE_LIMITS_MAP: dict[str, dict[str, str]] = {
     "small": {"cpus": "0.5", "memory": "512m"},
-    "medium": {"cpus": "1.0", "memory": "1Gi"},
-    "large": {"cpus": "2.0", "memory": "2Gi"},
+    "medium": {"cpus": "1.0", "memory": "1g"},
+    "large": {"cpus": "2.0", "memory": "2g"},
 }
 
 DEFAULT_LOGGING = LoggingSpec.model_validate(

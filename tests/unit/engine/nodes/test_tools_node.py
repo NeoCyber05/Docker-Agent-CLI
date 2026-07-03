@@ -119,7 +119,7 @@ async def test_tools_node_remove_container_success(make_loop_ctx) -> None:
     state = _assistant_with_tool("remove_container", {"containers": ["web-1"]})
 
     with patch(
-        "docker_agent.engine.adapters.tool_adapter.run_tool",
+        "docker_agent.engine.nodes.tools_node.run_tool",
         new=AsyncMock(
             return_value=type(
                 "Run",

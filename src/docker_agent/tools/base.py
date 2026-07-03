@@ -29,6 +29,8 @@ class ToolContext:
     image_validator: ImageValidator | None = None
     session_id: str | None = None
     health_check_deadline_ms: int | None = None
+    provider_name: str = "unknown"
+    model: str | None = None
 
 
 @dataclass

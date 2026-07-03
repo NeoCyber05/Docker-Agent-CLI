@@ -43,6 +43,19 @@ def _ctx(tmp_project: Path, *, engine: MockDockerEngine | None = None):
     return make_ctx(tmp_project, docker_engine=engine or MockDockerEngine())
 
 
+def _staged_secret_values(result: object, stack_name: str, service: str) -> dict[str, str]:
+    name = f"{stack_name}-{service}.env"
+    for staged in result.staged_secret_files:
+        if Path(staged.path).name == name:
+            return staged.values
+    raise AssertionError(f"no staged secret file for service {service!r}")
+
+
+def _secrets_dir_is_empty(tmp_project: Path) -> bool:
+    secrets_dir = tmp_project / ".docker-agent" / "secrets"
+    return not secrets_dir.exists() or not any(secrets_dir.iterdir())
+
+
 async def _plan(input_data: dict, ctx) -> object:
     _, result = await drain_with_progress(
         plan_stack.call(StackDraft.model_validate(input_data), ctx)
@@ -112,8 +125,42 @@ async def test_inline_secret_auto_migrated_to_generated_env_file(
         }
     }
     generated_path = tmp_project / ".docker-agent" / "secrets" / "s-api.env"
-    assert generated_path.exists()
-    assert "API_KEY=leakvalue" in generated_path.read_text(encoding="utf-8")
+    assert not generated_path.exists()
+    staged = _staged_secret_values(result, "s", "api")
+    assert staged["API_KEY"] == "leakvalue"
+    assert _secrets_dir_is_empty(tmp_project)
+
+
+@pytest.mark.asyncio
+async def test_credential_uri_migrated_to_generated_env_file(
+    tmp_project: Path,
+) -> None:
+    ctx = _ctx(tmp_project)
+    bogus_uri = "mongodb://admin:fakepass@mongo:27017/app"
+    result = await _plan(
+        {
+            "stackName": "s",
+            "intent": "app",
+            "services": [
+                {
+                    "name": "api",
+                    "kind": "custom",
+                    "image": "node:20-alpine",
+                    "environment": {"MONGO_URI": bogus_uri},
+                }
+            ],
+        },
+        ctx,
+    )
+
+    assert result.blocked is False
+    assert bogus_uri not in result.compose_yaml
+    assert any(
+        item.service == "api" and item.keys == ["MONGO_URI"]
+        for item in result.auto_generated_secrets
+    )
+    staged = _staged_secret_values(result, "s", "api")
+    assert staged["MONGO_URI"] == bogus_uri
 
 
 @pytest.mark.asyncio
@@ -141,8 +188,9 @@ async def test_postgres_without_env_file_auto_generates_postgres_password(
         item.service == "db" and item.keys == ["POSTGRES_PASSWORD"]
         for item in result.auto_generated_secrets
     )
-    env_file = tmp_project / ".docker-agent" / "secrets" / "p-db.env"
-    assert re.search(r"POSTGRES_PASSWORD=.{20,}", env_file.read_text(encoding="utf-8"))
+    staged = _staged_secret_values(result, "p", "db")
+    assert re.match(r".{20,}", staged["POSTGRES_PASSWORD"])
+    assert _secrets_dir_is_empty(tmp_project)
 
 
 @pytest.mark.asyncio
@@ -249,6 +297,33 @@ async def test_stages_provided_config_file_content(tmp_project: Path) -> None:
     assert result.config_files[0].content == "events {}\n"
     assert result.config_files[0].bytes == 10
     assert not (tmp_project / "nginx.conf").exists()
+
+
+@pytest.mark.asyncio
+async def test_blocks_custom_node_service_without_app_source(tmp_project: Path) -> None:
+    ctx = _ctx(tmp_project)
+    result = await _plan(
+        {
+            "stackName": "web",
+            "intent": "node api",
+            "services": [
+                {
+                    "name": "api",
+                    "kind": "custom",
+                    "image": "node:20-alpine",
+                    "command": "node server.js",
+                    "exposure": "public",
+                    "containerPort": 3000,
+                }
+            ],
+        },
+        ctx,
+    )
+
+    assert result.blocked is True
+    assert result.reason == "missing_app_source"
+    assert result.app_source_issues
+    assert result.app_source_issues[0].entrypoint == "server.js"
 
 
 @pytest.mark.asyncio
@@ -400,10 +475,10 @@ async def test_auto_replaces_weak_postgres_password_with_generated_value(
         item.service == "db" and "POSTGRES_PASSWORD" in item.keys
         for item in result.auto_generated_secrets
     )
-    env_path = tmp_project / ".docker-agent" / "secrets" / "weakpw-db.env"
-    env_content = env_path.read_text(encoding="utf-8")
-    assert "POSTGRES_PASSWORD=postgres" not in env_content
-    assert re.search(r"POSTGRES_PASSWORD=.+", env_content)
+    staged = _staged_secret_values(result, "weakpw", "db")
+    assert staged["POSTGRES_PASSWORD"] != "postgres"
+    assert len(staged["POSTGRES_PASSWORD"]) > 0
+    assert _secrets_dir_is_empty(tmp_project)
 
 
 @pytest.mark.asyncio
@@ -661,19 +736,90 @@ async def test_wordpress_mysql_wires_db_password_to_app(tmp_project: Path) -> No
         parsed["services"]["wordpress"].get("env_file") or []
     )
 
-    db_env = (tmp_project / ".docker-agent" / "secrets" / "wordpress-stack-db.env").read_text(
-        encoding="utf-8"
-    )
-    wp_env = (
-        tmp_project / ".docker-agent" / "secrets" / "wordpress-stack-wordpress.env"
-    ).read_text(encoding="utf-8")
-    db_password = re.search(r"MYSQL_ROOT_PASSWORD=(.+)", db_env)
-    wp_password = re.search(r"WORDPRESS_DB_PASSWORD=(.+)", wp_env)
-    assert db_password is not None
-    assert wp_password is not None
-    assert db_password.group(1) == wp_password.group(1)
-    assert "MYSQL_DATABASE=wordpress" in db_env
+    db_staged = _staged_secret_values(result, "wordpress-stack", "db")
+    wp_staged = _staged_secret_values(result, "wordpress-stack", "wordpress")
+    assert db_staged["MYSQL_ROOT_PASSWORD"] == wp_staged["WORDPRESS_DB_PASSWORD"]
+    assert db_staged["MYSQL_DATABASE"] == "wordpress"
+    assert _secrets_dir_is_empty(tmp_project)
     assert any(
         item.service == "wordpress" and "WORDPRESS_DB_PASSWORD" in item.keys
         for item in result.auto_generated_secrets
     )
+
+
+@pytest.mark.asyncio
+async def test_ok_plan_does_not_write_secrets_to_disk_until_apply(
+    tmp_project: Path,
+) -> None:
+    ctx = _ctx(tmp_project)
+    result = await _plan(
+        {
+            "stackName": "dry",
+            "intent": "postgres",
+            "services": [
+                {
+                    "name": "db",
+                    "kind": "catalog",
+                    "catalogId": "postgresql:16",
+                }
+            ],
+        },
+        ctx,
+    )
+
+    assert result.blocked is False
+    assert result.staged_secret_files
+    assert _secrets_dir_is_empty(tmp_project)
+
+
+@pytest.mark.asyncio
+async def test_plan_stack_metadata_uses_provider_and_model(tmp_project: Path) -> None:
+    ctx = replace(
+        _ctx(tmp_project),
+        provider_name="gemini",
+        model="gemini-2.0-flash",
+    )
+    result = await _plan(
+        {
+            "stackName": "meta",
+            "intent": "nginx",
+            "services": [
+                {
+                    "name": "web",
+                    "kind": "custom",
+                    "image": "nginx:1.27-alpine",
+                }
+            ],
+        },
+        ctx,
+    )
+
+    assert result.blocked is False
+    parsed = yaml.safe_load(result.compose_yaml)
+    assert parsed["x-docker-agent"]["provider"] == "gemini"
+    assert parsed["x-docker-agent"]["generatedBy"] == "gemini-2.0-flash"
+
+
+@pytest.mark.asyncio
+async def test_plan_stack_metadata_uses_provider_default_when_model_missing(
+    tmp_project: Path,
+) -> None:
+    ctx = replace(_ctx(tmp_project), provider_name="gemini", model=None)
+    result = await _plan(
+        {
+            "stackName": "meta2",
+            "intent": "nginx",
+            "services": [
+                {
+                    "name": "web",
+                    "kind": "custom",
+                    "image": "nginx:1.27-alpine",
+                }
+            ],
+        },
+        ctx,
+    )
+
+    assert result.blocked is False
+    parsed = yaml.safe_load(result.compose_yaml)
+    assert parsed["x-docker-agent"]["generatedBy"] == "gemini-default"

@@ -12,7 +12,7 @@ from typing import Any
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 
-from docker_agent.core.iteration_limits import MAX_ITERATIONS, derive_recursion_limit
+from docker_agent.core.iteration_limits import MAX_ITERATIONS
 from docker_agent.engine.nodes.agent_node import (
     AgentNodeDeps,
     agent_node,
@@ -29,6 +29,13 @@ from docker_agent.engine.nodes.tools_node import ToolsNodeDeps, tools_node
 from docker_agent.engine.state import AgentState
 from docker_agent.policy.policy_engine import PolicyEngine
 from docker_agent.services.api.types import Provider
+from docker_agent.types.message import ToolResultMessage
+
+HIGH_RISK_TOOLS = frozenset({"plan_stack", "remediate_drift"})
+_MULTI_HIGH_RISK_MSG = (
+    "Only one high-risk tool (plan_stack or remediate_drift) may be called per turn. "
+    "Call them one at a time."
+)
 
 
 def _block_type(block: Any) -> str | None:
@@ -40,6 +47,10 @@ def _tool_uses_in_last_assistant(state: AgentState) -> list[Any]:
     if not last or last.role != "assistant" or not last.content:
         return []
     return [b for b in last.content if _block_type(b) == "tool_use"]
+
+
+def _high_risk_tool_uses(tool_uses: list[Any]) -> list[Any]:
+    return [b for b in tool_uses if getattr(b, "name", None) in HIGH_RISK_TOOLS]
 
 
 def _route_after_special_node(state: AgentState, exclude_tool: str) -> str:
@@ -97,11 +108,26 @@ def build_graph(deps: GraphDeps) -> Any:
     async def remediate_wrapper(state: AgentState) -> dict[str, Any]:
         return await remediate_drift_node(remediate_deps, state)
 
+    async def reject_multi_high_risk_wrapper(state: AgentState) -> dict[str, Any]:
+        tool_uses = _tool_uses_in_last_assistant(state)
+        messages = [
+            ToolResultMessage(
+                role="tool",
+                toolUseId=str(getattr(block, "id", "")),
+                content=_MULTI_HIGH_RISK_MSG,
+                isError=True,
+            )
+            for block in _high_risk_tool_uses(tool_uses)
+            if getattr(block, "id", None)
+        ]
+        return {"messages": messages}
+
     builder = StateGraph(AgentState)
     builder.add_node("agent", agent_wrapper)
     builder.add_node("tools", tools_wrapper)
     builder.add_node("plan_review", plan_review_wrapper)
     builder.add_node("remediate_drift", remediate_wrapper)
+    builder.add_node("reject_multi_high_risk", reject_multi_high_risk_wrapper)
     builder.add_edge("__start__", "agent")
 
     def route_after_agent(state: AgentState) -> str:
@@ -110,6 +136,8 @@ def build_graph(deps: GraphDeps) -> Any:
             return END
         if state.iter >= MAX_ITERATIONS:
             return END
+        if len(_high_risk_tool_uses(tool_uses)) > 1:
+            return "reject_multi_high_risk"
         if any(getattr(b, "name", None) == "remediate_drift" for b in tool_uses):
             return "remediate_drift"
         if any(getattr(b, "name", None) == "plan_stack" for b in tool_uses):
@@ -117,6 +145,7 @@ def build_graph(deps: GraphDeps) -> Any:
         return "tools"
 
     builder.add_conditional_edges("agent", route_after_agent)
+    builder.add_edge("reject_multi_high_risk", "agent")
     builder.add_conditional_edges(
         "remediate_drift",
         lambda state: END

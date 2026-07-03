@@ -1,6 +1,4 @@
 """Main REPL screen.
-
-Parity: ``src/screens/REPL.tsx``.
 """
 
 from __future__ import annotations
@@ -16,8 +14,9 @@ from textual.containers import VerticalScroll
 from textual.reactive import reactive
 from textual.widgets import Input, Static
 
+from docker_agent.commands.registry import Command, create_default_registry
 from docker_agent.components.activity_timeline import ActivityTimeline
-from docker_agent.components.api_key_input_dialog import ApiKeyInputDialog
+from docker_agent.components.api_key_input_dialog import ApiKeyInputClosed, ApiKeyInputDialog
 from docker_agent.components.command_palette import CommandPalette
 from docker_agent.components.footer import StatusFooter, build_footer_content
 from docker_agent.components.log_pane import LogPane
@@ -26,10 +25,17 @@ from docker_agent.components.model_picker_dialog import (
     ModelPickerClosed,
     ModelPickerDialog,
 )
-from docker_agent.components.ollama_setup_dialog import OllamaSetupDialog
+from docker_agent.components.ollama_setup_dialog import (
+    OllamaSetupClosed,
+    OllamaSetupDialog,
+    OllamaSetupResult,
+)
 from docker_agent.components.permission_dialog import PermissionAnswered, PermissionDialog
 from docker_agent.components.prompt_input import PromptInput, PromptSubmitted, ResumeQueue
-from docker_agent.components.provider_connect_dialog import ProviderConnectDialog
+from docker_agent.components.provider_connect_dialog import (
+    ProviderConnectClosed,
+    ProviderConnectDialog,
+)
 from docker_agent.components.queue_panel import QueuePanel
 from docker_agent.components.secrets_input_dialog import SecretsInputDialog
 from docker_agent.components.session_picker_dialog import (
@@ -42,7 +48,6 @@ from docker_agent.components.tool_details_panel import ToolDetailsPanel
 from docker_agent.components.typed_confirm_dialog import (
     InlineConfirmAnswered,
     InlineConfirmDialog,
-    TypedConfirmDialog,
 )
 from docker_agent.components.welcome_banner import (
     COMPACT_WELCOME_MAX_ROWS,
@@ -74,6 +79,7 @@ from docker_agent.types.events import (
 )
 from docker_agent.types.permissions import Approve, Deny, PermissionResponse
 from docker_agent.ui.activity import ToolActivity
+from docker_agent.ui.textual_compat import patch_selection_none_parent_crash
 from docker_agent.vault.api_key_store import (
     ApiKeyProviderName,
     ApiKeyStore,
@@ -82,6 +88,8 @@ from docker_agent.vault.api_key_store import (
     describe_api_key_status,
     is_api_key_provider_name,
 )
+
+patch_selection_none_parent_crash()
 
 
 class REPL(App[None]):
@@ -165,6 +173,9 @@ class REPL(App[None]):
         self._active_log_pane: LogPane | None = None
         self._local_pending: str | None = None
         self._model_picker_waiter: asyncio.Future[ModelChoice | str | None] | None = None
+        self._provider_connect_waiter: asyncio.Future[str | None] | None = None
+        self._api_key_input_waiter: asyncio.Future[str | None] | None = None
+        self._ollama_setup_waiter: asyncio.Future[OllamaSetupResult | None] | None = None
         self._session_picker_waiter: asyncio.Future[SessionChoice | None] | None = None
         self._timeline_key = 0
         self._timeline_signature: tuple[Any, ...] | None = None
@@ -312,6 +323,29 @@ class REPL(App[None]):
                     picker = self.query_one("#session-picker", SessionPickerDialog)
                     if self.focused is not picker:
                         self.set_focus(picker)
+                except Exception:
+                    pass
+            if self._provider_connect_waiter is not None:
+                try:
+                    picker = self.query_one("#provider-connect", ProviderConnectDialog)
+                    if self.focused is not picker:
+                        self.set_focus(picker)
+                except Exception:
+                    pass
+            if self._api_key_input_waiter is not None:
+                try:
+                    dialog = self.query_one("#api-key-input-dialog", ApiKeyInputDialog)
+                    key_input = dialog.query_one("#api-key-input", Input)
+                    if self.focused is not key_input:
+                        self.set_focus(key_input)
+                except Exception:
+                    pass
+            if self._ollama_setup_waiter is not None:
+                try:
+                    dialog = self.query_one("#ollama-setup", OllamaSetupDialog)
+                    host_input = dialog.query_one("#host-input", Input)
+                    if self.focused is not host_input:
+                        self.set_focus(host_input)
                 except Exception:
                     pass
             thinking = self.query("#thinking")
@@ -542,19 +576,44 @@ class REPL(App[None]):
         }
 
     async def _open_provider_connect(self) -> None:
-        instances = await self._resolve_all_providers()
-        statuses = await get_provider_statuses(
-            api_key_store=self.api_key_store,
-            providers=instances,
-        )
-        api_key_statuses = await describe_api_key_status(self.api_key_store, os.environ)
-        provider = await self.push_screen_wait(
-            ProviderConnectDialog(
-                statuses=statuses,
-                api_key_statuses=api_key_statuses,
+        self._lock_prompt_input()
+        loading = Static("Loading providers…", id="provider-connect-loading")
+        self.mount(loading, after="#prompt")
+        try:
+            instances = await self._resolve_all_providers()
+            statuses = await get_provider_statuses(
+                api_key_store=self.api_key_store,
+                providers=instances,
             )
+            api_key_statuses = await describe_api_key_status(
+                self.api_key_store, os.environ
+            )
+        finally:
+            if loading.is_attached:
+                loading.remove()
+
+        loop = asyncio.get_running_loop()
+        waiter = loop.create_future()
+        self._provider_connect_waiter = waiter
+        panel = ProviderConnectDialog(
+            statuses=statuses,
+            api_key_statuses=api_key_statuses,
+            id="provider-connect",
         )
+        self.mount(panel, after="#prompt")
+        self.set_focus(panel)
+        try:
+            provider = await waiter
+        finally:
+            self._provider_connect_waiter = None
+            if panel.is_attached:
+                panel.remove()
+            self._unlock_prompt_input()
+
         if provider is None:
+            self.session.dispatch_activity(
+                {"type": "assistant_text", "delta": "Provider connection cancelled"}
+            )
             return
         status = next((s for s in statuses if s.provider == provider), None)
         if status and status.connected:
@@ -742,14 +801,43 @@ class REPL(App[None]):
                 {"type": "error", "error": err}
             )
 
+    async def _open_api_key_input(self, provider: ApiKeyProviderName) -> str | None:
+        self._lock_prompt_input()
+        loop = asyncio.get_running_loop()
+        waiter = loop.create_future()
+        self._api_key_input_waiter = waiter
+        panel = ApiKeyInputDialog(
+            provider=provider,
+            env_var_name=api_key_env_var(provider),
+            id="api-key-input-dialog",
+        )
+        self.mount(panel, after="#prompt")
+        try:
+            return await waiter
+        finally:
+            self._api_key_input_waiter = None
+            if panel.is_attached:
+                panel.remove()
+            self._unlock_prompt_input()
+
+    async def _open_ollama_setup(self, host: str) -> OllamaSetupResult | None:
+        self._lock_prompt_input()
+        loop = asyncio.get_running_loop()
+        waiter = loop.create_future()
+        self._ollama_setup_waiter = waiter
+        panel = OllamaSetupDialog(host=host, id="ollama-setup")
+        self.mount(panel, after="#prompt")
+        try:
+            return await waiter
+        finally:
+            self._ollama_setup_waiter = None
+            if panel.is_attached:
+                panel.remove()
+            self._unlock_prompt_input()
+
     async def _on_connect_provider(self, provider: str | None = None) -> None:
         if provider and is_api_key_provider_name(provider):
-            result = await self.push_screen_wait(
-                ApiKeyInputDialog(
-                    provider=provider,  # type: ignore[arg-type]
-                    env_var_name=api_key_env_var(provider),  # type: ignore[arg-type]
-                )
-            )
+            result = await self._open_api_key_input(cast(ApiKeyProviderName, provider))
             if result:
                 await self._on_api_key_submit(
                     cast(ApiKeyProviderName, provider),
@@ -759,7 +847,7 @@ class REPL(App[None]):
             return
         if provider == "ollama":
             host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-            ollama_result = await self.push_screen_wait(OllamaSetupDialog(host=host))
+            ollama_result = await self._open_ollama_setup(host)
             if ollama_result is not None:
                 os.environ["OLLAMA_HOST"] = ollama_result.host
             return
@@ -844,6 +932,21 @@ class REPL(App[None]):
         ):
             self._session_picker_waiter.set_result(message.result)
 
+    def on_provider_connect_closed(self, message: ProviderConnectClosed) -> None:
+        if (
+            self._provider_connect_waiter is not None
+            and not self._provider_connect_waiter.done()
+        ):
+            self._provider_connect_waiter.set_result(message.result)
+
+    def on_api_key_input_closed(self, message: ApiKeyInputClosed) -> None:
+        if self._api_key_input_waiter is not None and not self._api_key_input_waiter.done():
+            self._api_key_input_waiter.set_result(message.result)
+
+    def on_ollama_setup_closed(self, message: OllamaSetupClosed) -> None:
+        if self._ollama_setup_waiter is not None and not self._ollama_setup_waiter.done():
+            self._ollama_setup_waiter.set_result(message.result)
+
     @work(exclusive=False, name="submit")
     async def _submit_prompt(self, text: str) -> None:
         await self._handle_submit(text)
@@ -862,6 +965,9 @@ class REPL(App[None]):
             or self.session.pending_event is not None
             or self._local_pending is not None
             or self._model_picker_waiter is not None
+            or self._provider_connect_waiter is not None
+            or self._api_key_input_waiter is not None
+            or self._ollama_setup_waiter is not None
             or self._session_picker_waiter is not None
             or self.show_palette
             or self.show_queue

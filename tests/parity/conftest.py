@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+from langchain_core.messages import AIMessage
 
 from docker_agent.agent import BackendQueryParams, create_backend
 from docker_agent.core.loop_context import PlanReadyPayload
@@ -40,20 +42,109 @@ def _nanoid() -> str:
 
 
 def fake_provider(calls: list[list[Any]]):
-    call_idx = 0
-
     class _Provider:
         name = "fake"
 
+        def __init__(self, scripted_calls: list[list[Any]]) -> None:
+            self.calls = scripted_calls
+            self._call_idx = 0
+
         async def stream(self, _params: object) -> AsyncIterator[Any]:
-            nonlocal call_idx
-            events = calls[call_idx] if call_idx < len(calls) else []
-            call_idx += 1
+            events = (
+                self.calls[self._call_idx]
+                if self._call_idx < len(self.calls)
+                else []
+            )
+            self._call_idx += 1
             for ev in events:
                 yield ev
 
-    return _Provider()
+    return _Provider(calls)
 
+
+class _ParityLangChainModel(FakeMessagesListChatModel):
+    def bind_tools(self, tools: object, *, tool_choice: object = None, **kwargs: object):
+        del tool_choice, kwargs
+        object.__setattr__(self, "bound_tools", tools)
+        return self
+
+
+def _event_value(event: object, field: str) -> object:
+    if isinstance(event, dict):
+        return event.get(field)
+    return getattr(event, field, None)
+
+
+def _event_args_delta(event: object) -> str:
+    if isinstance(event, dict):
+        return str(event.get("args_partial_json") or event.get("argsPartialJson") or "")
+    return str(getattr(event, "args_partial_json", "") or "")
+
+
+def _provider_events_to_ai_message(events: list[Any]) -> AIMessage:
+    content: list[str] = []
+    tool_order: list[str] = []
+    tool_calls_by_id: dict[str, dict[str, object]] = {}
+
+    for event in events:
+        event_type = _event_value(event, "type")
+        if event_type == "text_delta":
+            content.append(str(_event_value(event, "text") or ""))
+            continue
+        if event_type == "tool_use_start":
+            call_id = str(_event_value(event, "id") or f"tool-{len(tool_order) + 1}")
+            tool_order.append(call_id)
+            tool_calls_by_id[call_id] = {
+                "id": call_id,
+                "name": str(_event_value(event, "name") or ""),
+                "args_json": "",
+            }
+            continue
+        if event_type == "tool_use_delta":
+            call_id = str(_event_value(event, "id") or f"tool-{len(tool_order) + 1}")
+            tool_call = tool_calls_by_id.setdefault(
+                call_id,
+                {"id": call_id, "name": "", "args_json": ""},
+            )
+            tool_call["args_json"] = str(tool_call["args_json"]) + _event_args_delta(
+                event
+            )
+
+    tool_calls: list[dict[str, object]] = []
+    for call_id in tool_order:
+        tool_call = tool_calls_by_id[call_id]
+        raw_args = str(tool_call.get("args_json") or "")
+        try:
+            args = json.loads(raw_args) if raw_args else {}
+        except json.JSONDecodeError:
+            args = {}
+        tool_calls.append(
+            {
+                "id": call_id,
+                "name": str(tool_call.get("name") or ""),
+                "args": args,
+            }
+        )
+
+    return AIMessage(content="".join(content), tool_calls=tool_calls)
+
+
+def patch_langchain_fake_model(
+    monkeypatch: pytest.MonkeyPatch,
+    provider: object,
+) -> _ParityLangChainModel:
+    responses = [
+        _provider_events_to_ai_message(events)
+        for events in getattr(provider, "calls", [])
+    ]
+    if responses and responses[-1].tool_calls:
+        responses.append(AIMessage(content="done"))
+    model = _ParityLangChainModel(responses=responses or [AIMessage(content="")])
+    monkeypatch.setattr(
+        "docker_agent.engine.langgraph_backend.create_chat_model",
+        lambda **_kwargs: model,
+    )
+    return model
 
 def tool_use_call(tool_name: str, input_data: object) -> list[Any]:
     return [
@@ -178,7 +269,7 @@ def make_context(tmp_project: Path):
 
 
 @pytest.fixture
-def run_backend():
+def run_backend(monkeypatch: pytest.MonkeyPatch):
     async def _run(
         *,
         backend_name: str,
@@ -189,6 +280,8 @@ def run_backend():
         prev = os.environ.get("DOCKER_AGENT_BACKEND")
         os.environ["DOCKER_AGENT_BACKEND"] = backend_name
         try:
+            if backend_name == "langgraph":
+                patch_langchain_fake_model(monkeypatch, provider)
             backend = create_backend()
             events: list[LoopEvent] = []
             async for ev in backend.query(
@@ -218,6 +311,7 @@ __all__ = [
     "TypedConfirmValue",
     "fake_provider",
     "output_field",
+    "patch_langchain_fake_model",
     "text_done",
     "tool_use_call",
 ]

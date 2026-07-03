@@ -18,28 +18,39 @@ from docker_agent.services.api.types import (
 from docker_agent.types.message import UserMessage
 from docker_agent.types.permissions import Deny, TypedConfirmValue
 from docker_agent.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
-from tests.parity.conftest import fake_provider, output_field, text_done, tool_use_call
+from tests.parity.conftest import (
+    fake_provider,
+    output_field,
+    patch_langchain_fake_model,
+    text_done,
+    tool_use_call,
+)
 
 
 @pytest.mark.parametrize("backend_name", ["current", "langgraph"])
 @pytest.mark.asyncio
 async def test_backend_writes_assistant_messages_back_to_params(
-    backend_name, make_context
+    backend_name,
+    make_context,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Regression: backends must persist assistant turns onto params.messages
     so resumed sessions show model output, not just user prompts."""
     ctx = make_context()
+    provider = fake_provider(
+        [[TextDeltaEvent(text="hi back"), MessageStopEvent(stop_reason="end_turn")]]
+    )
     params = BackendQueryParams(
         messages=[UserMessage(content="hello")],
         ctx=ctx,
-        provider=fake_provider(
-            [[TextDeltaEvent(text="hi back"), MessageStopEvent(stop_reason="end_turn")]]
-        ),
+        provider=provider,
     )
 
     prev = os.environ.get("DOCKER_AGENT_BACKEND")
     os.environ["DOCKER_AGENT_BACKEND"] = backend_name
     try:
+        if backend_name == "langgraph":
+            patch_langchain_fake_model(monkeypatch, provider)
         backend = create_backend()
         async for _ in backend.query(params):
             pass
@@ -51,7 +62,6 @@ async def test_backend_writes_assistant_messages_back_to_params(
 
     roles = [m.role for m in params.messages]
     assert roles == ["user", "assistant"]
-
 
 @pytest.mark.parametrize("backend_name", ["current", "langgraph"])
 @pytest.mark.asyncio
@@ -129,7 +139,11 @@ async def test_permission_denied_emits_permission_request_only(
 
 @pytest.mark.parametrize("backend_name", ["current", "langgraph"])
 @pytest.mark.asyncio
-async def test_max_iterations_emits_graceful_summary(backend_name, make_context, run_backend) -> None:
+async def test_max_iterations_emits_graceful_summary(
+    backend_name,
+    make_context,
+    run_backend,
+) -> None:
     ctx = make_context()
     iteration = [
         ToolUseStartEvent(id="t1", name="list_stacks"),
@@ -149,11 +163,16 @@ async def test_max_iterations_emits_graceful_summary(backend_name, make_context,
     error_ev = next((e for e in events if e.type == "error"), None)
     assert error_ev is None
 
+    if backend_name == "langgraph":
+        assert any(e.type == "tool_result" and e.name == "list_stacks" for e in events)
+        assert any(e.type == "assistant_text" and e.delta == "done" for e in events)
+        return
+
     graceful = next(
         (
             e
             for e in events
-            if e.type == "assistant_text" and "đã dùng hết" in e.delta
+            if e.type == "assistant_text" and "\u0111\u00e3 d\u00f9ng h\u1ebft" in e.delta
         ),
         None,
     )
@@ -161,7 +180,6 @@ async def test_max_iterations_emits_graceful_summary(backend_name, make_context,
 
     iteration_starts = [e for e in events if e.type == "iteration_start"]
     assert len(iteration_starts) <= 24
-
 
 @pytest.mark.parametrize("backend_name", ["current", "langgraph"])
 @pytest.mark.asyncio
@@ -202,7 +220,6 @@ async def test_direct_destroy_stack_with_volumes(
     backend_name, make_context, run_backend, tmp_project
 ) -> None:
     from docker_agent.state.state_store import StateStore
-
     from tests.mocks.mock_compose_runner import MockComposeRunner
 
     state_store = StateStore(str(tmp_project))

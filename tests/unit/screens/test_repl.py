@@ -3,26 +3,22 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from pathlib import Path
+from io import StringIO
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
-
-from io import StringIO
-
 from rich.console import Console
 
 from docker_agent.components.activity_timeline import ActivityTimeline
 from docker_agent.components.model_picker_dialog import ModelPickerDialog
 from docker_agent.components.welcome_banner import WelcomeBanner
-from docker_agent.services.model_catalog import CatalogRowHeader, CatalogRowModel
 from docker_agent.query_engine import QueryEngine
 from docker_agent.screens.repl import REPL
 from docker_agent.services.api.types import CallModelParams, ProviderEvent
+from docker_agent.services.model_catalog import CatalogRowHeader, CatalogRowModel
 from docker_agent.state.state_store import StateStore
 from docker_agent.types.events import PermissionRequest
-from docker_agent.types.permissions import Approve
 from tests.mocks.mock_compose_runner import MockComposeRunner
 from tests.mocks.mock_docker_engine import MockDockerEngine
 

@@ -2,48 +2,41 @@
 
 from __future__ import annotations
 
-import json
-from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any
 
 import pytest
+from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+from langchain_core.messages import AIMessage
 
 from docker_agent.query_engine import QueryEngine
-from docker_agent.services.api.types import (
-    MessageStopEvent,
-    ToolUseDeltaEvent,
-    ToolUseStartEvent,
-    ToolUseStopEvent,
-)
 from docker_agent.state.state_store import StateStore
 from tests.mocks.mock_compose_runner import MockComposeRunner
 from tests.mocks.mock_docker_engine import MockDockerEngine
 
 
-def fake_provider(event_lists: list[list[Any]]):
-    call_index = 0
-
-    class _Provider:
-        name = "fake"
-
-        async def stream(self, _params: object) -> AsyncIterator[Any]:
-            nonlocal call_index
-            events = event_lists[call_index] if call_index < len(event_lists) else []
-            call_index += 1
-            for ev in events:
-                yield ev
-
-    return _Provider()
+class IntegrationFakeModel(FakeMessagesListChatModel):
+    def bind_tools(self, tools, *, tool_choice=None, **kwargs):
+        del tool_choice, kwargs
+        object.__setattr__(self, "bound_tools", tools)
+        return self
 
 
-def plan_stack_events(input_data: object) -> list[Any]:
-    return [
-        ToolUseStartEvent(id="t1", name="plan_stack"),
-        ToolUseDeltaEvent(id="t1", args_partial_json=json.dumps(input_data)),
-        ToolUseStopEvent(id="t1"),
-        MessageStopEvent(stop_reason="tool_use"),
-    ]
+class FakeProvider:
+    name = "fake"
+
+
+def deploy_stack_message(input_data: object) -> AIMessage:
+    return AIMessage(
+        content="",
+        tool_calls=[{"name": "deploy_stack", "args": input_data, "id": "deploy-1"}],
+    )
+
+
+def tool_call_message(name: str, args: object, call_id: str = "tool-1") -> AIMessage:
+    return AIMessage(
+        content="",
+        tool_calls=[{"name": name, "args": args, "id": call_id}],
+    )
 
 
 @pytest.fixture
@@ -64,14 +57,28 @@ def compose_runner(tmp_project: Path) -> MockComposeRunner:
 
 
 @pytest.fixture
-def make_engine(tmp_project: Path, state_store: StateStore, compose_runner: MockComposeRunner):
-    def _make(event_lists: list[list[Any]]) -> QueryEngine:
+def make_engine(
+    tmp_project: Path,
+    state_store: StateStore,
+    compose_runner: MockComposeRunner,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    def _make(responses: list[AIMessage]) -> QueryEngine:
+        model_responses = list(responses)
+        if model_responses and model_responses[-1].tool_calls:
+            model_responses.append(AIMessage(content="done"))
+        model = IntegrationFakeModel(responses=model_responses)
+        monkeypatch.setattr(
+            "docker_agent.engine.langgraph_backend.create_chat_model",
+            lambda **_kwargs: model,
+        )
         return QueryEngine(
             cwd=str(tmp_project),
             state_store=state_store,
             docker_engine=MockDockerEngine(),
             compose_runner=compose_runner,
-            provider=fake_provider(event_lists),
+            provider=FakeProvider(),
+            model="fake-model",
             health_check_deadline_ms=0,
         )
 

@@ -6,10 +6,12 @@ Parity: ``src/tools/inspectDrift.ts``.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from docker_agent.state.drift_detector import detect_drift
+from docker_agent.state.state_store import HistoryEvent
 from docker_agent.tools.base import ToolContext, ToolDone, ToolProgress
 
 _MODEL_CONFIG = ConfigDict(extra="forbid", populate_by_name=True)
@@ -36,14 +38,23 @@ class InspectDriftTool:
         self, input: InspectDriftInput, ctx: ToolContext
     ) -> AsyncIterator[ToolProgress | ToolDone]:
         yield ToolProgress(msg=f"Inspecting drift for {input.stack_name}...")
-        yield ToolDone(
-            await detect_drift(
-                input.stack_name,
-                ctx.state_store,
-                ctx.docker_engine,
-                ctx.cwd,
-            )
+        result = await detect_drift(
+            input.stack_name,
+            ctx.state_store,
+            ctx.docker_engine,
+            ctx.cwd,
         )
+        if result.status != "in_sync":
+            ctx.state_store.append_history(
+                HistoryEvent(
+                    ts=datetime.now(UTC).isoformat(),
+                    session_id=ctx.session_id or "unknown",
+                    stack_name=input.stack_name,
+                    action="drift_detected",
+                    details={"status": result.status},
+                )
+            )
+        yield ToolDone(result)
 
 
 inspect_drift = InspectDriftTool()

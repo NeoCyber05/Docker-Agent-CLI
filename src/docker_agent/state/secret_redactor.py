@@ -6,6 +6,7 @@ Parity: ``src/state/secretRedactor.ts:1-41``.
 import hashlib
 import hmac
 import re
+from typing import Any
 
 from docker_agent.types.stack import EnvSnapshot
 
@@ -14,10 +15,28 @@ SECRET_KEY_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+CREDENTIAL_URI_PATTERN = re.compile(
+    r"(?P<scheme>[a-zA-Z][a-zA-Z0-9+.\-]*://)[^\s:/@'\"]+:[^\s@/'\"]+@"
+)
+
+REDACTION_PLACEHOLDER = "***"
+
 
 def should_redact(key: str) -> bool:
     """Return True if ``key`` matches the secret-key regex."""
     return bool(SECRET_KEY_PATTERN.search(key))
+
+
+def looks_like_credential_uri(value: str) -> bool:
+    """Return True when ``value`` embeds user:password@ in a URI scheme."""
+    return bool(CREDENTIAL_URI_PATTERN.search(value))
+
+
+def _mask_credential_uris(text: str) -> str:
+    return CREDENTIAL_URI_PATTERN.sub(
+        lambda m: f"{m.group('scheme')}{REDACTION_PLACEHOLDER}@",
+        text,
+    )
 
 
 def hash_secret(value: str, salt: str) -> str:
@@ -70,13 +89,55 @@ def scrub_line(line: str, known_secret_keys: set[str]) -> str:
             rf"{_escape_regex(key)}=(\"[^\"]*\"|'[^']*'|[^\s]+)",
         )
         result = pattern.sub(f"{key}=***", result)
-    return result
+    return _mask_credential_uris(result)
+
+
+def redact_text(value: str) -> str:
+    """Redact secret-like key/value patterns inside free-form text."""
+    result = re.sub(
+        r'"([^"]+)"(\s*:\s*)"([^"]*)"',
+        lambda m: f'"{m.group(1)}"{m.group(2)}"{REDACTION_PLACEHOLDER}"'
+        if should_redact(m.group(1))
+        else m.group(0),
+        value,
+    )
+    result = re.sub(
+        r'(\b\w+\b)(=)("[^"]*"|\'[^\']*\'|[^\s,}]+)',
+        lambda m: f"{m.group(1)}{m.group(2)}{REDACTION_PLACEHOLDER}"
+        if should_redact(m.group(1))
+        else m.group(0),
+        result,
+    )
+    return _mask_credential_uris(result)
+
+
+def redact_value_deep(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return redact_text(value)
+    if isinstance(value, list):
+        return [redact_value_deep(item) for item in value]
+    if isinstance(value, dict):
+        out: dict[str, Any] = {}
+        for key, item in value.items():
+            if should_redact(key):
+                out[key] = REDACTION_PLACEHOLDER
+            else:
+                out[key] = redact_value_deep(item)
+        return out
+    return value
 
 
 __all__ = [
+    "CREDENTIAL_URI_PATTERN",
+    "REDACTION_PLACEHOLDER",
     "SECRET_KEY_PATTERN",
     "hash_secret",
+    "looks_like_credential_uri",
     "redact_env",
+    "redact_text",
+    "redact_value_deep",
     "scrub_line",
     "should_redact",
 ]

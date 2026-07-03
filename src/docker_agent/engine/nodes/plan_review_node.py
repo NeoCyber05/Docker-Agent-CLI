@@ -5,10 +5,9 @@ Parity: ``src/backend/langgraph/nodes/planReviewNode.ts``.
 
 from __future__ import annotations
 
-import os
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
+from datetime import UTC, datetime
 from typing import Any
 
 from langgraph.types import interrupt
@@ -21,6 +20,7 @@ from docker_agent.engine.state import AgentState
 from docker_agent.policy.policy_engine import PolicyEngine
 from docker_agent.query import format_plan_blocker
 from docker_agent.state.secret_redactor import scrub_line
+from docker_agent.state.state_store import HistoryEvent
 from docker_agent.tools.base import ToolDone
 from docker_agent.tools.plan_stack import PlanStackResultOk, plan_stack
 from docker_agent.tools.shared.secret_keys import SecretKeysContext, collect_secret_keys
@@ -59,13 +59,7 @@ async def _request_secrets_and_patch(
     resp = await ctx.request_secrets_input(service, keys, "missing required env")
     if permission_kind(resp) != "secrets_input_values":
         return None
-    secrets_dir = Path(ctx.cwd) / ".docker-agent" / "secrets"
-    secrets_dir.mkdir(parents=True, exist_ok=True)
-    file_path = secrets_dir / f"{current_input.stack_name}-{service}.env"
     values = resp.get("values", {}) if isinstance(resp, dict) else resp.values
-    lines = "\n".join(f"{k}={v}" for k, v in values.items()) + "\n"
-    file_path.write_text(lines, encoding="utf-8")
-    os.chmod(file_path, 0o600)
     for svc in current_input.services:
         if svc.name == service:
             if svc.environment is None:
@@ -131,6 +125,14 @@ async def plan_review_node(deps: PlanReviewNodeDeps, state: AgentState) -> dict[
                     "with its full content."
                 )
                 return {"messages": [_tool_result(tool_use_id, msg, is_error=True)]}
+            if result.reason == "missing_app_source":
+                issues = result.app_source_issues or []
+                body = "\n".join(f"- {issue.message}" for issue in issues)
+                msg = (
+                    "Missing application source artifact(s). Provide source via "
+                    f"configFiles or ask the user:\n{body}"
+                )
+                return {"messages": [_tool_result(tool_use_id, msg, is_error=True)]}
             if result.reason in (
                 "invalid_spec",
                 "invalid_dependency",
@@ -180,6 +182,16 @@ async def plan_review_node(deps: PlanReviewNodeDeps, state: AgentState) -> dict[
         msg = f"Policy violation(s) detected. Deployment is blocked:\n{msgs}"
         return {"messages": [_tool_result(tool_use_id, msg, is_error=True)]}
 
+    deps.ctx.state_store.append_history(
+        HistoryEvent(
+            ts=datetime.now(UTC).isoformat(),
+            session_id=deps.ctx.session_id or "unknown",
+            stack_name=parsed_input.stack_name,
+            action="plan",
+            details={"hash": plan_result.hash},
+        )
+    )
+
     confirm_payload: dict[str, Any] = {
         "compose_yaml": plan_result.compose_yaml,
         "diff": plan_result.diff,
@@ -213,6 +225,7 @@ async def plan_review_node(deps: PlanReviewNodeDeps, state: AgentState) -> dict[
         stack_name=parsed_input.stack_name,
         desired_yaml=plan_result.compose_yaml,
         config_files=plan_result.config_files,
+        secret_files=plan_result.staged_secret_files,
         ctx=deps.ctx,
         emit=deps.emit,
         scale_overrides=(

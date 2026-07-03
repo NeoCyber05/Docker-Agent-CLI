@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 
 import pytest
@@ -13,9 +14,9 @@ from docker_agent.state.session_store import SessionStore
 from docker_agent.state.state_store import StateStore
 from docker_agent.types.permissions import Approve
 from docker_agent.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
+from docker_agent.vault.api_key_store import MemoryApiKeyStore
 from tests.mocks.mock_compose_runner import MockComposeRunner
 from tests.mocks.mock_docker_engine import MockDockerEngine
-from docker_agent.vault.api_key_store import MemoryApiKeyStore
 
 
 def fake_provider(events: list[ProviderEvent | dict[str, Any]]):
@@ -105,11 +106,11 @@ async def test_respond_to_resolves_pending_permission_request(tmp_project) -> No
         tmp_project,
         provider=fake_provider(
             [
-                {"type": "tool_use_start", "id": "t1", "name": "exec_docker"},
+                {"type": "tool_use_start", "id": "t1", "name": "destroy_stack"},
                 {
                     "type": "tool_use_delta",
                     "id": "t1",
-                    "args_partial_json": '{"args":["ps"]}',
+                    "args_partial_json": '{"stackName":"ghost"}',
                 },
                 {"type": "tool_use_stop", "id": "t1"},
                 {"type": "message_stop", "stop_reason": "tool_use"},
@@ -120,7 +121,7 @@ async def test_respond_to_resolves_pending_permission_request(tmp_project) -> No
     collected: list[str] = []
 
     async def drain() -> None:
-        async for ev in engine.query("run ps"):
+        async for ev in engine.query("destroy ghost"):
             if ev.type == "permission_request":
                 engine.respond_to(ev.id, Approve())
             collected.append(ev.type)
@@ -204,11 +205,11 @@ async def test_abort_resolves_pending_permission_and_ends_turn(tmp_project) -> N
         tmp_project,
         provider=fake_provider(
             [
-                {"type": "tool_use_start", "id": "t1", "name": "exec_docker"},
+                {"type": "tool_use_start", "id": "t1", "name": "destroy_stack"},
                 {
                     "type": "tool_use_delta",
                     "id": "t1",
-                    "args_partial_json": '{"args":["ps"]}',
+                    "args_partial_json": '{"stackName":"ghost"}',
                 },
                 {"type": "tool_use_stop", "id": "t1"},
                 {"type": "message_stop", "stop_reason": "tool_use"},
@@ -219,7 +220,7 @@ async def test_abort_resolves_pending_permission_and_ends_turn(tmp_project) -> N
     seen: list[str] = []
 
     async def drain() -> None:
-        async for event in engine.query("run ps"):
+        async for event in engine.query("destroy ghost"):
             seen.append(event.type)
             if event.type == "permission_request":
                 engine.abort()
@@ -384,7 +385,6 @@ async def test_persists_created_at_model_and_stack_names_across_turns(tmp_projec
 async def test_turn_accumulates_and_persists_assistant_messages(tmp_project) -> None:
     """Regression: assistant output must survive a turn so resume shows it."""
     state_root = tmp_project / "state"
-    state_store = StateStore(str(state_root))
     session_store = SessionStore(str(state_root))
     engine = make_engine(
         tmp_project,
@@ -431,3 +431,31 @@ async def test_reset_clears_messages_and_allow_set(tmp_project) -> None:
         pass
     engine.reset()
     assert engine.get_messages() == []
+
+
+@pytest.mark.asyncio
+async def test_turn_start_log_redacts_secrets_in_message(tmp_project) -> None:
+    from docker_agent.state.logger import StructuredLogger
+
+    log_dir = tmp_project / ".docker-agent" / "logs"
+    logger = StructuredLogger(str(log_dir), "sess-log")
+    engine = make_engine(
+        tmp_project,
+        provider=fake_provider(
+            [
+                {"type": "message_stop", "stop_reason": "end_turn"},
+            ]
+        ),
+    )
+    engine.set_logger(logger)
+    async for _ in engine.query("API_KEY=sk-live-xxxx"):
+        pass
+    logger.close()
+
+    log_file = log_dir / "sess-log.ndjson"
+    assert log_file.exists()
+    content = log_file.read_text(encoding="utf-8")
+    assert "sk-live-xxxx" not in content
+    row = json.loads(content.strip().splitlines()[0])
+    assert row["category"] == "turn_start"
+    assert "API_KEY=***" in row["message"]

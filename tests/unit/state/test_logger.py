@@ -95,3 +95,31 @@ def test_logger_swallows_flush_errors(logger: StructuredLogger) -> None:
         LogEntry(ts="t", level="info", session_id="sess-123", category="c", message="m")
     )
     logger.close()
+
+
+def test_log_entry_redacts_message_text() -> None:
+    entry = LogEntry(
+        ts="2026-06-27T00:00:00Z",
+        level="info",
+        session_id="s",
+        category="turn_start",
+        message="password=abc123",
+    )
+    logger = StructuredLogger("/tmp", "s")
+    redacted = logger._redact_entry(entry)
+    assert redacted.message == "password=***"
+
+
+def test_log_entry_redacts_nested_string_values_in_data() -> None:
+    entry = LogEntry(
+        ts="2026-06-27T00:00:00Z",
+        level="info",
+        session_id="s",
+        category="thought_delta",
+        message="assistant text delta",
+        data={"nested_text": "API_KEY=sk-live-xxxx"},
+    )
+    logger = StructuredLogger("/tmp", "s")
+    redacted = logger._redact_entry(entry)
+    assert redacted.data is not None
+    assert redacted.data["nested_text"] == "API_KEY=***"

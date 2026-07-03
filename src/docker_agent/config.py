@@ -3,11 +3,11 @@
 Parity: ``src/config.ts:1-73``.
 """
 
+import contextlib
 import json
 import os
 import shutil
 import sys
-import contextlib
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal
@@ -199,7 +199,8 @@ def persist_model_choice(
     """Merge provider + model into the user config file."""
     config_path = Path(path) if path else Path(user_config_path())
     existing = load_user_config(config_path)
-    save_user_config(existing.model_copy(update={"provider": provider, "model": model}), config_path)
+    updated = existing.model_copy(update={"provider": provider, "model": model})
+    save_user_config(updated, config_path)
 
 
 __all__ = [

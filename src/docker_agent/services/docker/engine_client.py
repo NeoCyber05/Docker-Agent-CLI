@@ -5,11 +5,12 @@ Parity: ``src/services/docker/engineClient.ts:132-223``.
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import importlib.util
 import json
 import sys
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from typing import Any
 
 from docker_agent.services.docker.types import (
@@ -20,6 +21,7 @@ from docker_agent.services.docker.types import (
     ImageInspect,
     ImageSummary,
 )
+from docker_agent.utils.sync_bridge import aiter_in_thread
 
 
 def _load_docker_py() -> Any:
@@ -96,26 +98,37 @@ def create_engine_client(client: Any | None = None) -> EngineClient:
             docker_opts: dict[str, Any] = {"all": all}
             if filters is not None:
                 docker_opts["filters"] = filters
-            raw = docker_client.containers.list(**docker_opts)
+            raw = await asyncio.to_thread(
+                lambda: docker_client.containers.list(**docker_opts)
+            )
             return [
                 ContainerSummary.model_validate(_docker_list_payload(item)) for item in raw
             ]
 
         async def inspect(self, container_id: str) -> ContainerInspect:
-            container = docker_client.containers.get(container_id)
-            return ContainerInspect.model_validate(container.attrs)
+            def _inspect() -> ContainerInspect:
+                container = docker_client.containers.get(container_id)
+                return ContainerInspect.model_validate(container.attrs)
+
+            return await asyncio.to_thread(_inspect)
 
         async def stats(self, container_id: str) -> ContainerStats:
-            container = docker_client.containers.get(container_id)
-            data = container.stats(stream=False)
-            return ContainerStats.model_validate(data)
+            def _stats() -> ContainerStats:
+                container = docker_client.containers.get(container_id)
+                data = container.stats(stream=False)
+                return ContainerStats.model_validate(data)
+
+            return await asyncio.to_thread(_stats)
 
         async def inspect_image(self, name_or_id: str) -> ImageInspect | None:
-            try:
-                image = docker_client.images.get(name_or_id)
-                return ImageInspect.model_validate(image.attrs)
-            except ImageNotFound:
-                return None
+            def _inspect_image() -> ImageInspect | None:
+                try:
+                    image = docker_client.images.get(name_or_id)
+                    return ImageInspect.model_validate(image.attrs)
+                except ImageNotFound:
+                    return None
+
+            return await asyncio.to_thread(_inspect_image)
 
         async def list_images(
             self, *, filters: dict[str, list[str]] | None = None
@@ -123,7 +136,9 @@ def create_engine_client(client: Any | None = None) -> EngineClient:
             docker_opts: dict[str, Any] = {}
             if filters is not None:
                 docker_opts["filters"] = filters
-            raw = docker_client.images.list(**docker_opts)
+            raw = await asyncio.to_thread(
+                lambda: docker_client.images.list(**docker_opts)
+            )
             return [
                 ImageSummary.model_validate(_docker_list_payload(item)) for item in raw
             ]
@@ -131,17 +146,23 @@ def create_engine_client(client: Any | None = None) -> EngineClient:
         async def pull_image(
             self, image: str, *, signal: Any | None = None
         ) -> AsyncIterator[str]:
-            stream = docker_client.images.pull(image, stream=True)
-            for chunk in stream:
-                if isinstance(chunk, bytes):
-                    line = chunk.decode("utf-8", errors="replace")
-                elif isinstance(chunk, str):
-                    line = chunk
-                else:
-                    line = json.dumps(chunk)
-                formatted = _format_pull_progress_line(line)
-                if formatted:
-                    yield formatted
+            def sync_pull() -> Iterator[str]:
+                stream = docker_client.images.pull(image, stream=True)
+                for chunk in stream:
+                    if isinstance(chunk, bytes):
+                        line = chunk.decode("utf-8", errors="replace")
+                    elif isinstance(chunk, str):
+                        line = chunk
+                    else:
+                        line = json.dumps(chunk)
+                    formatted = _format_pull_progress_line(line)
+                    if formatted:
+                        yield formatted
+
+            async for line in aiter_in_thread(sync_pull):
+                if signal is not None and getattr(signal, "is_set", lambda: False)():
+                    return
+                yield line
 
     return _EngineClientImpl()  # type: ignore[return-value]
 

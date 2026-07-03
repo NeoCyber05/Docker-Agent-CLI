@@ -38,6 +38,7 @@ from docker_agent.state.session_store import SessionRecord, SessionStore
 from docker_agent.state.state_store import StateStore
 from docker_agent.vault.api_key_store import create_api_key_store
 
+
 @dataclass
 class ParsedArgs:
     provider_flag: str | None = None

@@ -6,7 +6,6 @@ Parity: ``src/state/SessionStore.ts:1-345``.
 import contextlib
 import json
 import os
-import re
 import shutil
 import sys
 from pathlib import Path
@@ -14,7 +13,12 @@ from typing import Any
 
 from pydantic import TypeAdapter
 
-from docker_agent.state.secret_redactor import should_redact
+from docker_agent.state.secret_redactor import (
+    redact_text as _redact_string,
+)
+from docker_agent.state.secret_redactor import (
+    redact_value_deep as _redact_value,
+)
 from docker_agent.types.message import (
     AssistantBlock,
     AssistantMessage,
@@ -23,7 +27,6 @@ from docker_agent.types.message import (
     UserMessage,
 )
 
-REDACTION_PLACEHOLDER = "***"
 SCHEMA_VERSION = 1
 
 SessionRecord = dict[str, Any]
@@ -81,44 +84,6 @@ def redact_messages(messages: list[Message]) -> list[Message]:
         else:
             out.append(msg)
     return out
-
-
-def _redact_string(value: str) -> str:
-    # JSON-style "key":"value" redaction
-    result = re.sub(
-        r'"([^"]+)"(\s*:\s*)"([^"]*)"',
-        lambda m: f'"{m.group(1)}"{m.group(2)}"{REDACTION_PLACEHOLDER}"'
-        if should_redact(m.group(1))
-        else m.group(0),
-        value,
-    )
-    # Shell-style KEY=VALUE redaction
-    result = re.sub(
-        r'(\b\w+\b)(=)("[^"]*"|\'[^\']*\'|[^\s,}]+)',
-        lambda m: f"{m.group(1)}{m.group(2)}{REDACTION_PLACEHOLDER}"
-        if should_redact(m.group(1))
-        else m.group(0),
-        result,
-    )
-    return result
-
-
-def _redact_value(value: Any) -> Any:
-    if value is None:
-        return None
-    if isinstance(value, str):
-        return _redact_string(value)
-    if isinstance(value, list):
-        return [_redact_value(item) for item in value]
-    if isinstance(value, dict):
-        out: dict[str, Any] = {}
-        for k, v in value.items():
-            if should_redact(k):
-                out[k] = REDACTION_PLACEHOLDER
-            else:
-                out[k] = _redact_value(v)
-        return out
-    return value
 
 
 def session_cwd_mismatch_warning(record: SessionRecord, cwd: str) -> str | None:

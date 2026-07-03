@@ -53,6 +53,11 @@ class ApplyWithRollbackResult:
     result_message: str
 
 
+def _rollback_start_detail(detail: str) -> str:
+    clean = detail.strip() or "unknown"
+    return f"Deploy failed: {clean}. Starting rollback..."
+
+
 async def _run_apply_tool(
     tool: Any,
     input_data: Any,
@@ -126,7 +131,7 @@ async def run_apply_with_rollback(params: ApplyWithRollbackParams) -> ApplyWithR
         RollbackStarted(
             stackName=stack_name,
             reason=reason,
-            detail=detail,
+            detail=_rollback_start_detail(detail),
             runningServices=apply_result.running_services,
         )
     )

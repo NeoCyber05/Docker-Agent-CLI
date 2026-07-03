@@ -315,6 +315,11 @@ async def _drain_tool_stream(
     return events, output
 
 
+def _rollback_start_detail(detail: str) -> str:
+    clean = detail.strip() or "unknown"
+    return f"Deploy failed: {clean}. Starting rollback..."
+
+
 async def apply_with_rollback(
     stack_name: str,
     desired_yaml: str,
@@ -370,7 +375,7 @@ async def apply_with_rollback(
         RollbackStarted(
             stackName=stack_name,
             reason=reason,
-            detail=detail,
+            detail=_rollback_start_detail(detail),
             runningServices=apply_result.running_services,
         )
     )

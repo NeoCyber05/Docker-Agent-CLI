@@ -26,7 +26,6 @@ from docker_agent.types.permissions import permission_kind, permission_value
 READ_ONLY_ALLOWLIST = {
     "validate_spec",
     "resolve_dependency",
-    "check_port_conflict",
     "list_stacks",
     "inspect_drift",
     "get_stack_status",

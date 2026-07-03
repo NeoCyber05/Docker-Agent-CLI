@@ -1,26 +1,12 @@
-"""check_port_conflict tool.
-
-Parity: ``src/tools/checkPortConflict.ts``.
-"""
+"""Internal published-port conflict helpers."""
 
 from __future__ import annotations
 
 import re
-from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
-
-from docker_agent.tools.base import ToolContext, ToolDone, ToolProgress
-from docker_agent.tools.shared.spec_schemas import (
-    HybridServiceIntent,
-    NetworkIntent,
-    StackDraft,
-    VolumeIntent,
-    format_validation_error,
-)
-from docker_agent.tools.shared.translator import prepare_stack_draft
+from docker_agent.tools.base import ToolContext
 from docker_agent.types.stack import ServiceSpec
 
 
@@ -48,17 +34,6 @@ class CheckPortConflictResult:
     conflicts: list[PortConflict] = field(default_factory=list)
     invalid: list[dict[str, str]] = field(default_factory=list)
     docker_error: dict[str, str] | None = None
-
-
-class _CheckPortConflictInput(BaseModel):
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-    stack_name: str | None = Field(default=None, alias="stackName")
-    intent: str | None = None
-    network_name: str | None = Field(default=None, alias="networkName")
-    networks: list[NetworkIntent] | None = None
-    volumes: list[VolumeIntent] | None = None
-    services: list[HybridServiceIntent]
 
 
 def _parse_protocol(value: str) -> tuple[str, Literal["tcp", "udp"]]:
@@ -144,7 +119,8 @@ def _describe_docker_error(error: BaseException | object) -> dict[str, str]:
     code = ""
     if hasattr(error, "code"):
         code = str(error.code)
-    if code in ("ENOENT", "ECONNREFUSED"):
+    detail = str(error)
+    if code in ("ENOENT", "ECONNREFUSED") or "ENOENT" in detail or "ECONNREFUSED" in detail:
         return {
             "code": "docker_engine_unavailable",
             "message": (
@@ -152,7 +128,6 @@ def _describe_docker_error(error: BaseException | object) -> dict[str, str]:
                 "daemon, then retry."
             ),
         }
-    detail = str(error)
     return {
         "code": "docker_inspection_failed",
         "message": f"Could not inspect running Docker containers: {detail}",
@@ -216,6 +191,13 @@ async def check_port_conflicts(
                         conflicts_with=right_service,
                     )
                 )
+
+    if not draft_bindings:
+        return CheckPortConflictResult(
+            ok=len(conflicts) == 0 and len(invalid) == 0,
+            conflicts=conflicts,
+            invalid=invalid,
+        )
 
     running_bindings: list[tuple[str, PublishedPort]] = []
 
@@ -296,85 +278,10 @@ async def check_port_conflicts(
     )
 
 
-class _CheckPortConflictTool:
-    name = "check_port_conflict"
-    description = (
-        "Check draft published ports for internal conflicts and collisions with "
-        "running Docker containers."
-    )
-    input_schema = _CheckPortConflictInput
-    category = "read-only"
-
-    def needs_permission(self, _input: Any) -> bool:
-        return False
-
-    async def call(
-        self, input: _CheckPortConflictInput, ctx: ToolContext
-    ) -> AsyncIterator[ToolProgress | ToolDone]:
-        yield ToolProgress(msg="Checking published ports...")
-        payload: dict[str, Any] = {
-            "stackName": input.stack_name or "validate-temp-stack",
-            "intent": input.intent or "validation only",
-            "services": input.services,
-        }
-        if input.network_name is not None:
-            payload["networkName"] = input.network_name
-        if input.networks:
-            payload["networks"] = [
-                n.model_dump(by_alias=True, exclude_none=True) for n in input.networks
-            ]
-        if input.volumes:
-            payload["volumes"] = [
-                v.model_dump(by_alias=True, exclude_none=True) for v in input.volumes
-            ]
-        try:
-            draft = StackDraft.model_validate(payload)
-        except ValidationError as err:
-            yield ToolDone(
-                CheckPortConflictResult(
-                    ok=False,
-                    conflicts=[],
-                    invalid=[
-                        {
-                            "service": "*",
-                            "value": "services",
-                            "message": format_validation_error(err),
-                        }
-                    ],
-                )
-            )
-            return
-        prep = await prepare_stack_draft(draft, ctx)
-        if not prep.ok:
-            yield ToolDone(
-                CheckPortConflictResult(
-                    ok=False,
-                    conflicts=[],
-                    invalid=[
-                        {
-                            "service": "*",
-                            "value": "services",
-                            "message": prep.error or "unknown",
-                        }
-                    ],
-                )
-            )
-            return
-        assert prep.prepared is not None
-        yield ToolDone(
-            await check_port_conflicts(
-                draft.stack_name, prep.prepared.services, ctx
-            )
-        )
-
-
-check_port_conflict = _CheckPortConflictTool()
-
 __all__ = [
     "CheckPortConflictResult",
     "PortConflict",
     "PublishedPort",
-    "check_port_conflict",
     "check_port_conflicts",
     "parse_published_ports",
 ]

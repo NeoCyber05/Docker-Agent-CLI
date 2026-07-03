@@ -11,7 +11,7 @@ from docker_agent.policy.defaults import (
     global_policy_path,
 )
 from docker_agent.policy.policy_engine import PolicyEngine
-from docker_agent.policy.types import PolicyConfig
+from docker_agent.policy.types import DenyRule, PolicyConfig, RequireRule
 
 
 def test_global_policy_path_honors_env_override(
@@ -49,6 +49,35 @@ def test_default_global_policy_yaml_is_valid() -> None:
     assert cfg.global_group is not None
     assert cfg.global_group.hard_deny is not None
     assert "privileged_containers" in {r.rule for r in cfg.global_group.hard_deny}
+
+
+def test_opt_in_rules_are_valid_but_not_in_default_baseline() -> None:
+    cfg = PolicyConfig.model_validate(yaml.safe_load(DEFAULT_GLOBAL_POLICY_YAML))
+    assert cfg.global_group is not None
+    default_deny = {r.rule for r in cfg.global_group.hard_deny or []}
+    default_require = {r.rule for r in cfg.global_group.require or []}
+
+    opt_in_deny = [
+        "wildcard_host_ports",
+        "inline_sensitive_env",
+        "disable_apparmor",
+        "disable_selinux_label",
+    ]
+    opt_in_require = [
+        "no_new_privileges",
+        "drop_all_capabilities",
+        "read_only_root_filesystem",
+        "pinned_image_tag",
+        "pids_limit",
+    ]
+
+    for rule_name in opt_in_deny:
+        assert DenyRule.model_validate(rule_name).rule == rule_name
+        assert rule_name not in default_deny
+
+    for rule_name in opt_in_require:
+        assert RequireRule.model_validate(rule_name).rule == rule_name
+        assert rule_name not in default_require
 
 
 def test_policy_engine_picks_up_scaffolded_global_policy(

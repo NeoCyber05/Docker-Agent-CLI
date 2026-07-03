@@ -38,6 +38,12 @@ class UntrustedRegistryConfig(BaseModel):
     allowed_registries: list[str] | None = Field(default=None, alias="allowedRegistries")
 
 
+class PidsLimitConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    required: bool | None = None
+    max_pids: int | None = Field(default=None, alias="maxPids")
+
+
 _DENY_RULE_NAMES = Literal[
     "privileged_containers",
     "mount_docker_socket",
@@ -48,6 +54,10 @@ _DENY_RULE_NAMES = Literal[
     "disable_seccomp",
     "expose_database_publicly",
     "untrusted_registry",
+    "wildcard_host_ports",
+    "inline_sensitive_env",
+    "disable_apparmor",
+    "disable_selinux_label",
 ]
 
 _CONFIG_DENY_RULES = frozenset({"untrusted_registry"})
@@ -84,10 +94,15 @@ _REQUIRE_RULE_NAMES = Literal[
     "restart_policy",
     "non_root_user",
     "project_labels",
+    "no_new_privileges",
+    "drop_all_capabilities",
+    "read_only_root_filesystem",
+    "pinned_image_tag",
+    "pids_limit",
 ]
 
 _CONFIG_REQUIRE_RULES = frozenset(
-    {"resource_limits", "logging_rotation", "healthcheck"}
+    {"resource_limits", "logging_rotation", "healthcheck", "pids_limit"}
 )
 
 
@@ -96,7 +111,13 @@ class RequireRule(BaseModel):
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
     rule: _REQUIRE_RULE_NAMES
-    config: ResourceLimitsConfig | LoggingRotationConfig | HealthcheckConfig | None = None
+    config: (
+        ResourceLimitsConfig
+        | LoggingRotationConfig
+        | HealthcheckConfig
+        | PidsLimitConfig
+        | None
+    ) = None
 
     @model_validator(mode="before")
     @classmethod
@@ -139,6 +160,7 @@ __all__ = [
     "DenyRule",
     "HealthcheckConfig",
     "LoggingRotationConfig",
+    "PidsLimitConfig",
     "PolicyConfig",
     "PolicyGroup",
     "PolicyViolation",

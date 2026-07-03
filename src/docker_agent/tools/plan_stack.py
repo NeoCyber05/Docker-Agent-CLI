@@ -13,7 +13,7 @@ from docker_agent.state.drift_detector import detect_drift
 from docker_agent.state.env_file import merge_env
 from docker_agent.state.secret_redactor import scrub_line, should_redact, looks_like_credential_uri
 from docker_agent.tools.base import ToolContext, ToolDone, ToolProgress
-from docker_agent.tools.check_port_conflict import (
+from docker_agent.tools.shared.port_conflicts import (
     CheckPortConflictResult,
     check_port_conflicts,
 )

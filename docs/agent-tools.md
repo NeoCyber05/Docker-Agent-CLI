@@ -22,9 +22,17 @@ LLM agent có thể gọi các tool sau trong phiên REPL. Tool được phân l
 | `remediate_drift` | high-level | Khắc phục drift về desired state |
 | `pull_image` | escape-hatch | Validate và pre-pull Docker image |
 | `exec_docker` | escape-hatch | Chạy lệnh `docker` chỉ đọc (`ps`, `inspect`, `logs`, …) |
-| `validate_spec` | read-only | Preflight — kiểm tra spec (image, config, network/volume top-level) trước deploy |
-| `resolve_dependency` | read-only | Preflight — phân tích phụ thuộc service |
-| `check_port_conflict` | read-only | Preflight — phát hiện xung đột cổng |
+| `validate_spec` | read-only | Preflight bắt buộc - kiểm tra complete draft shape, image, config/app source và xung đột published port trước `plan_stack` |
+| `resolve_dependency` | read-only | Chẩn đoán tùy chọn - phân tích dependency giữa các service |
+
+---
+
+## Preflight và plan gate
+
+- `validate_spec` là bước preflight bắt buộc theo workflow trước khi gọi `plan_stack`. Tool này nhận complete draft và kiểm tra schema, image, config/app source, published port syntax, xung đột port trong draft, xung đột với container đang chạy và trạng thái Docker runtime khi cần inspect host ports.
+- `check_port_conflict` không còn là tool public cho LLM. Logic kiểm tra port nằm trong helper nội bộ và được tái sử dụng bởi `validate_spec`, `plan_stack`, `apply_stack`.
+- `plan_stack` vẫn là gate backend có thẩm quyền: luôn tự chạy lại các check quan trọng và policy trước khi hiển thị plan preview, kể cả khi model bỏ qua preflight.
+- Nếu deploy fail sau khi user approve, UI phải hiển thị lý do lỗi trước khi rollback bắt đầu, sau đó mới báo kết quả rollback.
 
 ---
 

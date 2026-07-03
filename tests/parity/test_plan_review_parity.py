@@ -235,4 +235,7 @@ async def test_apply_failure_rollback_events(
     result = next((e for e in rollback_events if e.type == "rollback_result"), None)
     assert started is not None
     assert started.running_services == ["web"]
+    assert "Deploy failed:" in started.detail
+    assert "partial failure" in started.detail
+    assert "Starting rollback..." in started.detail
     assert result is not None

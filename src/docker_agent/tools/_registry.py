@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from docker_agent.tools.check_port_conflict import check_port_conflict
 from docker_agent.tools.destroy_all_stacks import destroy_all_stacks
 from docker_agent.tools.destroy_stack import destroy_stack
 from docker_agent.tools.exec_docker import exec_docker
@@ -27,7 +26,6 @@ from docker_agent.tools.validate_spec import validate_spec
 _PREFLIGHT_TOOLS: list[Any] = [
     validate_spec,
     resolve_dependency,
-    check_port_conflict,
 ]
 
 

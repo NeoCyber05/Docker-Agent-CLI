@@ -18,6 +18,7 @@ from docker_agent.policy.types import (
     DenyRule,
     HealthcheckConfig,
     LoggingRotationConfig,
+    PidsLimitConfig,
     PolicyConfig,
     PolicyGroup,
     PolicyViolation,
@@ -75,9 +76,105 @@ def parse_duration_to_seconds(duration_str: str) -> float:
     return value * multipliers.get(unit, 1)
 
 
+_LOCALHOST_HOST_BINDS = frozenset({"127.0.0.1", "localhost", "::1"})
+_WILDCARD_HOST_BINDS = frozenset({"0.0.0.0", "::", ""})
+_SENSITIVE_ENV_KEY_PARTS = (
+    "password",
+    "secret",
+    "token",
+    "api-key",
+    "api_key",
+    "access-key",
+    "access_key",
+    "private-key",
+    "private_key",
+)
+
+
+def _normalize_security_opt(opt: str) -> str:
+    return opt.lower().replace(" ", "")
+
+
+def _is_localhost_host_bind(host_ip: str | None) -> bool:
+    if host_ip is None:
+        return False
+    return host_ip.strip().lower() in _LOCALHOST_HOST_BINDS
+
+
+def _is_wildcard_host_port(port: str | dict[str, Any]) -> bool:
+    if isinstance(port, dict):
+        host_ip = port.get("host_ip")
+        if host_ip is None:
+            return True
+        host_ip_str = str(host_ip).strip()
+        if host_ip_str.lower() in _WILDCARD_HOST_BINDS:
+            return True
+        return not _is_localhost_host_bind(host_ip_str)
+
+    port_str = port.split("/")[0]
+    if port_str.startswith("[") and "]:" in port_str:
+        host_part, _, _ = port_str.partition("]:")
+        host_ip = host_part.lstrip("[")
+        return not _is_localhost_host_bind(host_ip)
+
+    parts = port_str.split(":")
+    if len(parts) == 2:
+        return True
+    if len(parts) >= 3:
+        host_ip = parts[0]
+        if host_ip.lower() in _WILDCARD_HOST_BINDS:
+            return True
+        return not _is_localhost_host_bind(host_ip)
+    return True
+
+
+def _is_sensitive_env_key(key: str) -> bool:
+    if key.endswith("_FILE"):
+        return False
+    normalized = key.lower().replace("_", "-")
+    return any(part in normalized for part in _SENSITIVE_ENV_KEY_PARTS)
+
+
+def _is_interpolated_env_value(value: str) -> bool:
+    return "${" in value
+
+
+def _iter_env_entries(
+    environment: list[str] | dict[str, str] | None,
+) -> list[tuple[str, str]]:
+    if not environment:
+        return []
+    if isinstance(environment, dict):
+        return [(str(key), str(val)) for key, val in environment.items()]
+    entries: list[tuple[str, str]] = []
+    for item in environment:
+        if not isinstance(item, str) or "=" not in item:
+            continue
+        key, _, value = item.partition("=")
+        entries.append((key, value))
+    return entries
+
+
+def _has_no_new_privileges(security_opt: list[str]) -> bool:
+    for opt in security_opt:
+        normalized = _normalize_security_opt(opt)
+        if normalized in {"no-new-privileges:true", "no-new-privileges=true"}:
+            return True
+    return False
+
+
+def _has_pinned_image_tag(image: str) -> bool:
+    if "@" in image:
+        return True
+    if ":" not in image:
+        return False
+    tag = image.rsplit(":", 1)[-1]
+    return tag.lower() != "latest"
+
+
 def _find_require_config(
     group: PolicyGroup, rule_name: str
-) -> ResourceLimitsConfig | LoggingRotationConfig | HealthcheckConfig | None:
+) -> ResourceLimitsConfig | LoggingRotationConfig | HealthcheckConfig | PidsLimitConfig | None:
     if not group.require:
         return None
     for rule in group.require:
@@ -254,6 +351,25 @@ class PolicyEngine:
                         f"allows registry '{reg}' which is not in Global registry whitelist"
                     )
 
+        global_pids = _find_require_config(self._global_policy, "pids_limit")
+        project_pids = _find_require_config(self._project_policy, "pids_limit")
+        if isinstance(global_pids, PidsLimitConfig) and isinstance(project_pids, PidsLimitConfig):
+            if global_pids.required and project_pids.required is False:
+                raise ValueError(
+                    "Invalid policy configuration: Project policy cannot disable "
+                    "pids_limit required if enabled globally"
+                )
+            if (
+                global_pids.max_pids is not None
+                and project_pids.max_pids is not None
+                and project_pids.max_pids > global_pids.max_pids
+            ):
+                raise ValueError(
+                    "Invalid policy configuration: Project maxPids "
+                    f"({project_pids.max_pids}) cannot exceed Global maxPids "
+                    f"({global_pids.max_pids})"
+                )
+
     def get_effective_policy(self) -> Any:
         """Return merged effective policy as a simple object."""
         hard_deny: set[str] = set()
@@ -262,6 +378,7 @@ class PolicyEngine:
         resource_limits: ResourceLimitsConfig | None = None
         logging_rotation: LoggingRotationConfig | None = None
         healthcheck: HealthcheckConfig | None = None
+        pids_limit: PidsLimitConfig | None = None
 
         def process_deny(rule: DenyRule) -> None:
             nonlocal untrusted_registry
@@ -274,7 +391,7 @@ class PolicyEngine:
                     untrusted_registry = rule.config or global_reg
 
         def process_require(rule: RequireRule) -> None:
-            nonlocal resource_limits, logging_rotation, healthcheck
+            nonlocal resource_limits, logging_rotation, healthcheck, pids_limit
             require.add(rule.rule)
             if rule.rule == "resource_limits" and isinstance(rule.config, ResourceLimitsConfig):
                 global_limits = _find_require_config(self._global_policy, "resource_limits")
@@ -320,6 +437,19 @@ class PolicyEngine:
                     )
                 else:
                     healthcheck = rule.config
+            elif rule.rule == "pids_limit" and isinstance(rule.config, PidsLimitConfig):
+                global_pids = _find_require_config(self._global_policy, "pids_limit")
+                if isinstance(global_pids, PidsLimitConfig):
+                    pids_limit = PidsLimitConfig.model_validate(
+                        {
+                            "required": global_pids.required or rule.config.required,
+                            "max_pids": rule.config.max_pids
+                            if rule.config.max_pids is not None
+                            else global_pids.max_pids,
+                        }
+                    )
+                else:
+                    pids_limit = rule.config
 
         for deny_rule in self._global_policy.hard_deny or []:
             process_deny(deny_rule)
@@ -338,6 +468,7 @@ class PolicyEngine:
                 self.resource_limits = resource_limits
                 self.logging_rotation = logging_rotation
                 self.healthcheck = healthcheck
+                self.pids_limit = pids_limit
 
         return _EffectivePolicy()
 
@@ -505,6 +636,60 @@ class PolicyEngine:
                             )
                         )
 
+        if "wildcard_host_ports" in effective.hard_deny:
+            for port in svc.get("ports", []) or []:
+                if _is_wildcard_host_port(port):
+                    port_display = port if isinstance(port, str) else str(port)
+                    violations.append(
+                        PolicyViolation(
+                            service=name,
+                            rule="wildcard_host_ports",
+                            message=(
+                                f"Published port ({port_display}) must bind to localhost "
+                                "(127.0.0.1, localhost, or ::1), not all interfaces"
+                            ),
+                        )
+                    )
+
+        if "inline_sensitive_env" in effective.hard_deny:
+            for key, value in _iter_env_entries(svc.get("environment")):
+                if not _is_sensitive_env_key(key):
+                    continue
+                if _is_interpolated_env_value(value):
+                    continue
+                violations.append(
+                    PolicyViolation(
+                        service=name,
+                        rule="inline_sensitive_env",
+                        message=(
+                            f"Sensitive environment variable '{key}' must not contain "
+                            "a literal value; use *_FILE or ${...} interpolation"
+                        ),
+                    )
+                )
+
+        if "disable_apparmor" in effective.hard_deny:
+            for opt in svc.get("security_opt", []) or []:
+                if _normalize_security_opt(str(opt)) == "apparmor:unconfined":
+                    violations.append(
+                        PolicyViolation(
+                            service=name,
+                            rule="disable_apparmor",
+                            message="Disabling AppArmor (apparmor:unconfined) is not allowed",
+                        )
+                    )
+
+        if "disable_selinux_label" in effective.hard_deny:
+            for opt in svc.get("security_opt", []) or []:
+                if _normalize_security_opt(str(opt)) == "label:disable":
+                    violations.append(
+                        PolicyViolation(
+                            service=name,
+                            rule="disable_selinux_label",
+                            message="Disabling SELinux label (label:disable) is not allowed",
+                        )
+                    )
+
         if "restart_policy" in effective.require:
             restart = svc.get("restart")
             if not restart or restart == "no":
@@ -671,6 +856,80 @@ class PolicyEngine:
                     message="Project labels are required",
                 )
             )
+
+        if "no_new_privileges" in effective.require:
+            security_opt = svc.get("security_opt", []) or []
+            if not _has_no_new_privileges([str(opt) for opt in security_opt]):
+                violations.append(
+                    PolicyViolation(
+                        service=name,
+                        rule="no_new_privileges",
+                        message=(
+                            "security_opt must include no-new-privileges:true "
+                            "to prevent in-container privilege escalation"
+                        ),
+                    )
+                )
+
+        if "drop_all_capabilities" in effective.require:
+            cap_drop = svc.get("cap_drop", []) or []
+            if "ALL" not in cap_drop and "all" not in cap_drop:
+                violations.append(
+                    PolicyViolation(
+                        service=name,
+                        rule="drop_all_capabilities",
+                        message="cap_drop must include ALL",
+                    )
+                )
+
+        if "read_only_root_filesystem" in effective.require and svc.get("read_only") is not True:
+            violations.append(
+                PolicyViolation(
+                    service=name,
+                    rule="read_only_root_filesystem",
+                    message="read_only: true is required for the root filesystem",
+                )
+            )
+
+        if "pinned_image_tag" in effective.require:
+            image = str(svc.get("image", ""))
+            if not image or not _has_pinned_image_tag(image):
+                violations.append(
+                    PolicyViolation(
+                        service=name,
+                        rule="pinned_image_tag",
+                        message=(
+                            "Image must use an explicit non-latest tag or a digest reference"
+                        ),
+                    )
+                )
+
+        if "pids_limit" in effective.require and effective.pids_limit:
+            conf = effective.pids_limit
+            pids_limit = svc.get("pids_limit")
+            if conf.required and pids_limit is None:
+                violations.append(
+                    PolicyViolation(
+                        service=name,
+                        rule="pids_limit",
+                        message="pids_limit is required",
+                    )
+                )
+            elif (
+                conf.max_pids is not None
+                and pids_limit is not None
+                and int(pids_limit) > conf.max_pids
+            ):
+                violations.append(
+                    PolicyViolation(
+                        service=name,
+                        rule="pids_limit",
+                        message=(
+                            f"pids_limit ({pids_limit}) exceeds maximum allowed "
+                            f"limit ({conf.max_pids})"
+                        ),
+                    )
+                )
 
     def _extract_registry(self, image: str) -> str:
         parts = image.split("/")

@@ -54,9 +54,8 @@ Dưới đây là bảng tổng hợp ánh xạ từ Tool của Agent đến Hà
 | **`pull_image`** | `escape-hatch` | `src/tools/pull_image.py` | *Không sử dụng CLI* | `GET /images/{name}/json`<br>`POST /images/create` |
 | **`exec_docker`** | `escape-hatch` | `src/tools/exec_docker.py` | `docker [ps \| inspect \| logs \| images \| network ls \| volume ls]` | *Thông qua lệnh Docker CLI* |
 | **`list_stacks`** | `read-only` | `src/tools/list_stacks.py` | *Không có* | *Không có (Đọc dữ liệu lưu cục bộ)* |
-| **`validate_spec`** | `read-only` | `src/tools/validate_spec.py` | *Không có* | *Không có (Preflight)* |
+| **`validate_spec`** | `read-only` | `src/tools/validate_spec.py` | *Không có* | `GET /containers/json`<br>`GET /containers/{id}/json` khi draft publish host ports; bỏ qua Docker runtime inspection nếu không có host port |
 | **`resolve_dependency`** | `read-only` | `src/tools/resolve_dependency.py` | *Không có* | *Không có (Preflight)* |
-| **`check_port_conflict`** | `read-only` | `src/tools/check_port_conflict.py` | *Không có* | *Không có (Preflight)* |
 
 ---
 

@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from docker_agent.policy.types import (
     DenyRule,
+    PidsLimitConfig,
     PolicyConfig,
     PolicyViolation,
     RequireRule,
@@ -79,3 +80,51 @@ def test_policy_config_parses_yaml_shape() -> None:
     assert cfg.project_group is not None
     assert cfg.project_group.hard_deny is not None
     assert cfg.project_group.hard_deny[0].rule == "untrusted_registry"
+
+
+@pytest.mark.parametrize(
+    "rule_name",
+    [
+        "wildcard_host_ports",
+        "inline_sensitive_env",
+        "disable_apparmor",
+        "disable_selinux_label",
+    ],
+)
+def test_deny_rule_accepts_new_hard_deny_rules(rule_name: str) -> None:
+    r = DenyRule.model_validate(rule_name)
+    assert r.rule == rule_name
+
+
+@pytest.mark.parametrize(
+    "rule_name",
+    [
+        "no_new_privileges",
+        "drop_all_capabilities",
+        "read_only_root_filesystem",
+        "pinned_image_tag",
+        "pids_limit",
+    ],
+)
+def test_require_rule_accepts_new_require_rules(rule_name: str) -> None:
+    r = RequireRule.model_validate(rule_name)
+    assert r.rule == rule_name
+
+
+def test_require_rule_pids_limit_variant() -> None:
+    r = RequireRule.model_validate({"pids_limit": {"required": True, "maxPids": 512}})
+    assert r.rule == "pids_limit"
+    assert r.config is not None
+    assert isinstance(r.config, PidsLimitConfig)
+    assert r.config.required is True
+    assert r.config.max_pids == 512
+
+
+def test_require_rule_rejects_unknown_rule() -> None:
+    with pytest.raises(ValidationError):
+        RequireRule.model_validate("unknown_rule_name")
+
+
+def test_deny_rule_rejects_unknown_rule() -> None:
+    with pytest.raises(ValidationError):
+        DenyRule.model_validate("unknown_deny_rule")

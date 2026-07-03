@@ -16,7 +16,7 @@ from docker_agent.tools.shared.config_files import (
     stage_config_files,
 )
 from docker_agent.tools.shared.image_validation import validate_images_for_tool
-from docker_agent.tools.shared.network_guard import check_network_references
+from docker_agent.tools.shared.port_conflicts import CheckPortConflictResult, check_port_conflicts
 from docker_agent.tools.shared.spec_schemas import (
     HybridServiceIntent,
     NetworkIntent,
@@ -25,8 +25,12 @@ from docker_agent.tools.shared.spec_schemas import (
     format_validation_error,
 )
 from docker_agent.tools.shared.translator import prepare_stack_draft
-from docker_agent.tools.shared.volume_guard import check_volume_references
 from docker_agent.types.stack import ServiceSpec
+
+VALIDATE_SPEC_SCOPE = (
+    "draft_preflight: StackDraft structure, Docker image availability, "
+    "config file bindings, application source artifacts, and published port conflicts."
+)
 
 SpecIssueCode = Literal[
     "invalid_image",
@@ -34,6 +38,9 @@ SpecIssueCode = Literal[
     "missing_config_file",
     "missing_app_source",
     "invalid_spec",
+    "invalid_port",
+    "port_conflict",
+    "port_check_unavailable",
     "undeclared_network",
     "undeclared_volume",
 ]
@@ -51,13 +58,14 @@ class ValidateSpecResult:
     valid: bool
     issues: list[SpecIssue] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    scope: str = VALIDATE_SPEC_SCOPE
 
 
 class _ValidateSpecInput(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    stack_name: str | None = Field(default=None, alias="stackName")
-    intent: str | None = None
+    stack_name: str = Field(alias="stackName")
+    intent: str
     network_name: str | None = Field(default=None, alias="networkName")
     networks: list[NetworkIntent] | None = None
     volumes: list[VolumeIntent] | None = None
@@ -69,7 +77,7 @@ async def validate_spec_input(
     input: dict[str, Any],
     ctx: ToolContext,
 ) -> ValidateSpecResult:
-    """Validate images and config file bindings for prepared services."""
+    """Validate image availability and LLM-provided artifacts for prepared services."""
     issues: list[SpecIssue] = []
     services: dict[str, ServiceSpec] = input["services"]
     config_files: dict[str, str] | None = input.get("config_files")
@@ -134,8 +142,8 @@ async def validate_spec_input(
 
 def _stack_draft_payload(input: _ValidateSpecInput) -> dict[str, Any]:
     payload: dict[str, Any] = {
-        "stackName": input.stack_name or "validate-temp-stack",
-        "intent": input.intent or "validation only",
+        "stackName": input.stack_name,
+        "intent": input.intent,
         "services": input.services,
     }
     if input.network_name is not None:
@@ -153,12 +161,49 @@ def _stack_draft_payload(input: _ValidateSpecInput) -> dict[str, Any]:
     return payload
 
 
+def _port_check_issues(port_check: CheckPortConflictResult) -> list[SpecIssue]:
+    issues: list[SpecIssue] = []
+    for item in port_check.invalid:
+        service = item.get("service", "*")
+        value = item.get("value", "ports")
+        issues.append(
+            SpecIssue(
+                code="invalid_port",
+                path=f"services.{service}.ports",
+                message=f"Invalid port mapping '{value}': {item.get('message', 'invalid')}",
+            )
+        )
+    for conflict in port_check.conflicts:
+        issues.append(
+            SpecIssue(
+                code="port_conflict",
+                path=f"services.{conflict.service}.ports",
+                message=(
+                    f"Port {conflict.host_ip}:{conflict.host_port}/{conflict.protocol} "
+                    f"for service '{conflict.service}' conflicts with "
+                    f"{conflict.conflicts_with} ({conflict.source})."
+                ),
+            )
+        )
+    if port_check.docker_error is not None:
+        issues.append(
+            SpecIssue(
+                code="port_check_unavailable",
+                path="services",
+                message=port_check.docker_error.get("message", "port check unavailable"),
+            )
+        )
+    return issues
+
+
 class _ValidateSpecTool:
     name = "validate_spec"
     description = (
-        "Validate a draft stack service spec: Docker images, bind-mounted "
-        "config paths, missing config file content, and top-level network/volume "
-        "declarations."
+        "Required preflight for a complete draft stack intent before plan_stack. "
+        "valid=True means the draft schema is well-formed, required artifacts are "
+        "present, Docker images can be resolved, and published host ports do not "
+        "conflict with the draft or currently running containers. Does not approve "
+        "deployment policy or replace plan_stack's mandatory gate."
     )
     input_schema = _ValidateSpecInput
     category = "read-only"
@@ -206,55 +251,22 @@ class _ValidateSpecTool:
         assert prep.prepared is not None
         prepared = prep.prepared
 
-        network_issues = check_network_references(
-            prepared.services, prepared.networks
-        )
-        if network_issues:
-            yield ToolDone(
-                ValidateSpecResult(
-                    valid=False,
-                    issues=[
-                        SpecIssue(
-                            code="undeclared_network",
-                            path=f"services.{issue.service}.networks",
-                            message=issue.message,
-                        )
-                        for issue in network_issues
-                    ],
-                    warnings=[],
-                )
-            )
-            return
-
-        volume_ref_issues = check_volume_references(
-            prepared.services, prepared.volumes
-        )
-        if volume_ref_issues:
-            yield ToolDone(
-                ValidateSpecResult(
-                    valid=False,
-                    issues=[
-                        SpecIssue(
-                            code="undeclared_volume",
-                            path=f"services.{issue.service}.volumeMounts",
-                            message=issue.message,
-                        )
-                        for issue in volume_ref_issues
-                    ],
-                    warnings=[],
-                )
-            )
-            return
-
         spec_input: dict[str, Any] = {"services": prepared.services}
         if input.config_files is not None:
             spec_input["config_files"] = input.config_files
-        yield ToolDone(await validate_spec_input(spec_input, ctx))
+        result = await validate_spec_input(spec_input, ctx)
+        port_check = await check_port_conflicts(draft.stack_name, prepared.services, ctx)
+        port_issues = _port_check_issues(port_check)
+        if port_issues:
+            result.issues.extend(port_issues)
+            result.valid = False
+        yield ToolDone(result)
 
 
 validate_spec = _ValidateSpecTool()
 
 __all__ = [
+    "VALIDATE_SPEC_SCOPE",
     "SpecIssue",
     "ValidateSpecResult",
     "validate_spec",

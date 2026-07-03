@@ -17,6 +17,13 @@ from docker_agent.tools.shared.db_healthcheck import inject_db_healthchecks
 from docker_agent.tools.shared.db_port_guard import check_db_port_exposure
 from docker_agent.tools.shared.image_validation import validate_images_for_tool
 from docker_agent.tools.shared.network_guard import check_network_references
+from docker_agent.tools.shared.port_conflicts import (
+    CheckPortConflictResult,
+    PortConflict,
+    PublishedPort,
+    check_port_conflicts,
+    parse_published_ports,
+)
 from docker_agent.tools.shared.required_secrets import (
     find_required_secrets,
     is_weak_secret_value,
@@ -30,12 +37,16 @@ from docker_agent.tools.shared.yaml_round_trip import validate_yaml_round_trip
 
 __all__ = [
     "BuildStackResult",
+    "CheckPortConflictResult",
     "HybridServiceIntent",
     "PlanInput",
+    "PortConflict",
+    "PublishedPort",
     "StackDraft",
     "build_stack_definition",
     "check_db_port_exposure",
     "check_network_references",
+    "check_port_conflicts",
     "check_resource_limits",
     "check_volume_safety",
     "collect_secret_keys",
@@ -45,6 +56,7 @@ __all__ = [
     "find_required_secrets",
     "inject_db_healthchecks",
     "is_weak_secret_value",
+    "parse_published_ports",
     "prepare_stack_draft",
     "stack_to_yaml",
     "stage_config_files",

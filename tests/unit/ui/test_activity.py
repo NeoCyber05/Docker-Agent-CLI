@@ -289,14 +289,14 @@ def test_rollback_started_and_result() -> None:
             "type": "rollback_started",
             "stack_name": "web",
             "reason": "apply_failed",
-            "detail": "exit 1",
+            "detail": "Deploy failed: exit 1. Starting rollback...",
         },
     )
     item = state.items[0]
     assert item.type == "rollback"
     assert item.stack_name == "web"
     assert item.phase == "started"
-    assert item.detail == "exit 1"
+    assert item.detail == "Deploy failed: exit 1. Starting rollback..."
     state = activity_reducer(
         state,
         {

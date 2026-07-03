@@ -97,7 +97,7 @@ async def test_validate_spec(tmp_project, make_context) -> None:
         tmp_project,
         make_context,
         tool_name="validate_spec",
-        input_data={"services": [{"name": "web", "kind": "custom", "image": "nginx:latest"}]},
+        input_data={"stackName": "web", "intent": "validate web", "services": [{"name": "web", "kind": "custom", "image": "nginx:latest"}]},
     )
     assert output_field(tool_result.output, "valid") is True
 
@@ -122,25 +122,6 @@ async def test_resolve_dependency(tmp_project, make_context) -> None:
     )
     assert output_field(tool_result.output, "valid") is True
 
-
-@pytest.mark.asyncio
-async def test_check_port_conflict(tmp_project, make_context) -> None:
-    await _run_tool_test(
-        tmp_project,
-        make_context,
-        tool_name="check_port_conflict",
-        input_data={
-            "services": [
-                {
-                    "name": "web",
-                    "kind": "custom",
-                    "image": "nginx:latest",
-                    "exposure": "public",
-                    "containerPort": 80,
-                }
-            ]
-        },
-    )
 
 
 @pytest.mark.asyncio

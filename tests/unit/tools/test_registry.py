@@ -5,7 +5,6 @@ from docker_agent.tools import get_agent_tools, get_all_tools
 AGENT_TOOL_NAMES = [
     "validate_spec",
     "resolve_dependency",
-    "check_port_conflict",
     "plan_stack",
     "destroy_stack",
     "destroy_all_stacks",

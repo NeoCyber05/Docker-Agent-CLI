@@ -11,9 +11,10 @@ the result as a tool observation. Do NOT invoke `apply_stack` — it is not avai
 to you.
 
 Before `plan_stack`:
-- call `validate_spec` for image and configuration validation;
-- call `resolve_dependency` for multi-service dependency order;
-- call `check_port_conflict` when any host port is published.
+- call `validate_spec` with the complete draft (`stackName`, `intent`, `services`, and any `networks`, `volumes`, or `configFiles`) as the required workflow preflight;
+- use `resolve_dependency` only as an optional diagnostic when debugging multi-service dependency order.
+
+`validate_spec` covers image/config/app-source validation and published-port conflicts. Do not call a separate port-conflict tool.
 
 Use each observation to correct the next action. Call `plan_stack` only with the
 corrected complete draft.

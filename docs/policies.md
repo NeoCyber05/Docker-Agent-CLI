@@ -61,6 +61,7 @@ Khi cả global và project đều có rule có tham số, project chỉ đượ
 | `logging_rotation` | `maxSize`, `maxFiles` project ≤ global |
 | `healthcheck` | Không tắt `required` nếu global bật; interval/timeout project ≤ global |
 | `untrusted_registry` | `allowedRegistries` project phải là **tập con** của global |
+| `pids_limit` | Không tắt `required` nếu global bật; `maxPids` project ≤ global |
 
 Vi phạm hierarchy → `policy_engine` throw lỗi khi khởi tạo (CLI không chạy được với config sai).
 
@@ -100,6 +101,10 @@ Các rule dạng chuỗi đơn giản — thêm vào danh sách `hardDeny`:
 | `disable_seccomp` | Cấm tắt seccomp | `security_opt` chứa `seccomp:unconfined` |
 | `expose_database_publicly` | Cấm expose DB ra ngoài localhost | Image DB (postgres, mysql, redis, …) + port không bind `127.0.0.1:` |
 | `untrusted_registry` | Chỉ cho phép registry trong whitelist | Xem cấu hình bên dưới |
+| `wildcard_host_ports` *(opt-in)* | Cấm publish port ra mọi interface | Port dạng `8080:80`, `0.0.0.0:8080:80`, hoặc dict thiếu `host_ip` |
+| `inline_sensitive_env` *(opt-in)* | Cấm ghi literal secret trong `environment` | Key khớp password/secret/token/api-key/access-key/private-key (trừ `*_FILE`, `${...}`) |
+| `disable_apparmor` *(opt-in)* | Cấm tắt AppArmor | `security_opt` chứa `apparmor:unconfined` |
+| `disable_selinux_label` *(opt-in)* | Cấm tắt SELinux label | `security_opt` chứa `label:disable` |
 
 ### `untrusted_registry` (có tham số)
 
@@ -128,6 +133,10 @@ Các rule trong `require` là baseline bắt buộc. Nếu vi phạm, deployment
 | `restart_policy` | Phải có restart policy | Thiếu `restart` hoặc `restart: no` |
 | `non_root_user` | Phải chạy non-root | Thiếu `user` |
 | `project_labels` | Phải có labels | Thiếu `labels` |
+| `no_new_privileges` *(opt-in)* | Ngăn leo quyền trong container | Thiếu `security_opt: no-new-privileges:true` |
+| `drop_all_capabilities` *(opt-in)* | Drop toàn bộ capability trước khi add lại | Thiếu `cap_drop: [ALL]` |
+| `read_only_root_filesystem` *(opt-in)* | Root filesystem phải read-only | Thiếu `read_only: true` |
+| `pinned_image_tag` *(opt-in)* | Image phải có tag cố định hoặc digest | Dùng `nginx`, `nginx:latest` thay vì tag/digest rõ ràng |
 
 ### Rule có tham số
 
@@ -177,6 +186,56 @@ require:
 | `required` | Phải có `healthcheck.test`, không `disable: true` |
 | `maxIntervalSeconds` | `healthcheck.interval` ≤ ngưỡng (hỗ trợ `s`, `m`, `h`) |
 | `maxTimeoutSeconds` | `healthcheck.timeout` ≤ ngưỡng |
+
+#### `pids_limit` *(opt-in)*
+
+```yaml
+require:
+  - pids_limit:
+      required: true
+      maxPids: 512
+```
+
+| Tham số | Kiểm tra |
+|---------|----------|
+| `required` | Bắt buộc trường `pids_limit` trên service |
+| `maxPids` | Giá trị `pids_limit` không vượt ngưỡng |
+
+---
+
+## Rule opt-in và baseline mặc định
+
+Baseline global mặc định (`~/.docker-agent/policies.yaml` khi tự tạo lần đầu) vẫn giữ **9 rule `hardDeny` + 3 rule `require`** như trước. Các rule đánh dấu *(opt-in)* ở trên chỉ có hiệu lực khi bạn **chủ động thêm** vào global hoặc project policy.
+
+Ví dụ siết thêm cho project:
+
+```yaml
+project:
+  hardDeny:
+    - wildcard_host_ports
+    - inline_sensitive_env
+  require:
+    - no_new_privileges
+    - drop_all_capabilities
+    - read_only_root_filesystem
+    - pinned_image_tag
+    - pids_limit:
+        required: true
+        maxPids: 256
+```
+
+---
+
+## Ngoài phạm vi Policy Engine hiện tại
+
+Policy Engine chỉ đánh giá **Docker Compose YAML** (cấu hình service/stack). Các khuyến nghị host/daemon/CI từ tài liệu bảo mật Docker **không** được enforce tự động bởi policy YAML, ví dụ:
+
+- Cập nhật Docker Engine / kernel host (Rule #0)
+- Cấu hình daemon TCP socket, log level daemon (Rule #10)
+- Rootless mode / user namespace remap ở daemon (Rule #11)
+- Quét image, SBOM, ký image trong CI/CD (Rule #9, #13)
+
+Các mục này nên được vận hành ở tầng hạ tầng/CI; Policy Engine bổ sung guard ở tầng Compose khi team opt-in các rule tương ứng.
 
 ---
 

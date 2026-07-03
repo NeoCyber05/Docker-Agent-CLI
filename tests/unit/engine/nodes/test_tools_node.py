@@ -63,6 +63,16 @@ async def test_tools_node_allowlist_blocks_unsupported_tool(make_loop_ctx) -> No
     assert "not supported in langgraph backend" in result["messages"][0].content
     assert result["messages"][0].is_error is True
 
+@pytest.mark.asyncio
+async def test_tools_node_no_longer_executes_check_port_conflict(make_loop_ctx) -> None:
+    ctx = make_loop_ctx()
+    deps = ToolsNodeDeps(ctx=ctx, emit=lambda _e: None)
+    state = _assistant_with_tool("check_port_conflict", {"services": []})
+
+    result = await tools_node(deps, state)
+
+    assert "unknown tool: check_port_conflict" in result["messages"][0].content
+    assert result["messages"][0].is_error is True
 
 @pytest.mark.asyncio
 async def test_tools_node_list_stacks_success(make_loop_ctx) -> None:

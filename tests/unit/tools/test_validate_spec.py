@@ -5,12 +5,14 @@ from __future__ import annotations
 import pytest
 
 from docker_agent.services.docker.image_validator import ImageValidationResult
+from docker_agent.services.docker.types import ContainerSummary
 from docker_agent.tools.base import ToolContext
 from docker_agent.tools.validate_spec import (
     SpecIssue,
     ValidateSpecResult,
     validate_spec,
 )
+from tests.mocks.mock_docker_engine import MockDockerEngine
 from tests.unit.tools.conftest import drain_with_progress, make_ctx
 
 
@@ -30,20 +32,80 @@ class InvalidImageValidator:
         ]
 
 
+class FailingListContainersEngine(MockDockerEngine):
+    async def list_containers(self, *, all: bool = False, filters=None):
+        raise AssertionError("validate_spec should not inspect containers without host ports")
+
+
+class DockerUnavailableEngine(MockDockerEngine):
+    async def list_containers(self, *, all: bool = False, filters=None):
+        raise OSError("connect ENOENT //./pipe/docker_engine")
+
+
+def _with_draft_defaults(payload: dict) -> dict:
+    return {
+        "stackName": payload.get("stackName", "validate-test"),
+        "intent": payload.get("intent", "validation test"),
+        **payload,
+    }
+
+
+def _inspect_with_ports(
+    container_id: str, container_port: str, host_port: str
+) -> dict[str, object]:
+    return {
+        "Id": container_id,
+        "Name": f"/{container_id}",
+        "State": {"Status": "running"},
+        "Config": {"Image": "nginx", "Env": [], "Labels": {}},
+        "HostConfig": {"Binds": None, "PortBindings": {}},
+        "NetworkSettings": {
+            "Ports": {container_port: [{"HostIp": "0.0.0.0", "HostPort": host_port}]}
+        },
+        "RestartCount": 0,
+    }
+
+
+def _engine_with_published_port(
+    *,
+    container_id: str = "existing",
+    project: str = "other",
+    host_port: str = "8080",
+    container_port: str = "80/tcp",
+) -> MockDockerEngine:
+    engine = MockDockerEngine()
+    engine.containers.append(
+        ContainerSummary.model_validate(
+            {
+                "Id": container_id,
+                "Names": [f"/{container_id}"],
+                "State": "running",
+                "Labels": {"com.docker.compose.project": project},
+            }
+        ).model_dump(by_alias=True)
+    )
+    engine.inspect_by_id[container_id] = _inspect_with_ports(
+        container_id, container_port, host_port
+    )
+    return engine
+
+
 @pytest.mark.asyncio
 async def test_returns_valid_for_simple_nginx_spec(tmp_project) -> None:
     _, result = await drain_with_progress(
         validate_spec.call(
             validate_spec.input_schema.model_validate(
-                {
-                    "services": [
-                        {
-                            "name": "web",
-                            "kind": "custom",
-                            "image": "nginx:1.27-alpine",
-                        }
-                    ]
-                }
+                _with_draft_defaults(
+                    {
+                        "services": [
+                            {
+                                "name": "web",
+                                "kind": "custom",
+                                "image": "nginx:1.27-alpine",
+                            }
+                        ]
+                    }
+                )
             ),
             make_ctx(tmp_project),
         )
@@ -58,21 +120,23 @@ async def test_returns_structured_observation_for_missing_config_content(
     _, result = await drain_with_progress(
         validate_spec.call(
             validate_spec.input_schema.model_validate(
-                {
-                    "services": [
-                        {
-                            "name": "web",
-                            "kind": "custom",
-                            "image": "nginx:1.27-alpine",
-                            "configMounts": [
-                                {
-                                    "hostPath": "./nginx.conf",
-                                    "containerPath": "/etc/nginx/nginx.conf",
-                                }
-                            ],
-                        }
-                    ]
-                }
+                _with_draft_defaults(
+                    {
+                        "services": [
+                            {
+                                "name": "web",
+                                "kind": "custom",
+                                "image": "nginx:1.27-alpine",
+                                "configMounts": [
+                                    {
+                                        "hostPath": "./nginx.conf",
+                                        "containerPath": "/etc/nginx/nginx.conf",
+                                    }
+                                ],
+                            }
+                        ]
+                    }
+                )
             ),
             make_ctx(tmp_project),
         )
@@ -98,18 +162,20 @@ async def test_accepts_docker_string_config_mount(tmp_project) -> None:
     _, result = await drain_with_progress(
         validate_spec.call(
             validate_spec.input_schema.model_validate(
-                {
-                    "services": [
-                        {
-                            "name": "web",
-                            "kind": "custom",
-                            "image": "nginx:1.27-alpine",
-                            "configMounts": [
-                                "./nginx.conf:/etc/nginx/nginx.conf",
-                            ],
-                        }
-                    ]
-                }
+                _with_draft_defaults(
+                    {
+                        "services": [
+                            {
+                                "name": "web",
+                                "kind": "custom",
+                                "image": "nginx:1.27-alpine",
+                                "configMounts": [
+                                    "./nginx.conf:/etc/nginx/nginx.conf",
+                                ],
+                            }
+                        ]
+                    }
+                )
             ),
             make_ctx(tmp_project),
         )
@@ -134,16 +200,18 @@ async def test_reports_unsafe_config_path(tmp_project) -> None:
     _, result = await drain_with_progress(
         validate_spec.call(
             validate_spec.input_schema.model_validate(
-                {
-                    "services": [
-                        {
-                            "name": "web",
-                            "kind": "custom",
-                            "image": "nginx:1.27-alpine",
-                        }
-                    ],
-                    "configFiles": {"../escape.conf": "content"},
-                }
+                _with_draft_defaults(
+                    {
+                        "services": [
+                            {
+                                "name": "web",
+                                "kind": "custom",
+                                "image": "nginx:1.27-alpine",
+                            }
+                        ],
+                        "configFiles": {"../escape.conf": "content"},
+                    }
+                )
             ),
             make_ctx(tmp_project),
         )
@@ -157,34 +225,36 @@ async def test_accepts_declared_top_level_networks(tmp_project) -> None:
     _, result = await drain_with_progress(
         validate_spec.call(
             validate_spec.input_schema.model_validate(
-                {
-                    "services": [
-                        {
-                            "name": "web",
-                            "kind": "catalog",
-                            "catalogId": "nginx:1.27",
-                            "exposure": "public",
-                            "networks": ["frontend"],
-                        },
-                        {
-                            "name": "api",
-                            "kind": "custom",
-                            "image": "node:20-alpine",
-                            "networks": ["frontend", "backend"],
-                            "depends_on": ["db"],
-                        },
-                        {
-                            "name": "db",
-                            "kind": "catalog",
-                            "catalogId": "postgresql:16",
-                            "networks": ["backend"],
-                        },
-                    ],
-                    "networks": [
-                        {"name": "frontend"},
-                        {"name": "backend", "internal": True},
-                    ],
-                }
+                _with_draft_defaults(
+                    {
+                        "services": [
+                            {
+                                "name": "web",
+                                "kind": "catalog",
+                                "catalogId": "nginx:1.27",
+                                "exposure": "public",
+                                "networks": ["frontend"],
+                            },
+                            {
+                                "name": "api",
+                                "kind": "custom",
+                                "image": "node:20-alpine",
+                                "networks": ["frontend", "backend"],
+                                "depends_on": ["db"],
+                            },
+                            {
+                                "name": "db",
+                                "kind": "catalog",
+                                "catalogId": "postgresql:16",
+                                "networks": ["backend"],
+                            },
+                        ],
+                        "networks": [
+                            {"name": "frontend"},
+                            {"name": "backend", "internal": True},
+                        ],
+                    }
+                )
             ),
             make_ctx(tmp_project),
         )
@@ -197,16 +267,18 @@ async def test_rejects_undeclared_service_network(tmp_project) -> None:
     _, result = await drain_with_progress(
         validate_spec.call(
             validate_spec.input_schema.model_validate(
-                {
-                    "services": [
-                        {
-                            "name": "web",
-                            "kind": "custom",
-                            "image": "nginx:1.27-alpine",
-                            "networks": ["frontend"],
-                        }
-                    ]
-                }
+                _with_draft_defaults(
+                    {
+                        "services": [
+                            {
+                                "name": "web",
+                                "kind": "custom",
+                                "image": "nginx:1.27-alpine",
+                                "networks": ["frontend"],
+                            }
+                        ]
+                    }
+                )
             ),
             make_ctx(tmp_project),
         )
@@ -230,15 +302,17 @@ async def test_reports_invalid_image(tmp_project) -> None:
     _, result = await drain_with_progress(
         validate_spec.call(
             validate_spec.input_schema.model_validate(
-                {
-                    "services": [
-                        {
-                            "name": "db",
-                            "kind": "custom",
-                            "image": "postgres:does-not-exist",
-                        }
-                    ]
-                }
+                _with_draft_defaults(
+                    {
+                        "services": [
+                            {
+                                "name": "db",
+                                "kind": "custom",
+                                "image": "postgres:does-not-exist",
+                            }
+                        ]
+                    }
+                )
             ),
             ctx,
         )
@@ -252,16 +326,18 @@ async def test_blocks_custom_node_service_without_app_source(tmp_project) -> Non
     _, result = await drain_with_progress(
         validate_spec.call(
             validate_spec.input_schema.model_validate(
-                {
-                    "services": [
-                        {
-                            "name": "api",
-                            "kind": "custom",
-                            "image": "node:20-alpine",
-                            "command": "node server.js",
-                        }
-                    ]
-                }
+                _with_draft_defaults(
+                    {
+                        "services": [
+                            {
+                                "name": "api",
+                                "kind": "custom",
+                                "image": "node:20-alpine",
+                                "command": "node server.js",
+                            }
+                        ]
+                    }
+                )
             ),
             make_ctx(tmp_project),
         )
@@ -269,3 +345,147 @@ async def test_blocks_custom_node_service_without_app_source(tmp_project) -> Non
     assert result.valid is False
     assert any(issue.code == "missing_app_source" for issue in result.issues)
     assert "server.js" in result.issues[0].message
+
+
+@pytest.mark.asyncio
+async def test_skips_runtime_port_check_when_no_host_ports(tmp_project) -> None:
+    _, result = await drain_with_progress(
+        validate_spec.call(
+            validate_spec.input_schema.model_validate(
+                _with_draft_defaults(
+                    {
+                        "services": [
+                            {
+                                "name": "web",
+                                "kind": "custom",
+                                "image": "nginx:1.27-alpine",
+                            }
+                        ]
+                    }
+                )
+            ),
+            make_ctx(tmp_project, docker_engine=FailingListContainersEngine()),
+        )
+    )
+    assert result.valid is True
+
+
+@pytest.mark.asyncio
+async def test_reports_duplicate_draft_host_port(tmp_project) -> None:
+    _, result = await drain_with_progress(
+        validate_spec.call(
+            validate_spec.input_schema.model_validate(
+                _with_draft_defaults(
+                    {
+                        "services": [
+                            {
+                                "name": "web",
+                                "kind": "custom",
+                                "image": "nginx:1.27-alpine",
+                                "exposure": "public",
+                                "hostPort": 8080,
+                                "containerPort": 80,
+                            },
+                            {
+                                "name": "admin",
+                                "kind": "custom",
+                                "image": "nginx:1.27-alpine",
+                                "exposure": "public",
+                                "hostPort": 8080,
+                                "containerPort": 8080,
+                            },
+                        ]
+                    }
+                )
+            ),
+            make_ctx(tmp_project),
+        )
+    )
+    assert result.valid is False
+    assert any(issue.code == "port_conflict" for issue in result.issues)
+    assert "8080/tcp" in "\n".join(issue.message for issue in result.issues)
+
+
+@pytest.mark.asyncio
+async def test_reports_running_container_port_conflict(tmp_project) -> None:
+    engine = _engine_with_published_port(host_port="8080")
+    _, result = await drain_with_progress(
+        validate_spec.call(
+            validate_spec.input_schema.model_validate(
+                _with_draft_defaults(
+                    {
+                        "stackName": "app",
+                        "services": [
+                            {
+                                "name": "web",
+                                "kind": "custom",
+                                "image": "nginx:1.27-alpine",
+                                "exposure": "public",
+                                "hostPort": 8080,
+                                "containerPort": 80,
+                            }
+                        ],
+                    }
+                )
+            ),
+            make_ctx(tmp_project, docker_engine=engine),
+        )
+    )
+    assert result.valid is False
+    assert any(issue.code == "port_conflict" for issue in result.issues)
+    assert "existing" in "\n".join(issue.message for issue in result.issues)
+
+
+@pytest.mark.asyncio
+async def test_ignores_running_port_owned_by_same_stack(tmp_project) -> None:
+    engine = _engine_with_published_port(project="app", host_port="8080")
+    _, result = await drain_with_progress(
+        validate_spec.call(
+            validate_spec.input_schema.model_validate(
+                _with_draft_defaults(
+                    {
+                        "stackName": "app",
+                        "services": [
+                            {
+                                "name": "web",
+                                "kind": "custom",
+                                "image": "nginx:1.27-alpine",
+                                "exposure": "public",
+                                "hostPort": 8080,
+                                "containerPort": 80,
+                            }
+                        ],
+                    }
+                )
+            ),
+            make_ctx(tmp_project, docker_engine=engine),
+        )
+    )
+    assert result.valid is True
+
+
+@pytest.mark.asyncio
+async def test_reports_port_check_unavailable_when_docker_is_required(tmp_project) -> None:
+    _, result = await drain_with_progress(
+        validate_spec.call(
+            validate_spec.input_schema.model_validate(
+                _with_draft_defaults(
+                    {
+                        "services": [
+                            {
+                                "name": "web",
+                                "kind": "custom",
+                                "image": "nginx:1.27-alpine",
+                                "exposure": "public",
+                                "hostPort": 8080,
+                                "containerPort": 80,
+                            }
+                        ],
+                    }
+                )
+            ),
+            make_ctx(tmp_project, docker_engine=DockerUnavailableEngine()),
+        )
+    )
+    assert result.valid is False
+    assert any(issue.code == "port_check_unavailable" for issue in result.issues)

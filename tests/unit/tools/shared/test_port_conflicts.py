@@ -1,4 +1,4 @@
-"""Parity tests for check_port_conflict — mirrors checkPortConflict.test.ts."""
+"""Tests for internal published-port conflict helpers."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from mocks.mock_docker_engine import MockDockerEngine
 
 from docker_agent.services.docker.types import ContainerSummary
 from docker_agent.tools.base import ToolContext
-from docker_agent.tools.check_port_conflict import (
+from docker_agent.tools.shared.port_conflicts import (
     PublishedPort,
     check_port_conflicts,
     parse_published_ports,
@@ -61,7 +61,7 @@ def _engine_with_published_port(
                 "State": "running",
                 "Labels": {"com.docker.compose.project": project},
             }
-        )
+        ).model_dump(by_alias=True)
     )
     engine.inspect_by_id[container_id] = _inspect_with_ports(
         container_id, container_port, host_port
@@ -98,7 +98,7 @@ async def test_reports_draft_and_running_container_conflicts(tmp_project) -> Non
                 "State": "running",
                 "Labels": {},
             }
-        )
+        ).model_dump(by_alias=True)
     )
     engine.inspect_by_id["existing"] = _inspect_with_ports(
         "existing", "80/tcp", "8080"
@@ -164,7 +164,7 @@ async def test_accepts_numeric_host_port_from_docker_engine(tmp_project) -> None
                 "State": "running",
                 "Labels": {},
             }
-        )
+        ).model_dump(by_alias=True)
     )
     engine.inspect_by_id["existing"] = {
         "Id": "existing",
@@ -239,7 +239,7 @@ async def test_skips_container_when_inspect_fails(tmp_project) -> None:
                 "State": "running",
                 "Labels": {},
             }
-        )
+        ).model_dump(by_alias=True)
     )
     engine.containers.append(
         ContainerSummary.model_validate(
@@ -249,7 +249,7 @@ async def test_skips_container_when_inspect_fails(tmp_project) -> None:
                 "State": "running",
                 "Labels": {},
             }
-        )
+        ).model_dump(by_alias=True)
     )
     engine.inspect_by_id["healthy"] = _inspect_with_ports(
         "healthy", "80/tcp", "9090"
@@ -259,10 +259,10 @@ async def test_skips_container_when_inspect_fails(tmp_project) -> None:
 
     result = await check_port_conflicts(
         "app",
-        {"web": ServiceSpec(image="nginx:1.27-alpine", ports=["8080:80"])},
+        {"web": ServiceSpec(image="nginx:1.27-alpine", ports=["9090:80"])},
         _make_ctx(engine, tmp_project),
     )
 
-    assert result.ok is True
-    assert result.docker_error is None
-    assert result.conflicts == []
+    assert result.ok is False
+    assert len(result.conflicts) == 1
+    assert result.conflicts[0].conflicts_with == "/healthy"

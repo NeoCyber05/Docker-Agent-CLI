@@ -1,6 +1,4 @@
 """Agent backend abstraction + factory.
-
-Parity: ``src/backend/AgentBackend.ts``.
 """
 
 from __future__ import annotations
@@ -49,7 +47,7 @@ def create_backend() -> AgentBackend:
     if flag == "current":
         return CurrentBackend()
     
-    from docker_agent.engine.langgraph_backend import LangGraphBackend
+    from docker_agent.engine.langgraph.backend import LangGraphBackend
 
     return LangGraphBackend()
 

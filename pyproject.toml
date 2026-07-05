@@ -24,18 +24,30 @@ dependencies = [
     "textual>=0.79",
     "typer>=0.12",
     "rich>=13.0",
+    "langchain-mcp-adapters>=0.1",
+    "mcp>=1.0",
 ]
+
+[project.optional-dependencies]
+docker = ["docker-mcp-server"]
 
 [project.scripts]
 docker-agent = "docker_agent.cli:main"
 
 [dependency-groups]
 dev = [
+    "build>=1.5.0",
     "pytest>=8.3",
     "pytest-asyncio>=0.23",
     "pytest-httpx>=0.30",
     "ruff>=0.6",
 ]
+
+[tool.uv.sources]
+docker-mcp-server = { workspace = true }
+
+[tool.uv.workspace]
+members = ["servers/docker-mcp-server"]
 
 [build-system]
 requires = ["setuptools>=61.0.0", "wheel"]
@@ -51,11 +63,11 @@ include = ["docker_agent*"]
 "docker_agent" = "src/docker_agent"
 
 [tool.setuptools.package-data]
-"docker_agent" = ["prompts/**/*"]
+"docker_agent" = ["prompts/*.md"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["src", "tests"]
+testpaths = ["tests", "servers/docker-mcp-server/tests"]
+pythonpath = ["src", "servers/docker-mcp-server/src", "tests"]
 asyncio_mode = "auto"
 addopts = "-ra --strict-markers"
 filterwarnings = [

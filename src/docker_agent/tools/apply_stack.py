@@ -23,9 +23,9 @@ from docker_agent.services.docker.git_guard import check_env_file_git_status
 from docker_agent.state.secret_redactor import scrub_line
 from docker_agent.state.state_store import HistoryEvent
 from docker_agent.tools.base import ToolContext, ToolDone, ToolProgress
-from docker_agent.tools.shared.port_conflicts import parse_published_ports
 from docker_agent.tools.shared.config_files import find_invalid_file_binds
 from docker_agent.tools.shared.image_validation import validate_images_for_tool
+from docker_agent.tools.shared.port_conflicts import parse_published_ports
 from docker_agent.tools.shared.secret_keys import SecretKeysContext, collect_secret_keys
 from docker_agent.tools.shared.yaml_round_trip import validate_yaml_round_trip
 from docker_agent.types.stack import StackDefinition

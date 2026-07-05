@@ -299,7 +299,10 @@ def test_project_registry_whitelist_subset_of_global(tmp_path: Path) -> None:
     [
         "services:\n  web:\n    image: nginx:1.27\n    ports:\n      - 8080:80\n",
         "services:\n  web:\n    image: nginx:1.27\n    ports:\n      - 0.0.0.0:8080:80\n",
-        "services:\n  web:\n    image: nginx:1.27\n    ports:\n      - published: 8080\n        target: 80\n",
+        (
+            "services:\n  web:\n    image: nginx:1.27\n    ports:\n"
+            "      - published: 8080\n        target: 80\n"
+        ),
     ],
 )
 def test_wildcard_host_ports_denied(compose: str) -> None:

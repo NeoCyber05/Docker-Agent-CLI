@@ -8,9 +8,9 @@ from dataclasses import dataclass
 from docker_agent.types.stack import ServiceSpec
 
 _SCRIPT_EXTENSIONS = (".js", ".mjs", ".ts", ".py", ".rb", ".php", ".jar")
+_SCRIPT_EXTENSION_PATTERN = "|".join(re.escape(ext) for ext in _SCRIPT_EXTENSIONS)
 _ENTRYPOINT_PATTERN = re.compile(
-    r"(?:^|[\s/])([\w.\-]+(?:%s))(?:\s|$)"
-    % "|".join(re.escape(ext) for ext in _SCRIPT_EXTENSIONS)
+    rf"(?:^|[\s/])([\w.\-]+(?:{_SCRIPT_EXTENSION_PATTERN}))(?:\s|$)"
 )
 
 
@@ -38,32 +38,39 @@ def check_app_source_artifacts(
     issues: list[AppSourceIssue] = []
     for name, spec in services.items():
         text = _command_text(spec)
+        if not text:
+            continue
         match = _ENTRYPOINT_PATTERN.search(text)
-        if not match:
+        if match is None:
             continue
         entrypoint = match.group(1)
-        mounted_targets = [
-            parts[1]
-            for mount in (spec.volumes or [])
-            if len(parts := mount.split(":")) >= 2
-        ]
-        covered = any(entrypoint in target for target in mounted_targets)
-        provided = any(entrypoint in path for path in staged_config_paths)
-        if covered or provided:
+        if _has_source_for_entrypoint(spec, staged_config_paths, entrypoint):
             continue
         issues.append(
             AppSourceIssue(
                 service=name,
                 entrypoint=entrypoint,
                 message=(
-                    f"service '{name}' runs '{text.strip()}' but no application "
-                    f"source for '{entrypoint}' was provided via configFiles or a "
-                    "bind mount. Ask the user for the source, or provide the file "
-                    "content via configFiles, before planning this service."
+                    f"custom service runs {entrypoint} but no matching bind mount or "
+                    "config file was provided"
                 ),
             )
         )
     return issues
 
 
-__all__ = ["AppSourceIssue", "check_app_source_artifacts"]
+def _has_source_for_entrypoint(
+    spec: ServiceSpec,
+    staged_config_paths: set[str],
+    entrypoint: str,
+) -> bool:
+    target_names = {entrypoint, f"/{entrypoint}"}
+    for bind in spec.volumes or []:
+        parts = bind.split(":", 1)
+        if len(parts) != 2:
+            continue
+        host, container = parts
+        del host
+        if container.rstrip("/").endswith(tuple(target_names)):
+            return True
+    return any(path.endswith(entrypoint) for path in staged_config_paths)

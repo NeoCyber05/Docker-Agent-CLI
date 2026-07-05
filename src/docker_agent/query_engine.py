@@ -322,6 +322,10 @@ class QueryEngine:
                 )
                 first_prompt = first_user.content if first_user is not None else "(empty)"
                 provider_name = getattr(self.provider, "name", "unknown")
+                resources = [
+                    {"server": "docker", "type": "stack", "name": stack.name}
+                    for stack in self._state_store.list()
+                ]
                 record: SessionRecord = {
                     "schema_version": 1,
                     "id": self._session_id,
@@ -331,7 +335,8 @@ class QueryEngine:
                     "provider": provider_name,
                     "model": self.model,
                     "first_prompt": first_prompt,
-                    "stack_names": [s.name for s in self._state_store.list()],
+                    "stack_names": [resource["name"] for resource in resources],
+                    "resources": resources,
                     "messages": [m.model_dump(by_alias=True) for m in self._messages],
                 }
                 if self._activity_snapshot is not None:

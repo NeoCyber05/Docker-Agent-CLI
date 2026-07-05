@@ -101,10 +101,10 @@ Các rule dạng chuỗi đơn giản — thêm vào danh sách `hardDeny`:
 | `disable_seccomp` | Cấm tắt seccomp | `security_opt` chứa `seccomp:unconfined` |
 | `expose_database_publicly` | Cấm expose DB ra ngoài localhost | Image DB (postgres, mysql, redis, …) + port không bind `127.0.0.1:` |
 | `untrusted_registry` | Chỉ cho phép registry trong whitelist | Xem cấu hình bên dưới |
-| `wildcard_host_ports` *(opt-in)* | Cấm publish port ra mọi interface | Port dạng `8080:80`, `0.0.0.0:8080:80`, hoặc dict thiếu `host_ip` |
-| `inline_sensitive_env` *(opt-in)* | Cấm ghi literal secret trong `environment` | Key khớp password/secret/token/api-key/access-key/private-key (trừ `*_FILE`, `${...}`) |
-| `disable_apparmor` *(opt-in)* | Cấm tắt AppArmor | `security_opt` chứa `apparmor:unconfined` |
-| `disable_selinux_label` *(opt-in)* | Cấm tắt SELinux label | `security_opt` chứa `label:disable` |
+| `wildcard_host_ports` | Cấm publish port ra mọi interface | Port dạng `8080:80`, `0.0.0.0:8080:80`, hoặc dict thiếu `host_ip` |
+| `inline_sensitive_env`| Cấm ghi literal secret trong `environment` | Key khớp password/secret/token/api-key/access-key/private-key (trừ `*_FILE`, `${...}`) |
+| `disable_apparmor`| Cấm tắt AppArmor | `security_opt` chứa `apparmor:unconfined` |
+| `disable_selinux_label`| Cấm tắt SELinux label | `security_opt` chứa `label:disable` |
 
 ### `untrusted_registry` (có tham số)
 

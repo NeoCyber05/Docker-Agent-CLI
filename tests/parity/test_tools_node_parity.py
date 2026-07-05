@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from docker_agent.agent import BackendQueryParams
-from docker_agent.engine.langgraph_backend import LangGraphBackend
+from docker_agent.engine.langgraph.backend import LangGraphBackend
 from docker_agent.types.events import LoopEvent
 from docker_agent.types.message import UserMessage
 from docker_agent.types.permissions import AlwaysAllowInSession, Deny
@@ -46,6 +46,7 @@ async def _run_backend(
     events: list[LoopEvent] = []
     provider = fake_provider([tool_use_call(tool_name, input_data), text_done()])
     with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("DOCKER_AGENT_MCP", "0")
         if tool_name == "exec_docker":
             mp.setattr(
                 "docker_agent.tools.exec_docker.asyncio.create_subprocess_exec",
@@ -97,7 +98,13 @@ async def test_validate_spec(tmp_project, make_context) -> None:
         tmp_project,
         make_context,
         tool_name="validate_spec",
-        input_data={"stackName": "web", "intent": "validate web", "services": [{"name": "web", "kind": "custom", "image": "nginx:latest"}]},
+        input_data={
+            "stackName": "web",
+            "intent": "validate web",
+            "services": [
+                {"name": "web", "kind": "custom", "image": "nginx:latest"}
+            ],
+        },
     )
     assert output_field(tool_result.output, "valid") is True
 

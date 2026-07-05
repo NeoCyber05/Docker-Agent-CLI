@@ -141,7 +141,7 @@ def patch_langchain_fake_model(
         responses.append(AIMessage(content="done"))
     model = _ParityLangChainModel(responses=responses or [AIMessage(content="")])
     monkeypatch.setattr(
-        "docker_agent.engine.langgraph_backend.create_chat_model",
+        "docker_agent.engine.langgraph.runtime.create_chat_model",
         lambda **_kwargs: model,
     )
     return model
@@ -278,7 +278,10 @@ def run_backend(monkeypatch: pytest.MonkeyPatch):
         provider: Any,
     ) -> list[LoopEvent]:
         prev = os.environ.get("DOCKER_AGENT_BACKEND")
+        prev_mcp = os.environ.get("DOCKER_AGENT_MCP")
         os.environ["DOCKER_AGENT_BACKEND"] = backend_name
+        if backend_name == "langgraph":
+            os.environ["DOCKER_AGENT_MCP"] = "0"
         try:
             if backend_name == "langgraph":
                 patch_langchain_fake_model(monkeypatch, provider)
@@ -294,6 +297,10 @@ def run_backend(monkeypatch: pytest.MonkeyPatch):
                 os.environ.pop("DOCKER_AGENT_BACKEND", None)
             else:
                 os.environ["DOCKER_AGENT_BACKEND"] = prev
+            if prev_mcp is None:
+                os.environ.pop("DOCKER_AGENT_MCP", None)
+            else:
+                os.environ["DOCKER_AGENT_MCP"] = prev_mcp
 
     return _run
 

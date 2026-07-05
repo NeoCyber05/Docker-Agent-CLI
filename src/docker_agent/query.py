@@ -1,6 +1,4 @@
 """Current backend query loop.
-
-Parity: ``src/query.ts``.
 """
 
 from __future__ import annotations
@@ -33,7 +31,6 @@ from docker_agent.tools.base import Tool, ToolDone, find_tool_by_name
 from docker_agent.tools.base import ToolProgress as ToolProgressMsg
 from docker_agent.tools.destroy_all_stacks import destroy_all_stacks
 from docker_agent.tools.destroy_stack import destroy_stack
-from docker_agent.tools.stop_stack import stop_stack
 from docker_agent.tools.plan_stack import PlanStackResultBlocked, plan_stack  # noqa: F401
 from docker_agent.tools.remediate_drift import remediate_drift
 from docker_agent.tools.shared.config_files import (
@@ -49,6 +46,7 @@ from docker_agent.tools.shared.secret_staging import (
     snapshot_secret_files,
     write_secret_files,
 )
+from docker_agent.tools.stop_stack import stop_stack
 from docker_agent.types.events import (
     AssistantText,
     Error,

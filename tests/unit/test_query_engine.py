@@ -1,4 +1,4 @@
-"""Parity tests for QueryEngine — mirrors src/__tests__/QueryEngine.test.ts."""
+"""Parity tests for QueryEngine â€” mirrors src/__tests__/QueryEngine.test.ts."""
 
 from __future__ import annotations
 
@@ -377,6 +377,9 @@ async def test_persists_created_at_model_and_stack_names_across_turns(tmp_projec
     assert saved is not None
     assert saved.get("model") == "gemini-2.0"
     assert saved.get("stack_names") == ["web"]
+    assert saved.get("resources") == [
+        {"server": "docker", "type": "stack", "name": "web"}
+    ]
     assert saved.get("created_at") == created_at
     assert saved.get("updated_at") != created_at
 

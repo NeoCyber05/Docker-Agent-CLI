@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 import pytest
@@ -22,13 +21,14 @@ def _make_engine(
     responses: list[AIMessage],
     monkeypatch: pytest.MonkeyPatch,
 ) -> QueryEngine:
-    os.environ["DOCKER_AGENT_BACKEND"] = "langgraph"
+    monkeypatch.setenv("DOCKER_AGENT_BACKEND", "langgraph")
+    monkeypatch.setenv("DOCKER_AGENT_MCP", "0")
     model_responses = list(responses)
     if model_responses and model_responses[-1].tool_calls:
         model_responses.append(AIMessage(content="done"))
     model = IntegrationFakeModel(responses=model_responses)
     monkeypatch.setattr(
-        "docker_agent.engine.langgraph_backend.create_chat_model",
+        "docker_agent.engine.langgraph.runtime.create_chat_model",
         lambda **_kwargs: model,
     )
     return QueryEngine(

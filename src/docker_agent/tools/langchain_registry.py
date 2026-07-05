@@ -230,7 +230,7 @@ async def _deploy_stack(runtime: ToolRuntime, **kwargs: Any) -> str:
     if permission_kind(confirm) != "approve":
         return "plan denied by user"
 
-    from docker_agent.engine.nodes.apply_with_rollback import (
+    from docker_agent.compat.docker_apply import (
         ApplyWithRollbackParams,
         run_apply_with_rollback,
     )

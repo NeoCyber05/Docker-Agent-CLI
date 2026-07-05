@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 
 from docker_agent.agent import BackendQueryParams
-from docker_agent.engine.langgraph_backend import LangGraphBackend
+from docker_agent.engine.langgraph.backend import LangGraphBackend
 from docker_agent.types.events import LoopEvent
 from docker_agent.types.message import UserMessage
 from docker_agent.types.permissions import Approve, Deny, TypedConfirmValue
@@ -39,6 +39,7 @@ async def _run_backend(
     backend = LangGraphBackend()
     provider = fake_provider([tool_use_call(tool_name, input_data), text_done()])
     with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("DOCKER_AGENT_MCP", "0")
         patch_langchain_fake_model(mp, provider)
         async for ev in backend.query(
             BackendQueryParams(

@@ -22,7 +22,7 @@ opencode
 .codegraph
 mcps
 report.md
-architecture.mdoke 
+architecture.md
 # Local Agent Configs
 .mcp.json
 opencode.jsonc
@@ -45,3 +45,5 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .venv/
+*.egg-info/
+build/

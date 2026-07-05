@@ -95,6 +95,12 @@ The REPL footer shows this fallback name (not a generic `default` label) when no
 
 Project-local state splits across two directories under your working directory: `docker-stacks/` (desired-state Compose YAML) and `.docker-agent/` (sessions, secrets, locks, logs, archive). See [docs/docker-agent-directory.md](docs/docker-agent-directory.md) for the full layout, lifecycle, and security notes.
 
+### MCP Plugin Runtime
+
+Docker operations run through `docker-mcp-server` by default. On first use, the CLI creates `~/.docker-agent/mcp_servers.json` with a default `docker` stdio server entry. Override the config path with `DOCKER_AGENT_MCP_CONFIG`. Use `DOCKER_AGENT_MCP=0` only for temporary legacy-path debugging.
+
+See [docs/mcp-plugin-guide.md](docs/mcp-plugin-guide.md) for the plugin contract used by Docker and future k8s/aws/gcp integrations.
+
 API keys saved via `/connect` are stored separately under `~/.docker-agent/api-keys` (Windows) or the OS keychain/secret service (macOS/Linux). Override the Windows storage path with `DOCKER_AGENT_SECRET_DIR`.
 
 ---

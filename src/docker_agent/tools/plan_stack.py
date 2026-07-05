@@ -11,12 +11,8 @@ from typing import Any, Literal, cast
 
 from docker_agent.state.drift_detector import detect_drift
 from docker_agent.state.env_file import merge_env
-from docker_agent.state.secret_redactor import scrub_line, should_redact, looks_like_credential_uri
+from docker_agent.state.secret_redactor import looks_like_credential_uri, should_redact
 from docker_agent.tools.base import ToolContext, ToolDone, ToolProgress
-from docker_agent.tools.shared.port_conflicts import (
-    CheckPortConflictResult,
-    check_port_conflicts,
-)
 from docker_agent.tools.resolve_dependency import (
     ResolveDependencyResult,
     resolve_dependencies,
@@ -35,6 +31,10 @@ from docker_agent.tools.shared.config_files import (
 from docker_agent.tools.shared.db_app_wiring import wire_dependent_app_secrets
 from docker_agent.tools.shared.db_port_guard import DbPortExposureIssue, check_db_port_exposure
 from docker_agent.tools.shared.network_guard import NetworkIssue, check_network_references
+from docker_agent.tools.shared.port_conflicts import (
+    CheckPortConflictResult,
+    check_port_conflicts,
+)
 from docker_agent.tools.shared.required_secrets import find_required_secrets, is_weak_secret_value
 from docker_agent.tools.shared.resource_limits import ResourceLimitIssue, check_resource_limits
 from docker_agent.tools.shared.secret_staging import SecretFileStager, StagedSecretFile

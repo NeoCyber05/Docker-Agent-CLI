@@ -1,6 +1,4 @@
 """Process-level CLI entrypoint.
-
-Parity: ``src/main.ts``.
 """
 
 from __future__ import annotations
@@ -187,6 +185,10 @@ def _run_chat_session(
 
     log_dir = Path(deps["cwd"]) / ".docker-agent" / "logs"
     engine.set_logger(StructuredLogger(str(log_dir), engine.session_id))
+
+    from docker_agent.mcp.client import warmup_mcp_stdio_transport
+
+    warmup_mcp_stdio_transport()
 
     factory = app_factory or REPL
     app = factory(

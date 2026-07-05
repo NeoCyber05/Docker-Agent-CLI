@@ -47,7 +47,10 @@ async def test_backend_writes_assistant_messages_back_to_params(
     )
 
     prev = os.environ.get("DOCKER_AGENT_BACKEND")
+    prev_mcp = os.environ.get("DOCKER_AGENT_MCP")
     os.environ["DOCKER_AGENT_BACKEND"] = backend_name
+    if backend_name == "langgraph":
+        os.environ["DOCKER_AGENT_MCP"] = "0"
     try:
         if backend_name == "langgraph":
             patch_langchain_fake_model(monkeypatch, provider)
@@ -59,6 +62,10 @@ async def test_backend_writes_assistant_messages_back_to_params(
             os.environ.pop("DOCKER_AGENT_BACKEND", None)
         else:
             os.environ["DOCKER_AGENT_BACKEND"] = prev
+        if prev_mcp is None:
+            os.environ.pop("DOCKER_AGENT_MCP", None)
+        else:
+            os.environ["DOCKER_AGENT_MCP"] = prev_mcp
 
     roles = [m.role for m in params.messages]
     assert roles == ["user", "assistant"]

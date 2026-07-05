@@ -1,0 +1,20 @@
+[project]
+name = "docker-mcp-server"
+version = "0.1.0"
+description = "Compatibility-first Docker MCP server for docker-agent."
+requires-python = ">=3.11"
+dependencies = [
+    "mcp>=1.0",
+    "pydantic>=2.7,<3",
+]
+
+[project.scripts]
+docker-mcp-server = "docker_mcp_server.server:main"
+
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["docker_mcp_server*"]

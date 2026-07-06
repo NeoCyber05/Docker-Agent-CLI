@@ -44,7 +44,7 @@ def test_parse_duration_to_seconds() -> None:
 
 def test_policy_engine_loads_global_and_project(tmp_path: Path) -> None:
     global_file = tmp_path / "global.yaml"
-    global_file.write_text("global:\n  hardDeny:\n    - privileged_containers\n")
+    global_file.write_text("global:\n  deny:\n    - privileged_containers\n")
     project_file = tmp_path / "project.yaml"
     project_file.write_text("project:\n  require:\n    - restart_policy\n")
     engine = PolicyEngine(
@@ -60,7 +60,7 @@ def test_policy_engine_resolves_default_project_policy_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    project_policy = "project:\n  hardDeny:\n    - host_network\n"
+    project_policy = "project:\n  deny:\n    - host_network\n"
     (tmp_path / "project-policies.yaml").write_text(project_policy)
     engine = PolicyEngine()
     effective = engine.get_effective_policy()
@@ -102,10 +102,10 @@ def test_policy_engine_invalid_yaml_returns_invalid_yaml_violation() -> None:
 def _engine_with_rule(rule: str) -> PolicyEngine:
     engine = PolicyEngine.__new__(PolicyEngine)
     engine._global_policy = PolicyConfig(
-        global_group={"hardDeny": [rule], "require": []}
+        global_group={"deny": [rule], "require": []}
     ).global_group
     engine._project_policy = PolicyConfig(
-        project_group={"hardDeny": [], "require": []}
+        project_group={"deny": [], "require": []}
     ).project_group
     engine._has_project_policy = True
     engine._missing_project_policy_mode = "deny"
@@ -167,10 +167,10 @@ def test_disable_seccomp_denied() -> None:
 def test_untrusted_registry_denied() -> None:
     engine = PolicyEngine.__new__(PolicyEngine)
     engine._global_policy = PolicyConfig(
-        global_group={"hardDeny": [{"untrusted_registry": {"allowedRegistries": ["docker.io"]}}]}
+        global_group={"deny": [{"untrusted_registry": {"allowedRegistries": ["docker.io"]}}]}
     ).global_group
     engine._project_policy = PolicyConfig(
-        project_group={"hardDeny": [], "require": []}
+        project_group={"deny": [], "require": []}
     ).project_group
     engine._has_project_policy = True
     engine._missing_project_policy_mode = "deny"
@@ -202,10 +202,10 @@ def test_database_localhost_port_allowed() -> None:
 def _engine_with_require(rule: str | dict) -> PolicyEngine:
     engine = PolicyEngine.__new__(PolicyEngine)
     engine._global_policy = PolicyConfig(
-        global_group={"hardDeny": [], "require": [rule]}
+        global_group={"deny": [], "require": [rule]}
     ).global_group
     engine._project_policy = PolicyConfig(
-        project_group={"hardDeny": [], "require": []}
+        project_group={"deny": [], "require": []}
     ).project_group
     engine._has_project_policy = True
     engine._missing_project_policy_mode = "deny"
@@ -279,19 +279,19 @@ def test_project_cannot_exceed_global_max_memory(tmp_path: Path) -> None:
 def test_project_registry_whitelist_subset_of_global(tmp_path: Path) -> None:
     global_file = tmp_path / "global.yaml"
     global_file.write_text(
-        "global:\n  hardDeny:\n    - untrusted_registry:\n"
+        "global:\n  deny:\n    - untrusted_registry:\n"
         "        allowedRegistries:\n          - docker.io\n"
     )
     project_file = tmp_path / "project.yaml"
     project_file.write_text(
-        "project:\n  hardDeny:\n    - untrusted_registry:\n"
+        "project:\n  deny:\n    - untrusted_registry:\n"
         "        allowedRegistries:\n          - my.registry.com\n"
     )
     with pytest.raises(ValueError, match="not in Global registry whitelist"):
         PolicyEngine(global_policy_path=str(global_file), project_policy_path=str(project_file))
 
 
-# --- new hardDeny rules --------------------------------------------------
+# --- new deny rules ------------------------------------------------------
 
 
 @pytest.mark.parametrize(

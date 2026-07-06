@@ -37,7 +37,7 @@ def test_ensure_global_policy_creates_baseline(tmp_path: Path) -> None:
 
 def test_ensure_global_policy_is_idempotent(tmp_path: Path) -> None:
     target = tmp_path / "policies.yaml"
-    custom = "global:\n  hardDeny: []\n"
+    custom = "global:\n  deny: []\n"
     target.write_text(custom, encoding="utf-8")
 
     assert ensure_global_policy(target) is False
@@ -90,7 +90,7 @@ def test_policy_engine_picks_up_scaffolded_global_policy(
     global_path = tmp_path / "policies.yaml"
     monkeypatch.setenv("DOCKER_AGENT_GLOBAL_POLICY", str(global_path))
     project_policy = tmp_path / "project-policies.yaml"
-    project_policy.write_text("project:\n  hardDeny: []\n  require: []\n", encoding="utf-8")
+    project_policy.write_text("project:\n  deny: []\n  require: []\n", encoding="utf-8")
 
     assert not global_path.exists()
     engine_before = PolicyEngine(project_policy_path=str(project_policy))

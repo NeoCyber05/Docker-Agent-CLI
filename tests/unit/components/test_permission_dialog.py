@@ -46,7 +46,7 @@ async def test_permission_dialog_always_allow() -> None:
                 input_data={
                     "reason": "Project policy file is missing",
                     "path": "project-policies.yaml",
-                    "content": "project:\n  hardDeny: []\n",
+                    "content": "project:\n  deny: []\n",
                 },
                 id="permission-prompt",
             ),
@@ -89,7 +89,7 @@ async def test_permission_dialog_shows_key_hints_for_initialize_project_policy()
             input_data={
                 "reason": "Project policy file is missing",
                 "path": "project-policies.yaml",
-                "content": "project:\n  hardDeny: []\n  require: []\n",
+                "content": "project:\n  deny: []\n  require: []\n",
             },
             id="permission-prompt",
         )

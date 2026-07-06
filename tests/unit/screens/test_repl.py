@@ -230,7 +230,7 @@ async def test_policy_permission_always_allow_unblocks_prompt(tmp_project) -> No
         input={
             "reason": "Project policy file (project-policies.yaml) is missing",
             "path": str(tmp_project / "project-policies.yaml"),
-            "content": "project:\n  hardDeny: []\n  require: []\n",
+            "content": "project:\n  deny: []\n  require: []\n",
         },
     )
     app.session.interaction.phase = "awaiting_input"

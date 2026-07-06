@@ -138,7 +138,7 @@ class RequireRule(BaseModel):
 
 class PolicyGroup(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
-    hard_deny: list[DenyRule] | None = Field(default=None, alias="hardDeny")
+    hard_deny: list[DenyRule] | None = Field(default=None, alias="deny")
     require: list[RequireRule] | None = Field(default=None, alias="require")
 
 

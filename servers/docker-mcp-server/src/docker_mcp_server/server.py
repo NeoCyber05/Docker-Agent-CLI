@@ -124,9 +124,8 @@ async def _drain_tool(tool: Any, parsed: Any, ctx: ToolContext) -> tuple[Any, li
     return result, progress
 
 
-async def _run_plan_stack(input_data: StackDraft, ctx: ToolContext) -> Any:
-    result, _progress = await _drain_tool(plan_stack, input_data, ctx)
-    return result
+async def _run_plan_stack(input_data: StackDraft, ctx: ToolContext) -> tuple[Any, list[str]]:
+    return await _drain_tool(plan_stack, input_data, ctx)
 
 
 def _policy_engine(cwd: str) -> PolicyEngine:
@@ -151,10 +150,11 @@ def _plan_confirm_payload(
         parsed_input.stack_name,
         SecretKeysContext(cwd=ctx.cwd, state_store=ctx.state_store),
     )
-    payload: dict[str, Any] = {
-        "title": f"Deploy Docker stack {parsed_input.stack_name}",
-        "summary": parsed_input.intent,
-        "artifacts": [
+    artifacts: list[dict[str, Any]] = []
+    if plan_result.preflight_artifact is not None:
+        artifacts.append(plan_result.preflight_artifact)
+    artifacts.extend(
+        [
             {
                 "kind": "manifest",
                 "label": "Compose YAML",
@@ -166,7 +166,12 @@ def _plan_confirm_payload(
                 "label": "Stack diff",
                 "content": _jsonable(plan_result.diff),
             },
-        ],
+        ]
+    )
+    payload: dict[str, Any] = {
+        "title": f"Deploy Docker stack {parsed_input.stack_name}",
+        "summary": parsed_input.intent,
+        "artifacts": artifacts,
         "hash": plan_result.hash,
     }
     if plan_result.auto_generated_secrets:
@@ -194,21 +199,36 @@ async def _plan_deploy(
     provider_name: str,
     model: str | None,
     draft: StackDraft,
-) -> tuple[ToolContext, PlanStackResultOk | dict[str, Any]]:
+) -> tuple[ToolContext, PlanStackResultOk | dict[str, Any], list[str]]:
     ctx = _tool_context(
         cwd=cwd,
         session_id=session_id,
         provider_name=provider_name,
         model=model,
     )
-    result = await _run_plan_stack(draft, ctx)
+    result, progress = await _run_plan_stack(draft, ctx)
     if getattr(result, "blocked", False):
-        return ctx, {"status": "blocked", "result": format_plan_blocker(result)}
+        blocked: dict[str, Any] = {
+            "status": "blocked",
+            "result": format_plan_blocker(result),
+            "progress": progress,
+        }
+        preflight = getattr(result, "preflight_artifact", None)
+        if preflight is not None:
+            blocked["preflight"] = preflight
+        preflight_details = getattr(result, "preflight_details", None)
+        if preflight_details is not None:
+            blocked["validation"] = preflight_details
+        return ctx, blocked, progress
     plan_result: PlanStackResultOk = result
     violations = _policy_engine(cwd).evaluate(plan_result.compose_yaml)
     if violations:
-        return ctx, {"status": "blocked", "result": _policy_block_message(violations)}
-    return ctx, plan_result
+        return ctx, {
+            "status": "blocked",
+            "result": _policy_block_message(violations),
+            "progress": progress,
+        }, progress
+    return ctx, plan_result, progress
 
 
 def list_stacks_payload(cwd: str) -> dict[str, Any]:
@@ -386,7 +406,7 @@ async def deploy_stack_payload(
     **kwargs: Any,
 ) -> dict[str, Any]:
     draft = StackDraft.model_validate(kwargs)
-    ctx, result = await _plan_deploy(
+    ctx, result, progress = await _plan_deploy(
         cwd=cwd,
         session_id=session_id,
         provider_name=provider_name,
@@ -394,15 +414,18 @@ async def deploy_stack_payload(
         draft=draft,
     )
     if isinstance(result, dict):
-        return result
+        return {**result, "progress": progress}
     plan_result = result
+    history_details: dict[str, Any] = {"hash": plan_result.hash}
+    if plan_result.preflight_details is not None:
+        history_details["validation"] = plan_result.preflight_details
     ctx.state_store.append_history(
         HistoryEvent(
             ts=datetime.now(UTC).isoformat(),
             session_id=session_id or "unknown",
             stack_name=draft.stack_name,
             action="plan",
-            details={"hash": plan_result.hash},
+            details=history_details,
         )
     )
     action = PendingAction(
@@ -425,7 +448,9 @@ async def deploy_stack_payload(
             "model": model,
         },
     )
-    return _PENDING.add(action).response_payload()
+    response = _PENDING.add(action).response_payload()
+    response["progress"] = progress
+    return response
 
 
 async def _run_core_tool_payload(
@@ -455,7 +480,7 @@ async def _approve_deploy(action: PendingAction) -> dict[str, Any]:
         return {"status": "ok", "result": f"confirmed {action.tool}"}
     provider_name = str(private.get("provider_name") or "mcp")
     model = private.get("model") if isinstance(private.get("model"), str) else None
-    ctx, revalidated = await _plan_deploy(
+    ctx, revalidated, progress = await _plan_deploy(
         cwd=action.cwd,
         session_id=action.session_id,
         provider_name=provider_name,
@@ -463,7 +488,7 @@ async def _approve_deploy(action: PendingAction) -> dict[str, Any]:
         draft=draft,
     )
     if isinstance(revalidated, dict):
-        return revalidated
+        return {**revalidated, "progress": progress}
     if revalidated.hash != action.hash:
         return {
             "status": "error",

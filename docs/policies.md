@@ -32,13 +32,13 @@ Override đường dẫn: biến môi trường `DOCKER_AGENT_GLOBAL_POLICY`.
 schemaVersion: "1"   # tùy chọn
 
 global:
-  hardDeny:
+  deny:
     - <rule>
   require:
     - <rule>
 
 project:
-  hardDeny:
+  deny:
     - <rule>
   require:
     - <rule>
@@ -80,15 +80,15 @@ Khi `deny` và file project chưa tồn tại, CLI có thể **đề xuất tạ
 
 ```yaml
 project:
-  hardDeny: []
+  deny: []
   require: []
 ```
 
 ---
 
-## Nhóm `hardDeny` — Cấm tuyệt đối
+## Nhóm `deny` — Cấm tuyệt đối
 
-Các rule dạng chuỗi đơn giản — thêm vào danh sách `hardDeny`:
+Các rule dạng chuỗi đơn giản — thêm vào danh sách `deny`:
 
 | Rule | Mô tả | Điều kiện vi phạm |
 |------|-------|-------------------|
@@ -109,7 +109,7 @@ Các rule dạng chuỗi đơn giản — thêm vào danh sách `hardDeny`:
 ### `untrusted_registry` (có tham số)
 
 ```yaml
-hardDeny:
+deny:
   - untrusted_registry:
       allowedRegistries:
         - docker.io
@@ -205,13 +205,13 @@ require:
 
 ## Rule opt-in và baseline mặc định
 
-Baseline global mặc định (`~/.docker-agent/policies.yaml` khi tự tạo lần đầu) vẫn giữ **9 rule `hardDeny` + 3 rule `require`** như trước. Các rule đánh dấu *(opt-in)* ở trên chỉ có hiệu lực khi bạn **chủ động thêm** vào global hoặc project policy.
+Baseline global mặc định (`~/.docker-agent/policies.yaml` khi tự tạo lần đầu) vẫn giữ **9 rule `deny` + 3 rule `require`** như trước. Các rule đánh dấu *(opt-in)* ở trên chỉ có hiệu lực khi bạn **chủ động thêm** vào global hoặc project policy.
 
 Ví dụ siết thêm cho project:
 
 ```yaml
 project:
-  hardDeny:
+  deny:
     - wildcard_host_ports
     - inline_sensitive_env
   require:
@@ -276,7 +276,7 @@ File: `~/.docker-agent/policies.yaml`
 schemaVersion: "1"
 
 global:
-  hardDeny:
+  deny:
     - privileged_containers
     - mount_docker_socket
     - mount_host_root
@@ -307,7 +307,7 @@ File: `<project>/project-policies.yaml`
 schemaVersion: "1"
 
 project:
-  hardDeny:
+  deny:
     - mount_docker_socket   # nhấn mạnh thêm (đã có ở global)
   require:
     - non_root_user
@@ -330,7 +330,7 @@ flowchart TD
   B --> C{project_policy_missing?}
   C -->|Yes + deny mode| D[Chặn deploy]
   C -->|No| E[Duyệt từng service]
-  E --> F{hardDeny rules}
+  E --> F{deny rules}
   E --> G{require rules}
   F --> H[Thu thập violations]
   G --> H

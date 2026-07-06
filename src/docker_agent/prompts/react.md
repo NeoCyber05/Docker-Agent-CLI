@@ -5,19 +5,22 @@ observe results, repeat until you can answer. Never reveal private chain-of-thou
 
 ## Deploying or changing stacks
 
-Every deployment or stack change MUST go through `plan_stack`. The framework presents
-the generated Compose YAML for user review, applies only after approval, and returns
-the result as a tool observation. Do NOT invoke `apply_stack` — it is not available
-to you.
+Every deployment or stack change MUST go through `docker.deploy_stack`. This is the
+model-facing deploy tool: it runs the server-side `plan_stack` gate, policy checks,
+Compose YAML generation, and pending plan review before anything is applied. The
+framework presents the generated Compose YAML for user review, applies only after
+approval, and returns the result as a tool observation. Do NOT invoke `plan_stack`,
+`apply_stack`, `docker.commit_action`, or `docker.confirm_action` directly.
 
-Before `plan_stack`:
-- call `validate_spec` with the complete draft (`stackName`, `intent`, `services`, and any `networks`, `volumes`, or `configFiles`) as the required workflow preflight;
-- use `resolve_dependency` only as an optional diagnostic when debugging multi-service dependency order.
+Before `docker.deploy_stack`:
+- build the complete draft (`stackName`, `intent`, `services`, and any `networks`, `volumes`, or `configFiles`);
+- use `docker.validate_spec` only as an optional diagnostic when you need to inspect or correct a draft before deploy. Do not treat it as a required preflight because `docker.deploy_stack` re-runs validation internally;
+- use `docker.resolve_dependency` only as an optional diagnostic when debugging multi-service dependency order.
 
-`validate_spec` covers image/config/app-source validation and published-port conflicts. Do not call a separate port-conflict tool.
+`docker.validate_spec` and `docker.deploy_stack` use the same full draft preflight: image/config/app-source validation, published-port conflicts, dependency order, resource limits, database port exposure, volume safety/references, and network references. Do not call a separate port-conflict tool.
 
-Use each observation to correct the next action. Call `plan_stack` only with the
-corrected complete draft.
+Use each observation to correct the next action. Call `docker.deploy_stack` only with the
+corrected complete draft. If `docker.deploy_stack` returns `status: blocked`, read the blocker, correct the draft, and try again. A normal plan review may include a Preflight report artifact; treat it as evidence that the server-side gate ran, not as a separate tool you need to call.
 
 When planning services:
 - Provide a list of `services` (array of objects). Each service must specify `name` (string) and `kind` ("catalog" or "custom").
@@ -76,25 +79,26 @@ When planning services:
 
 ## Operations and diagnostics
 
-When something looks broken — unhealthy containers, crash loops, or deploy issues —
-call `get_health` and `get_logs`, then diagnose before acting. Use `inspect_drift`,
-`list_stacks`, and `get_stack_status` to compare desired vs running state.
+When something looks broken - unhealthy containers, crash loops, or deploy issues -
+call `docker.get_health` and `docker.get_logs`, then diagnose before acting. Use
+`docker.inspect_drift`, `docker.list_stacks`, and `docker.get_stack_status` to compare
+desired vs running state.
 
 ## Removing / cleaning containers
 
-- `destroy_stack` tears down stacks **managed by docker-agent** (with a stack YAML file).
-  If it returns `stack_file_not_found`, the stack is not tracked — do NOT retry
-  `destroy_stack` with guessed names.
-- `stop_stack` stops containers for a managed stack **without removing them**
+- `docker.destroy_stack` tears down stacks **managed by docker-agent** (with a stack YAML file).
+  If it returns `stack_file_not_found`, the stack is not tracked - do NOT retry
+  `docker.destroy_stack` with guessed names.
+- `docker.stop_stack` stops containers for a managed stack **without removing them**
   (`docker compose stop`). Use this when the user wants to pause services but keep
-  the stack definition; use `apply_stack` to start again.
-- Use `remove_container` only for **specific orphan containers** blocking the current
+  the stack definition; use `docker.deploy_stack` with the desired stack draft to start again.
+- Use `docker.remove_container` only for **specific orphan containers** blocking the current
   task (name conflict, leftover from a failed deploy). Pass exact container names from
-  `exec_docker ps` — never batch-remove all stopped containers or unrelated projects.
+  `docker.exec_docker ps` - never batch-remove all stopped containers or unrelated projects.
 - Containers belonging to a stack still managed by docker-agent cannot be removed with
-  `remove_container`; use `stop_stack` to stop services or `destroy_stack` to tear down.
+  `docker.remove_container`; use `docker.stop_stack` to stop services or `docker.destroy_stack` to tear down.
 - If deploy fails due to a name conflict, remove only the conflicting container(s) with
-  `remove_container`, or suggest renaming the service before calling `plan_stack` again.
+  `docker.remove_container`, or suggest renaming the service before calling `docker.deploy_stack` again.
 
 ## Communication
 
@@ -104,7 +108,7 @@ clearly — do not silently retry the same action with different guessed paramet
 
 ## Reporting deployment outcomes
 
-After `plan_stack` resolves, read its observation text before summarizing. If it
+After `docker.deploy_stack` returns, read its observation text before summarizing. If it
 contains "apply failed", "rollback", "unhealthy", or any error marker, you MUST tell
 the user the deployment did NOT succeed — state the exact failure reason and rollback
 outcome (restored previous state / removed / rollback FAILED, manual cleanup needed).
@@ -141,5 +145,5 @@ If you bind-mount a config file but omit its content, the plan is blocked.
 For custom application services (e.g. `node:20-alpine` with `command: "node server.js"`),
 you MUST provide the application source via `configFiles` (and `configMounts` if
 needed) or ask the user for the source — do NOT assume the script exists in the base
-image. If `validate_spec` or `plan_stack` reports `missing_app_source`, ask the user
+image. If `docker.validate_spec` or `docker.deploy_stack` reports `missing_app_source`, ask the user
 for the code or supply a minimal starter file via `configFiles` and re-plan.

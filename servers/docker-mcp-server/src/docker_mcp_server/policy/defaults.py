@@ -19,7 +19,7 @@ DEFAULT_GLOBAL_POLICY_YAML = """\
 schemaVersion: "1"
 
 global:
-  hardDeny:
+  deny:
     - privileged_containers
     - mount_docker_socket
     - mount_host_root

@@ -65,11 +65,11 @@ def test_policy_config_parses_yaml_shape() -> None:
         {
             "schemaVersion": "1",
             "global": {
-                "hardDeny": ["privileged_containers"],
+                "deny": ["privileged_containers"],
                 "require": ["restart_policy"],
             },
             "project": {
-                "hardDeny": [{"untrusted_registry": {"allowedRegistries": []}}],
+                "deny": [{"untrusted_registry": {"allowedRegistries": []}}],
                 "require": [{"healthcheck": {"required": True}}],
             },
         }
@@ -82,6 +82,19 @@ def test_policy_config_parses_yaml_shape() -> None:
     assert cfg.project_group.hard_deny[0].rule == "untrusted_registry"
 
 
+def test_policy_config_rejects_legacy_hard_deny_key() -> None:
+    with pytest.raises(ValidationError):
+        PolicyConfig.model_validate(
+            {
+                "schemaVersion": "1",
+                "global": {
+                    "hardDeny": ["privileged_containers"],
+                    "require": [],
+                },
+            }
+        )
+
+
 @pytest.mark.parametrize(
     "rule_name",
     [
@@ -91,7 +104,7 @@ def test_policy_config_parses_yaml_shape() -> None:
         "disable_selinux_label",
     ],
 )
-def test_deny_rule_accepts_new_hard_deny_rules(rule_name: str) -> None:
+def test_deny_rule_accepts_new_deny_rules(rule_name: str) -> None:
     r = DenyRule.model_validate(rule_name)
     assert r.rule == rule_name
 

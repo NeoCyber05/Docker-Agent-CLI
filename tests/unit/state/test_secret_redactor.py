@@ -1,4 +1,4 @@
-"""Parity tests for secret_redactor — mirrors src/state/secretRedactor.ts."""
+﻿"""Parity tests for secret_redactor â€” mirrors src/state/secretRedactor.ts."""
 
 import re
 

@@ -1,4 +1,4 @@
-"""Tests for apply_slash_effects."""
+﻿"""Tests for apply_slash_effects."""
 
 from __future__ import annotations
 

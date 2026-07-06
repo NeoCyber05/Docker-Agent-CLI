@@ -16,7 +16,6 @@ from docker_agent.types.message import (
     ToolResultMessage,
     UserMessage,
 )
-from docker_agent.types.stack import StackDiff
 from docker_agent.ui.tool_presentation import present_tool, sanitize_tool_text
 
 MAX_PROGRESS_LINES = 20
@@ -74,7 +73,7 @@ class RollbackActivity:
     detail: str | None = None
 
 
-PlanActivityStatus = Literal["pending", "approved", "denied"]
+ActionReviewStatus = Literal["pending", "approved", "denied"]
 
 
 @dataclass
@@ -91,20 +90,30 @@ class PlanConfigRef:
 
 
 @dataclass
-class PlanActivity:
+class ActionReviewArtifactRef:
+    kind: str
+    label: str
+    content: Any
+    language: str | None = None
+
+
+@dataclass
+class ActionReviewActivity:
     id: str
-    type: Literal["plan"] = "plan"
+    type: Literal["action_review"] = "action_review"
     request_id: str = ""
-    compose_yaml: str = ""
-    diff: StackDiff | None = None
+    tool: str = ""
+    title: str = ""
+    summary: str = ""
+    artifacts: list[ActionReviewArtifactRef] = field(default_factory=list)
     auto_generated_secrets: list[PlanSecretRef] = field(default_factory=list)
     config_files: list[PlanConfigRef] = field(default_factory=list)
-    status: PlanActivityStatus = "pending"
-    show_yaml: bool = False
+    status: ActionReviewStatus = "pending"
+    show_artifacts: bool = False
     show_config: bool = False
 
 
-ActivityItem = ToolActivity | TextActivity | UsageActivity | RollbackActivity | PlanActivity
+ActivityItem = ToolActivity | TextActivity | UsageActivity | RollbackActivity | ActionReviewActivity
 
 
 @dataclass
@@ -208,28 +217,30 @@ class RollbackResultAction(TypedDict):
     detail: str | None
 
 
-class PlanReadyAction(TypedDict):
-    type: Literal["plan_ready"]
+class ActionReviewReadyAction(TypedDict):
+    type: Literal["action_review_ready"]
     request_id: str
-    compose_yaml: str
-    diff: StackDiff
+    tool: str
+    title: str
+    summary: str
+    artifacts: list[Any] | None
     auto_generated_secrets: list[Any] | None
     config_files: list[Any] | None
 
 
-class PlanResolvedAction(TypedDict):
-    type: Literal["plan_resolved"]
+class ActionReviewResolvedAction(TypedDict):
+    type: Literal["action_review_resolved"]
     request_id: str
-    status: PlanActivityStatus
+    status: ActionReviewStatus
 
 
-class PlanToggleYamlAction(TypedDict):
-    type: Literal["plan_toggle_yaml"]
+class ActionReviewToggleArtifactsAction(TypedDict):
+    type: Literal["action_review_toggle_artifacts"]
     request_id: str
 
 
-class PlanToggleConfigAction(TypedDict):
-    type: Literal["plan_toggle_config"]
+class ActionReviewToggleConfigAction(TypedDict):
+    type: Literal["action_review_toggle_config"]
     request_id: str
 
 
@@ -247,10 +258,10 @@ ActivityAction = (
     | UsageAction
     | RollbackStartedAction
     | RollbackResultAction
-    | PlanReadyAction
-    | PlanResolvedAction
-    | PlanToggleYamlAction
-    | PlanToggleConfigAction
+    | ActionReviewReadyAction
+    | ActionReviewResolvedAction
+    | ActionReviewToggleArtifactsAction
+    | ActionReviewToggleConfigAction
 )
 
 
@@ -302,16 +313,50 @@ def _plan_config_refs(raw: list[Any] | None) -> list[PlanConfigRef]:
                 )
             )
     return refs
+def _action_review_artifact_refs(raw: list[Any] | None) -> list[ActionReviewArtifactRef]:
+    if not raw:
+        return []
+    refs: list[ActionReviewArtifactRef] = []
+    for item in raw:
+        if isinstance(item, ActionReviewArtifactRef):
+            refs.append(item)
+        elif isinstance(item, dict):
+            refs.append(
+                ActionReviewArtifactRef(
+                    kind=str(item.get("kind", "artifact")),
+                    label=str(item.get("label", item.get("kind", "Artifact"))),
+                    content=item.get("content"),
+                    language=(
+                        str(item.get("language"))
+                        if item.get("language") is not None
+                        else None
+                    ),
+                )
+            )
+        elif hasattr(item, "kind") and hasattr(item, "label"):
+            refs.append(
+                ActionReviewArtifactRef(
+                    kind=str(item.kind),
+                    label=str(item.label),
+                    content=getattr(item, "content", None),
+                    language=(
+                        str(item.language)
+                        if getattr(item, "language", None) is not None
+                        else None
+                    ),
+                )
+            )
+    return refs
 
 
-def _update_plan_activity(
+def _update_action_review_activity(
     items: list[ActivityItem],
     request_id: str,
     updater: Any,
 ) -> list[ActivityItem]:
     updated: list[ActivityItem] = []
     for item in items:
-        if item.type == "plan" and item.request_id == request_id:
+        if item.type == "action_review" and item.request_id == request_id:
             updated.append(updater(item))
         else:
             updated.append(item)
@@ -366,14 +411,24 @@ def serialize_activity_items(items: list[ActivityItem]) -> list[dict[str, Any]]:
                     "detail": item.detail,
                 }
             )
-        elif item.type == "plan":
+        elif item.type == "action_review":
             serialized.append(
                 {
-                    "type": "plan",
+                    "type": "action_review",
                     "id": item.id,
                     "requestId": item.request_id,
-                    "composeYaml": item.compose_yaml,
-                    "diff": item.diff.model_dump(by_alias=True) if item.diff else None,
+                    "tool": item.tool,
+                    "title": item.title,
+                    "summary": item.summary,
+                    "artifacts": [
+                        {
+                            "kind": artifact.kind,
+                            "label": artifact.label,
+                            "content": artifact.content,
+                            "language": artifact.language,
+                        }
+                        for artifact in item.artifacts
+                    ],
                     "autoGeneratedSecrets": [
                         {"service": secret.service, "keys": list(secret.keys)}
                         for secret in item.auto_generated_secrets
@@ -387,7 +442,7 @@ def serialize_activity_items(items: list[ActivityItem]) -> list[dict[str, Any]]:
                         for config in item.config_files
                     ],
                     "status": item.status,
-                    "showYaml": item.show_yaml,
+                    "showArtifacts": item.show_artifacts,
                     "showConfig": item.show_config,
                 }
             )
@@ -441,21 +496,43 @@ def deserialize_activity_items(raw: list[Any]) -> list[ActivityItem]:
                     detail=entry.get("detail"),
                 )
             )
-        elif item_type == "plan":
-            diff_raw = entry.get("diff")
-            diff = StackDiff.model_validate(diff_raw) if diff_raw else None
+        elif item_type in {"action_review", "plan"}:
+            artifacts = entry.get("artifacts")
+            if not artifacts:
+                artifacts = []
+                if entry.get("composeYaml"):
+                    artifacts.append(
+                        {
+                            "kind": "yaml",
+                            "label": "YAML",
+                            "language": "yaml",
+                            "content": entry.get("composeYaml"),
+                        }
+                    )
+                if entry.get("diff") is not None:
+                    artifacts.append(
+                        {
+                            "kind": "diff",
+                            "label": "Resource diff",
+                            "content": entry.get("diff"),
+                        }
+                    )
             items.append(
-                PlanActivity(
+                ActionReviewActivity(
                     id=str(entry.get("id", _next_id())),
                     request_id=str(entry.get("requestId", "")),
-                    compose_yaml=str(entry.get("composeYaml", "")),
-                    diff=diff,
+                    tool=str(entry.get("tool", "")),
+                    title=str(entry.get("title", "Review action")),
+                    summary=str(entry.get("summary", "")),
+                    artifacts=_action_review_artifact_refs(artifacts),
                     auto_generated_secrets=_plan_secret_refs(
                         entry.get("autoGeneratedSecrets")
                     ),
                     config_files=_plan_config_refs(entry.get("configFiles")),
                     status=entry.get("status", "approved"),
-                    show_yaml=bool(entry.get("showYaml")),
+                    show_artifacts=bool(
+                        entry.get("showArtifacts", entry.get("showYaml", False))
+                    ),
                     show_config=bool(entry.get("showConfig")),
                 )
             )
@@ -643,16 +720,18 @@ def activity_reducer(state: ActivityState, action: ActivityAction) -> ActivitySt
                     )
                 )
             return replace(state, items=updated_items)
-        case "plan_ready":
+        case "action_review_ready":
             return replace(
                 state,
                 items=[
                     *state.items,
-                    PlanActivity(
+                    ActionReviewActivity(
                         id=_next_id(),
                         request_id=action["request_id"],
-                        compose_yaml=action["compose_yaml"],
-                        diff=action["diff"],
+                        tool=action["tool"],
+                        title=action["title"],
+                        summary=action["summary"],
+                        artifacts=_action_review_artifact_refs(action.get("artifacts")),
                         auto_generated_secrets=_plan_secret_refs(
                             action.get("auto_generated_secrets")
                         ),
@@ -661,28 +740,28 @@ def activity_reducer(state: ActivityState, action: ActivityAction) -> ActivitySt
                     ),
                 ],
             )
-        case "plan_resolved":
+        case "action_review_resolved":
             return replace(
                 state,
-                items=_update_plan_activity(
+                items=_update_action_review_activity(
                     state.items,
                     action["request_id"],
                     lambda item: replace(item, status=action["status"]),
                 ),
             )
-        case "plan_toggle_yaml":
+        case "action_review_toggle_artifacts":
             return replace(
                 state,
-                items=_update_plan_activity(
+                items=_update_action_review_activity(
                     state.items,
                     action["request_id"],
-                    lambda item: replace(item, show_yaml=not item.show_yaml),
+                    lambda item: replace(item, show_artifacts=not item.show_artifacts),
                 ),
             )
-        case "plan_toggle_config":
+        case "action_review_toggle_config":
             return replace(
                 state,
-                items=_update_plan_activity(
+                items=_update_action_review_activity(
                     state.items,
                     action["request_id"],
                     lambda item: replace(item, show_config=not item.show_config),
@@ -771,8 +850,9 @@ __all__ = [
     "ActivityAction",
     "ActivityItem",
     "ActivityState",
-    "PlanActivity",
-    "PlanActivityStatus",
+    "ActionReviewActivity",
+    "ActionReviewArtifactRef",
+    "ActionReviewStatus",
     "PlanConfigRef",
     "PlanSecretRef",
     "RollbackActivity",

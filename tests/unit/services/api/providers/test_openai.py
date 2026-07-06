@@ -1,4 +1,4 @@
-"""Parity tests for OpenAI provider."""
+﻿"""Parity tests for OpenAI provider."""
 
 from __future__ import annotations
 

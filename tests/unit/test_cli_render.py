@@ -1,4 +1,4 @@
-"""Parity tests for welcome banner pre-render and inline TUI launch."""
+﻿"""Parity tests for welcome banner pre-render and inline TUI launch."""
 
 from __future__ import annotations
 

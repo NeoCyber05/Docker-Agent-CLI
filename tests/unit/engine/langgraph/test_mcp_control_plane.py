@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from docker_agent.agent import BackendQueryParams
 from docker_agent.config import UserConfig
+from docker_agent.core.loop_context import ActionReviewPayload
 from docker_agent.engine.langgraph.backend import LangGraphBackend
 from docker_agent.types.message import UserMessage
 
@@ -170,7 +171,17 @@ async def test_mcp_control_plane_approved_pending_action_calls_commit_tool(
             "cwd": ctx.cwd,
             "tool": "docker.deploy_stack",
             "kind": "plan_review",
-            "display": {"compose_yaml": "services: {}", "diff": {"serviceDiffs": []}},
+            "display": {
+                "artifacts": [
+                    {
+                        "kind": "manifest",
+                        "label": "Compose YAML",
+                        "language": "yaml",
+                        "content": "services: {}",
+                    },
+                    {"kind": "diff", "label": "Stack diff", "content": {"serviceDiffs": []}},
+                ]
+            },
         },
     }
     deploy = _FakeMcpTool("docker.deploy_stack", pending, metadata={"risk": "high"})
@@ -197,7 +208,12 @@ async def test_mcp_control_plane_approved_pending_action_calls_commit_tool(
         tools=[capabilities, deploy, commit, rollback],
     )
 
-    ctx.request_confirm.assert_awaited_once_with(pending["pending_action"]["display"])
+    ctx.request_confirm.assert_awaited_once()
+    review = ctx.request_confirm.await_args.args[0]
+    assert isinstance(review, ActionReviewPayload)
+    assert review.pending_action_id == "pending-1"
+    assert review.tool == "docker.deploy_stack"
+    assert [artifact.kind for artifact in review.artifacts] == ["manifest", "diff"]
     assert len(deploy.calls) == 1
     assert commit.calls == [
         {
@@ -242,7 +258,17 @@ async def test_mcp_control_plane_failed_commit_calls_rollback_tool(
             "cwd": ctx.cwd,
             "tool": "docker.deploy_stack",
             "kind": "plan_review",
-            "display": {"compose_yaml": "services: {}", "diff": {"serviceDiffs": []}},
+            "display": {
+                "artifacts": [
+                    {
+                        "kind": "manifest",
+                        "label": "Compose YAML",
+                        "language": "yaml",
+                        "content": "services: {}",
+                    },
+                    {"kind": "diff", "label": "Stack diff", "content": {"serviceDiffs": []}},
+                ]
+            },
         },
     }
     deploy = _FakeMcpTool("docker.deploy_stack", pending, metadata={"risk": "high"})
@@ -277,6 +303,194 @@ async def test_mcp_control_plane_failed_commit_calls_rollback_tool(
     assert rollback.calls == [
         {
             "rollback_action_id": "rollback-1",
+            "session_id": "default",
+            "cwd": ctx.cwd,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_mcp_control_plane_handles_second_plugin_pending_action(
+    make_loop_ctx, tmp_project
+) -> None:
+    ctx = make_loop_ctx()
+    ctx.request_confirm.return_value = {"kind": "approve"}
+    (tmp_project / "project-policies.yaml").write_text("project: {}\n", encoding="utf-8")
+    docker_capabilities = _FakeMcpTool(
+        "docker.capabilities",
+        {
+            "tools": [
+                {"namespace": "docker", "name": "docker.list_stacks", "operation": "observe"},
+            ],
+            "context": {"summarize_tool": "docker.summarize_context"},
+        },
+    )
+    k8s_capabilities = _FakeMcpTool(
+        "k8s.capabilities",
+        {
+            "tools": [
+                {
+                    "namespace": "k8s",
+                    "name": "k8s.deploy",
+                    "risk": "high",
+                    "mutating": True,
+                    "commit_tool": "k8s.commit_action",
+                    "rollback_tool": "k8s.rollback_action",
+                },
+                {
+                    "namespace": "k8s",
+                    "name": "k8s.commit_action",
+                    "operation": "commit",
+                    "model_visible": False,
+                },
+                {
+                    "namespace": "k8s",
+                    "name": "k8s.rollback_action",
+                    "operation": "rollback",
+                    "model_visible": False,
+                },
+            ],
+            "commands": [
+                {
+                    "pattern": r"^pods$",
+                    "tool": "k8s.list_pods",
+                    "confirmation": "none",
+                    "args": {},
+                }
+            ],
+            "context": {"summarize_tool": "k8s.summarize_context"},
+        },
+    )
+    pending = {
+        "status": "pending_confirmation",
+        "pending_action": {
+            "id": "k8s-pending-1",
+            "session_id": "default",
+            "cwd": ctx.cwd,
+            "tool": "k8s.deploy",
+            "kind": "plan_review",
+            "display": {
+                "title": "Review Kubernetes deployment",
+                "summary": "Create deployment web.",
+                "artifacts": [
+                    {
+                        "kind": "manifest",
+                        "label": "Deployment",
+                        "language": "yaml",
+                        "content": "kind: Deployment\n",
+                    }
+                ],
+            },
+        },
+    }
+    docker_list = _FakeMcpTool("docker.list_stacks", {"stacks": []})
+    k8s_deploy = _FakeMcpTool("k8s.deploy", pending, metadata={"risk": "high"})
+    k8s_commit = _FakeMcpTool("k8s.commit_action", {"status": "ok", "ok": True})
+    k8s_rollback = _FakeMcpTool("k8s.rollback_action", {"status": "ok"})
+    model = ToolCallingFakeModel(
+        responses=[
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "k8s.deploy", "args": {"name": "web"}, "id": "k8s-1"}],
+            ),
+            AIMessage(content="finished"),
+        ]
+    )
+
+    events = await _run_mcp_backend(
+        ctx=ctx,
+        model=model,
+        tools=[
+            docker_capabilities,
+            k8s_capabilities,
+            docker_list,
+            k8s_deploy,
+            k8s_commit,
+            k8s_rollback,
+        ],
+    )
+
+    assert [tool.name for tool in model.bound_tools] == ["docker.list_stacks", "k8s.deploy"]
+    ctx.request_confirm.assert_awaited_once()
+    review = ctx.request_confirm.await_args.args[0]
+    assert isinstance(review, ActionReviewPayload)
+    assert review.pending_action_id == "k8s-pending-1"
+    assert review.tool == "k8s.deploy"
+    assert review.artifacts[0].kind == "manifest"
+    assert k8s_commit.calls == [
+        {
+            "pending_action_id": "k8s-pending-1",
+            "session_id": "default",
+            "cwd": ctx.cwd,
+            "decision": "approve",
+            "typed_phrase": None,
+            "secrets": None,
+        }
+    ]
+    assert k8s_rollback.calls == []
+    assert any(getattr(event, "delta", "") == "finished" for event in events)
+
+
+@pytest.mark.asyncio
+async def test_mcp_control_plane_uses_plugin_rollback_tool_from_payload(
+    make_loop_ctx, tmp_project
+) -> None:
+    ctx = make_loop_ctx()
+    ctx.request_confirm.return_value = {"kind": "approve"}
+    (tmp_project / "project-policies.yaml").write_text("project: {}\n", encoding="utf-8")
+    capabilities = _FakeMcpTool(
+        "k8s.capabilities",
+        {
+            "tools": [
+                {
+                    "namespace": "k8s",
+                    "name": "k8s.deploy",
+                    "risk": "high",
+                    "mutating": True,
+                    "commit_tool": "k8s.commit_action",
+                    "rollback_tool": "k8s.rollback_action",
+                }
+            ]
+        },
+    )
+    deploy = _FakeMcpTool(
+        "k8s.deploy",
+        {
+            "status": "pending_confirmation",
+            "pending_action": {
+                "id": "pending-k8s-rollback",
+                "session_id": "default",
+                "cwd": ctx.cwd,
+                "tool": "k8s.deploy",
+                "kind": "plan_review",
+                "display": {"title": "Review", "summary": "Review", "artifacts": []},
+            },
+        },
+    )
+    commit = _FakeMcpTool(
+        "k8s.commit_action",
+        {
+            "status": "error",
+            "ok": False,
+            "rollback_action": {"id": "rollback-k8s-1", "tool": "k8s.rollback_action"},
+        },
+    )
+    rollback = _FakeMcpTool("k8s.rollback_action", {"status": "ok", "ok": True})
+    model = ToolCallingFakeModel(
+        responses=[
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "k8s.deploy", "args": {}, "id": "deploy-k8s"}],
+            ),
+            AIMessage(content="finished"),
+        ]
+    )
+
+    await _run_mcp_backend(ctx=ctx, model=model, tools=[capabilities, deploy, commit, rollback])
+
+    assert rollback.calls == [
+        {
+            "rollback_action_id": "rollback-k8s-1",
             "session_id": "default",
             "cwd": ctx.cwd,
         }

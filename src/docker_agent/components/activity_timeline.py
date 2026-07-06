@@ -8,10 +8,10 @@ from typing import Any
 from rich.text import Text
 from textual.widgets import Static
 
-from docker_agent.components.plan_preview import render_plan_activity
+from docker_agent.components.plan_preview import render_action_review_activity
 from docker_agent.ui.activity import (
+    ActionReviewActivity,
     ActivityItem,
-    PlanActivity,
     RollbackActivity,
     TextActivity,
     ToolActivity,
@@ -82,8 +82,8 @@ def _render_rollback(item: RollbackActivity) -> Text:
     return Text(f"rollback {item.phase} for {item.stack_name}{suffix}\n", style=style)
 
 
-def _render_plan(item: PlanActivity) -> Text:
-    content = render_plan_activity(item)
+def _render_action_review(item: ActionReviewActivity) -> Text:
+    content = render_action_review_activity(item)
     content.append("\n")
     return content
 
@@ -118,8 +118,8 @@ def render_activity_timeline(
             content.append_text(_render_text(item))
         elif item.type == "rollback":
             content.append_text(_render_rollback(item))
-        elif item.type == "plan":
-            content.append_text(_render_plan(item))
+        elif item.type == "action_review":
+            content.append_text(_render_action_review(item))
 
     if active_item and active_item.type == "tool":
         content.append_text(_render_tool(active_item, is_active=True))

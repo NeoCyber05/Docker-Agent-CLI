@@ -1,4 +1,4 @@
-"""Smoke tests for the CLI entrypoint."""
+﻿"""Smoke tests for the CLI entrypoint."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Parity tests for docker_agent.types.message — mirrors src/types/message.ts:1-22."""
+﻿"""Parity tests for docker_agent.types.message â€” mirrors src/types/message.ts:1-22."""
 
 import pytest
 from pydantic import TypeAdapter, ValidationError
@@ -88,7 +88,7 @@ def test_tool_result_message_parses() -> None:
 
 
 def test_tool_result_message_accepts_python_snake_case_alias() -> None:
-    # Python callers may also construct with snake_case — pydantic must accept both
+    # Python callers may also construct with snake_case â€” pydantic must accept both
     m = ToolResultMessage(role="tool", tool_use_id="t1", content="[]", is_error=False)
     assert m.tool_use_id == "t1"
     # but when dumped by alias (json mode), camelCase must come back out

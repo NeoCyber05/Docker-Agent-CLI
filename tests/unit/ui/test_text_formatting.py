@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from docker_agent.ui.text_formatting import render_inline_markdown, render_markdown
 
@@ -55,3 +55,4 @@ def test_render_markdown_preserves_bold_paragraphs() -> None:
     rendered = render_markdown("Status for stack **wp-new**:")
     assert rendered.plain.strip() == "Status for stack wp-new:"
     assert "**" not in rendered.plain
+

@@ -9,9 +9,6 @@ license = { text = "MIT" }
 
 dependencies = [
     "pydantic>=2.7,<3",
-    "pyyaml>=6.0.1",
-    "docker>=7.1",
-    "httpx>=0.27",
     "langchain>=1.3.3,<2",
     "langchain-google-genai>=4,<5",
     "langchain-ollama>=1,<2",
@@ -25,7 +22,6 @@ dependencies = [
     "typer>=0.12",
     "rich>=13.0",
     "langchain-mcp-adapters>=0.1",
-    "mcp>=1.0",
 ]
 
 [project.optional-dependencies]
@@ -89,4 +85,5 @@ select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
 # C4 = comprehensions
 
 [tool.ruff.lint.isort]
-known-first-party = ["docker_agent"]
+known-first-party = ["docker_agent", "docker_mcp_server"]
+

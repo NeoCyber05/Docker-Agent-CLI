@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import importlib
 import importlib.util
@@ -68,3 +68,12 @@ def test_no_generated_egg_info_in_source_tree() -> None:
         if "site-packages" not in path.parts and ".venv" not in path.parts
     ]
     assert generated == []
+
+def test_docker_plugin_tests_live_with_docker_mcp_server() -> None:
+    assert not (ROOT / "tests" / "unit" / "tools").exists()
+    assert not (ROOT / "tests" / "unit" / "services" / "docker").exists()
+    assert (ROOT / "servers" / "docker-mcp-server" / "tests" / "unit" / "tools").exists()
+    assert (
+        ROOT / "servers" / "docker-mcp-server" / "tests" / "unit" / "services" / "docker"
+    ).exists()
+

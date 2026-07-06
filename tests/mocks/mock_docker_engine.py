@@ -1,11 +1,11 @@
-"""Mock Docker engine for tool tests."""
+﻿"""Mock Docker engine for tool tests."""
 
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from typing import Any
 
-from docker_agent.services.docker.types import (
+from docker_mcp_server.services.docker.types import (
     ContainerInspect,
     ContainerStats,
     ContainerSummary,
@@ -86,3 +86,4 @@ class MockDockerEngine:
         self.pull_image_calls.append((image, {"signal": signal}))
         for line in self.pull_image_lines:
             yield line
+

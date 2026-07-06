@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from rich.text import Text
 
@@ -31,3 +31,4 @@ def test_slash_command_highlighter_applies_style() -> None:
     highlighter = SlashCommandHighlighter()
     highlighted = highlighter(Text("/model hello"))
     assert "bold cyan" in highlighted._spans[0].style
+

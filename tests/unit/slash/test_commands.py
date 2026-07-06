@@ -1,4 +1,4 @@
-"""Parity tests for slash command autocomplete."""
+﻿"""Parity tests for slash command autocomplete."""
 
 from __future__ import annotations
 

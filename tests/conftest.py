@@ -1,4 +1,4 @@
-"""Shared pytest fixtures."""
+﻿"""Shared pytest fixtures."""
 
 from __future__ import annotations
 
@@ -23,12 +23,12 @@ def isolated_global_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
 
     ``PolicyEngine()`` falls back to that path when no ``global_policy_path`` is
     given, and ``ensure_global_policy()`` (called from the CLI/agent-loop
-    bootstrap) would otherwise scaffold a real baseline file there — making
+    bootstrap) would otherwise scaffold a real baseline file there â€” making
     test results depend on whatever happens to exist on the machine running them.
 
     The isolated file is pre-created *empty* (rather than left missing) so that
     ``ensure_global_policy()`` sees it already exists and does not scaffold the
-    full baseline into it — tests that don't care about global policy keep
+    full baseline into it â€” tests that don't care about global policy keep
     seeing zero global rules, matching pre-scaffolding behavior.
     """
     policy_path = tmp_path / "isolated-global-policies.yaml"

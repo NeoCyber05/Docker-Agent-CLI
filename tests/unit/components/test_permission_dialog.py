@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from textual.app import App, ComposeResult
 from textual.widgets import Static
@@ -112,3 +112,4 @@ async def test_permission_dialog_deny() -> None:
         await pilot.press("n")
         await pilot.pause()
         assert app.responses[0].kind == "deny"  # type: ignore[attr-defined]
+

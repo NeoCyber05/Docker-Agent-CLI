@@ -29,7 +29,17 @@ async def test_handle_pending_plan_confirmation_approves_via_confirm_tool(
             "cwd": ctx.cwd,
             "tool": "docker.deploy_stack",
             "kind": "plan_review",
-            "display": {"compose_yaml": "services: {}", "diff": {"serviceDiffs": []}},
+            "display": {
+                "artifacts": [
+                    {
+                        "kind": "manifest",
+                        "label": "Compose YAML",
+                        "language": "yaml",
+                        "content": "services: {}",
+                    },
+                    {"kind": "diff", "label": "Stack diff", "content": {"serviceDiffs": []}},
+                ]
+            },
         },
     }
     confirm_tool = _FakeTool(
@@ -93,7 +103,6 @@ async def test_handle_pending_typed_confirmation_denies_on_wrong_phrase(
     assert confirm_tool.ainvoke.await_args.args[0]["decision"] == "deny"
 
 
-
 @pytest.mark.asyncio
 async def test_handle_pending_confirmation_accepts_mcp_text_content(
     make_loop_ctx,
@@ -107,7 +116,17 @@ async def test_handle_pending_confirmation_accepts_mcp_text_content(
             "cwd": ctx.cwd,
             "tool": "docker.deploy_stack",
             "kind": "plan_review",
-            "display": {"compose_yaml": "services: {}", "diff": {"serviceDiffs": []}},
+            "display": {
+                "artifacts": [
+                    {
+                        "kind": "manifest",
+                        "label": "Compose YAML",
+                        "language": "yaml",
+                        "content": "services: {}",
+                    },
+                    {"kind": "diff", "label": "Stack diff", "content": {"serviceDiffs": []}},
+                ]
+            },
         },
     }
     confirm_tool = _FakeTool(

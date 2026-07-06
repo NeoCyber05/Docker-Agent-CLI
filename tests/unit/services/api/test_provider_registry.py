@@ -1,4 +1,4 @@
-"""Provider registry smoke tests."""
+﻿"""Provider registry smoke tests."""
 
 from docker_agent.services.api import (
     GeminiProvider,

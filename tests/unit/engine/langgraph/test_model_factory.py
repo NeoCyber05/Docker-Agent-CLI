@@ -1,4 +1,4 @@
-"""Tests for native LangChain chat model construction."""
+﻿"""Tests for native LangChain chat model construction."""
 
 from __future__ import annotations
 
@@ -47,3 +47,4 @@ def test_create_chat_model_maps_supported_providers(
 def test_create_chat_model_rejects_unknown_provider() -> None:
     with pytest.raises(ValueError, match="Unsupported LangChain provider"):
         create_chat_model(provider_name="unknown", model=None, env={})
+

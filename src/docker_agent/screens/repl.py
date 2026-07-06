@@ -59,7 +59,6 @@ from docker_agent.config import (
     ProviderName,
     persist_model_choice,
     resolve_display_model,
-    stack_state_yaml_path,
 )
 from docker_agent.query_engine import QueryEngine, restore_session_from_record
 from docker_agent.screens.apply_slash_effects import SlashEffectApplierDeps, apply_slash_effects
@@ -69,11 +68,9 @@ from docker_agent.services.model_catalog import build_model_catalog, flatten_cat
 from docker_agent.services.provider_status import get_provider_statuses
 from docker_agent.slash.router import SlashRouterContext, route_slash_command
 from docker_agent.state.logger import StructuredLogger
-from docker_agent.state.secret_redactor import scrub_line
-from docker_agent.tools.shared.secret_keys import SecretKeysContext, collect_secret_keys
 from docker_agent.types.events import (
+    ActionReview,
     PermissionRequest,
-    PlanReady,
     SecretsInputRequest,
     TypedConfirmRequest,
 )
@@ -180,8 +177,6 @@ class REPL(App[None]):
         self._timeline_key = 0
         self._timeline_signature: tuple[Any, ...] | None = None
         self._cwd = engine._cwd  # noqa: SLF001
-        self._state_store = engine._state_store  # noqa: SLF001
-        self._compose_runner = engine._compose_runner  # noqa: SLF001
         self._session_store = engine._session_store  # noqa: SLF001
         self.active_provider_name = getattr(engine.provider, "name", "unknown")
         self.active_model = engine.model
@@ -279,7 +274,7 @@ class REPL(App[None]):
         elif last.type == "text":
             tail = (last.role, last.text[-120:])
         elif last.type == "plan":
-            tail = (last.status, last.show_yaml, last.show_config, last.request_id)
+            tail = (last.status, last.show_artifacts, last.show_config, last.request_id)
         else:
             tail = (last.type,)
         return (len(items), active, tail)
@@ -376,7 +371,7 @@ class REPL(App[None]):
                 self._refresh_ui()
                 if self.yes and isinstance(self.session.pending_event, PermissionRequest):
                     self.session.respond(self.session.pending_event.id, Approve())
-                if self.yes and isinstance(self.session.pending_event, PlanReady):
+                if self.yes and isinstance(self.session.pending_event, ActionReview):
                     self._respond_to_plan(Approve())
                 self._schedule_pending_dialog()
             except asyncio.CancelledError:
@@ -412,7 +407,7 @@ class REPL(App[None]):
                 self.set_focus(self.query_one("#permission-prompt", PermissionDialog))
             return
 
-        if isinstance(pending, PlanReady):
+        if isinstance(pending, ActionReview):
             self._local_pending = "plan"
             self._lock_prompt_input()
             return
@@ -459,12 +454,12 @@ class REPL(App[None]):
 
     def _respond_to_plan(self, response: PermissionResponse) -> None:
         pending = self.session.pending_event
-        if pending is None or not isinstance(pending, PlanReady):
+        if pending is None or not isinstance(pending, ActionReview):
             return
         status = "approved" if response.kind == "approve" else "denied"
         self.session.dispatch_activity(
             {
-                "type": "plan_resolved",
+                "type": "action_review_resolved",
                 "request_id": pending.id,
                 "status": status,
             }
@@ -509,64 +504,10 @@ class REPL(App[None]):
         self._log_lines = []
 
     def _start_log_pane(self, stack_name: str, service: str | None = None) -> None:
-        yaml_path = stack_state_yaml_path(stack_name, self._cwd)
-        if not Path(yaml_path).exists():
-            self.session.dispatch_activity(
-                {
-                    "type": "user_text",
-                    "text": f"/logs {stack_name}{f' {service}' if service else ''}",
-                }
-            )
-            self.session.dispatch_activity(
-                {"type": "error", "error": RuntimeError(f"stack {stack_name} not found")}
-            )
-            return
-        self._stop_log_pane()
-        controller = asyncio.Event()
-        self._log_controller = controller
-        self._log_lines = []
-        pane = LogPane(stack_name=stack_name, service=service, lines=[])
-        self._active_log_pane = pane
-        self.push_screen(pane, self._on_log_pane_closed)
-        secret_keys = collect_secret_keys(
-            stack_name,
-            SecretKeysContext(cwd=self._cwd, state_store=self._state_store),
-        )
-        bound = self._compose_runner.for_stack(stack_name, yaml_path)
-
-        async def follow_logs() -> None:
-            saw_output = False
-            try:
-                async for chunk in bound.logs(
-                    follow=True,
-                    tail_lines=50,
-                    signal=controller,
-                    service=service,
-                ):
-                    if controller.is_set():
-                        break
-                    if not chunk.strip():
-                        continue
-                    saw_output = True
-                    scrubbed = scrub_line(chunk, secret_keys)
-                    self._log_lines.append(scrubbed)
-                    if len(self._log_lines) > 200:
-                        self._log_lines = self._log_lines[-200:]
-                    if self._active_log_pane is not None:
-                        self._active_log_pane.append_line(scrubbed)
-            except Exception as exc:
-                if self._active_log_pane is not None and not controller.is_set():
-                    self._active_log_pane.show_status(f"error: {exc}")
-                return
-            if (
-                not saw_output
-                and self._active_log_pane is not None
-                and not controller.is_set()
-            ):
-                self._active_log_pane.show_status("(no log output yet)")
-
-        asyncio.create_task(follow_logs())
-
+        prompt = f"Show logs for stack {stack_name}"
+        if service:
+            prompt += f" service {service}"
+        self.session.submit(prompt)
     async def _resolve_all_providers(self) -> dict[ProviderName, Any]:
         return {
             name: resolve_provider_for_request(
@@ -577,7 +518,7 @@ class REPL(App[None]):
 
     async def _open_provider_connect(self) -> None:
         self._lock_prompt_input()
-        loading = Static("Loading providers…", id="provider-connect-loading")
+        loading = Static("Loading providersâ€¦", id="provider-connect-loading")
         self.mount(loading, after="#prompt")
         try:
             instances = await self._resolve_all_providers()
@@ -660,7 +601,7 @@ class REPL(App[None]):
 
     async def _open_model_picker(self, scope_provider: str | None = None) -> None:
         self._lock_prompt_input()
-        loading = Static("Loading models…", id="model-picker-loading")
+        loading = Static("Loading modelsâ€¦", id="model-picker-loading")
         self.mount(loading, after="#prompt")
         try:
             rows = await self._build_model_picker_rows(scope_provider)
@@ -908,7 +849,6 @@ class REPL(App[None]):
                 input_text,
                 SlashRouterContext(
                     cwd=self._cwd,
-                    state_store=self._state_store,
                     active_provider_name=self.active_provider_name,  # type: ignore[arg-type]
                     api_key_store=self.api_key_store,
                     session_store=self._session_store,
@@ -1074,7 +1014,7 @@ class REPL(App[None]):
                 pass
         elif self._local_pending == "plan":
             pending = self.session.pending_event
-            if isinstance(pending, PlanReady):
+            if isinstance(pending, ActionReview):
                 key = event.key.lower()
                 if key == "y":
                     self._respond_to_plan(Approve())
@@ -1084,14 +1024,15 @@ class REPL(App[None]):
                     event.stop()
                 elif key == "x":
                     self.session.dispatch_activity(
-                        {"type": "plan_toggle_yaml", "request_id": pending.id}
+                        {"type": "action_review_toggle_artifacts", "request_id": pending.id}
                     )
                     event.stop()
                 elif key == "c":
                     self.session.dispatch_activity(
-                        {"type": "plan_toggle_config", "request_id": pending.id}
+                        {"type": "action_review_toggle_config", "request_id": pending.id}
                     )
                     event.stop()
 
 
 __all__ = ["REPL"]
+

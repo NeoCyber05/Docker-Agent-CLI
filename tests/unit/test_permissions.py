@@ -1,4 +1,4 @@
-"""Parity tests for docker_agent.types.permissions — mirrors src/types/permissions.ts:1-11."""
+﻿"""Parity tests for docker_agent.types.permissions â€” mirrors src/types/permissions.ts:1-11."""
 
 import pytest
 from pydantic import ValidationError
@@ -15,7 +15,7 @@ from docker_agent.types.permissions import (
 
 
 def parse(obj: dict) -> PermissionResponse:
-    """TypeAdapter — declared here so each test asserts the discriminated union parses."""
+    """TypeAdapter â€” declared here so each test asserts the discriminated union parses."""
     from pydantic import TypeAdapter
 
     return TypeAdapter(PermissionResponse).validate_python(obj)
@@ -87,7 +87,7 @@ def test_permission_request_round_trip() -> None:
 
 
 def test_permission_request_accepts_any_input_type() -> None:
-    # input is `unknown` in TS → Any in Python; object and primitive both fine
+    # input is `unknown` in TS â†’ Any in Python; object and primitive both fine
     PermissionRequest(tool="x", input=None)
     PermissionRequest(tool="x", input=42)
     PermissionRequest(tool="x", input=[1, 2])

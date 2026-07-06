@@ -1,4 +1,4 @@
-"""Parity tests for logger — mirrors src/state/logger.ts."""
+﻿"""Parity tests for logger â€” mirrors src/state/logger.ts."""
 
 import json
 import time

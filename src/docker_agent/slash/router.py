@@ -1,4 +1,4 @@
-"""Slash command router.
+﻿"""Slash command router.
 
 Parity: ``src/slashRouter.ts``.
 """
@@ -19,7 +19,6 @@ from docker_agent.slash.dispatch import (
     stop_stack_prompt,
 )
 from docker_agent.state.session_store import SessionStore
-from docker_agent.state.state_store import StateStore
 from docker_agent.vault.api_key_store import ApiKeyStore
 
 
@@ -113,7 +112,6 @@ class SlashRouteResult:
 @dataclass
 class SlashRouterContext:
     cwd: str
-    state_store: StateStore
     active_provider_name: ProviderName
     api_key_store: ApiKeyStore
     session_store: SessionStore | None = None
@@ -210,7 +208,7 @@ def format_slash_help() -> str:
 
 
 def _dispatch_ctx(ctx: SlashRouterContext) -> SlashDispatchContext:
-    return SlashDispatchContext(cwd=ctx.cwd, state_store=ctx.state_store)
+    return SlashDispatchContext(cwd=ctx.cwd)
 
 
 def resolve_slash_key(parts: list[str]) -> HandlerKey | None:
@@ -561,3 +559,5 @@ __all__ = [
     "resolve_slash_key",
     "route_slash_command",
 ]
+
+

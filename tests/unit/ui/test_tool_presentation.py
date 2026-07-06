@@ -1,4 +1,4 @@
-"""Parity tests for tool_presentation — mirrors src/ui/__tests__/toolPresentation.test.ts."""
+﻿"""Parity tests for tool_presentation â€” mirrors src/ui/__tests__/toolPresentation.test.ts."""
 
 from __future__ import annotations
 
@@ -305,7 +305,7 @@ def test_sanitize_tool_text_truncates_to_4096_bytes() -> None:
 
 
 def test_exec_docker_presentation_from_pydantic_input() -> None:
-    from docker_agent.tools.exec_docker import ExecDockerInput
+    from docker_mcp_server.tools.exec_docker import ExecDockerInput
 
     presentation = present_tool("exec_docker", ExecDockerInput(args=["network", "ls"]))
     assert presentation.title == "Docker: network ls"
@@ -314,7 +314,7 @@ def test_exec_docker_presentation_from_pydantic_input() -> None:
 
 
 def test_pull_image_presentation_from_pydantic_input() -> None:
-    from docker_agent.tools.pull_image import PullImageInput
+    from docker_mcp_server.tools.pull_image import PullImageInput
 
     presentation = present_tool("pull_image", PullImageInput(image="nginx:latest"))
     assert presentation.title == "Pull image: nginx:latest"

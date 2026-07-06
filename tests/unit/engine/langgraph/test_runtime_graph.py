@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import Any
 
@@ -176,3 +176,4 @@ async def test_runtime_graph_routes_failed_deploy_to_rollback() -> None:
 
     assert result["rollback_result"] == {"ok": True}
     assert calls == ["context_loader", "command_router", "deploy", "rollback", "finalize"]
+

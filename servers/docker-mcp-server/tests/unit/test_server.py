@@ -4,16 +4,16 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
+from docker_mcp_server.config import project_state_dir, stack_states_dir
 from docker_mcp_server.server import (
     deploy_stack_payload,
     list_stacks_payload,
     pending_confirmation_stub,
 )
-
-from docker_agent.config import project_state_dir, stack_states_dir
-from docker_agent.state.state_store import StateStore
-from docker_agent.tools.plan_stack import PlanStackResultOk
-from docker_agent.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
+from docker_mcp_server.state.state_store import StateStore
+from docker_mcp_server.tools.plan_stack import PlanStackResultOk
+from docker_mcp_server.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
 
 
 def _write_stack(project: Path, name: str) -> None:
@@ -64,7 +64,7 @@ def test_pending_confirmation_stub_matches_contract(tmp_path: Path) -> None:
     assert pending["cwd"] == str(tmp_path)
     assert pending["tool"] == "docker.deploy_stack"
     assert pending["kind"] == "plan_review"
-    assert pending["display"]["compose_yaml"] == "services: {}"
+    assert pending["display"]["artifacts"][0]["content"] == "services: {}"
     assert "expires_at" in pending
 
 
@@ -124,7 +124,7 @@ async def test_deploy_stack_returns_pending_action_with_apply_payload(
     assert pending["tool"] == "docker.deploy_stack"
     assert pending["kind"] == "plan_review"
     assert pending["hash"] == "hash-a"
-    assert pending["display"]["compose_yaml"] == plan.compose_yaml
+    assert pending["display"]["artifacts"][0]["content"] == plan.compose_yaml
 
 
 @pytest.mark.asyncio
@@ -373,3 +373,6 @@ async def test_confirm_action_remains_backward_compatible(
     assert result["status"] == "ok"
     assert result["result"] == "Stack applied."
     assert apply_transaction.await_count == 1
+
+
+

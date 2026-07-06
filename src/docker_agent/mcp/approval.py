@@ -1,4 +1,4 @@
-"""Generic confirmation handling for MCP PendingAction payloads."""
+﻿"""Generic confirmation handling for MCP PendingAction payloads."""
 
 from __future__ import annotations
 
@@ -110,7 +110,7 @@ async def handle_pending_confirmation(
     confirm_tool = _find_confirm_tool(tools_by_name)
     confirm_input = {
         "pending_action_id": action["id"],
-        "session_id": getattr(ctx, "session_id", None) or action.get("session_id"),
+        "session_id": action.get("session_id") or getattr(ctx, "session_id", None) or "default",
         "cwd": getattr(ctx, "cwd", None) or action.get("cwd"),
         "decision": decision.get("decision", "deny"),
         "typed_phrase": decision.get("typed_phrase"),
@@ -189,4 +189,5 @@ __all__ = [
     "is_pending_confirmation",
     "wrap_mcp_tools_for_confirmation",
 ]
+
 

@@ -1,4 +1,4 @@
-"""Parity tests for state_store — mirrors src/state/StateStore.ts."""
+﻿"""Parity tests for state_store â€” mirrors src/state/StateStore.ts."""
 
 import json
 import os
@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from docker_agent.state.state_store import HistoryEvent, StateStore
-from docker_agent.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
+from docker_mcp_server.state.state_store import HistoryEvent, StateStore
+from docker_mcp_server.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
 
 
 def _make_stack(name: str = "web") -> StackDefinition:

@@ -1,4 +1,4 @@
-"""Parity tests for session_store — mirrors src/state/SessionStore.ts."""
+﻿"""Parity tests for session_store â€” mirrors src/state/SessionStore.ts."""
 
 from pathlib import Path
 

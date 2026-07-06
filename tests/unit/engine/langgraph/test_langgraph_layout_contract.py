@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import importlib
 import importlib.util
@@ -30,3 +30,4 @@ def test_legacy_langgraph_modules_are_removed() -> None:
 def test_legacy_engine_nodes_package_is_removed() -> None:
     assert not (ROOT / "src" / "docker_agent" / "engine" / "nodes").exists()
     assert importlib.util.find_spec("docker_agent.engine.nodes") is None
+

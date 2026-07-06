@@ -1,4 +1,4 @@
-"""Parity tests for OpenRouter provider."""
+﻿"""Parity tests for OpenRouter provider."""
 
 from unittest.mock import MagicMock, patch
 

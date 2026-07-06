@@ -1,4 +1,4 @@
-"""Dependency contract tests for the Python package metadata."""
+﻿"""Dependency contract tests for the Python package metadata."""
 
 from __future__ import annotations
 

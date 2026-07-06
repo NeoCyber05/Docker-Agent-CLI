@@ -1,4 +1,4 @@
-# MCP Plugin Guide
+﻿# MCP Plugin Guide
 
 Docker Agent treats the agent runtime as the core control plane and domain
 integrations as MCP plugins. The Docker integration is the first plugin, exposed
@@ -17,7 +17,6 @@ src/docker_agent/
     adapters/              # LangChain/tool adapters
     langgraph/             # explicit graph runtime, state, model factory, backend wrapper
   mcp/                     # MCP client, config, capability normalization, command routing, approval helpers
-  tools/                   # legacy native tool implementations used by DOCKER_AGENT_MCP=0
 ```
 
 MCP servers live outside the core package:
@@ -25,12 +24,34 @@ MCP servers live outside the core package:
 ```text
 servers/
   docker-mcp-server/
-    src/docker_mcp_server/ # Docker plugin implementation
+    src/docker_mcp_server/
+      server.py            # MCP tool registration and lifecycle tools
+      tools/               # Docker tool implementation owned by the plugin
+      services/docker/     # Docker runtime services owned by the plugin
     tests/unit/            # plugin-owned tests
+
+  k8s-mcp-server/
+    src/k8s_mcp_server/
+      server.py
+      tools/
+      services/
+
+  aws-mcp-server/
+    src/aws_mcp_server/
+      server.py
+      tools/
+      services/
+
+  gcp-mcp-server/
+    src/gcp_mcp_server/
+      server.py
+      tools/
+      services/
 ```
 
 Future Kubernetes, AWS, and GCP integrations should follow the same server-side
-plugin layout and expose the same capability lifecycle contract. The core graph
+plugin layout, own their provider-specific tools/services, and expose the same
+capability lifecycle contract. The core graph
 must not add Docker/K8s/AWS/GCP-specific nodes.
 
 ## Core Graph
@@ -51,7 +72,7 @@ finalize -> END
 
 Node responsibilities:
 
-- `context_loader`: load plugin tools, capabilities, model-visible tools, and context summary.
+- `context_loader`: load all plugin tools, merged capabilities, model-visible tools, context summary, and resources.
 - `command_router`: execute deterministic plugin-declared command shortcuts before LLM reasoning.
 - `reasoning`: call the chat model and collect requested tool calls.
 - `tool_policy_gate`: block internal tools and unsafe multi-call high-risk batches.
@@ -137,5 +158,6 @@ If the file does not exist, the default Docker server entry is created:
 }
 ```
 
-Use `DOCKER_AGENT_MCP_CONFIG` to point to another config file. Use
-`DOCKER_AGENT_MCP=0` only for temporary legacy-path debugging.
+Use `DOCKER_AGENT_MCP_CONFIG` to point to another config file. MCP is mandatory;
+disabling values such as `DOCKER_AGENT_MCP=0`, `false`, or `off` fail because the
+legacy in-process Docker path has been removed.

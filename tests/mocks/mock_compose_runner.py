@@ -1,4 +1,4 @@
-"""Mock compose runner for tool tests.
+﻿"""Mock compose runner for tool tests.
 
 Parity: ``tests/mocks/mockComposeRunner.ts``.
 """
@@ -8,7 +8,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
-from docker_agent.services.docker.compose_runner import ComposePsRow
+from docker_mcp_server.services.docker.compose_runner import ComposePsRow
 
 
 class MockBoundRunner:
@@ -127,3 +127,4 @@ class MockComposeRunner:
 
 
 __all__ = ["MockBoundRunner", "MockComposeRunner"]
+

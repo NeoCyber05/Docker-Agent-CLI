@@ -24,16 +24,12 @@ from docker_agent.config import (
     load_user_config,
     project_state_dir,
     resolve_provider,
-    stack_states_dir,
 )
 from docker_agent.query_engine import QueryEngine, restore_session_from_record
 from docker_agent.screens.repl import REPL
 from docker_agent.services.api import resolve_provider_for_request
-from docker_agent.services.docker.compose_runner import ComposeRunner
-from docker_agent.services.docker.engine_client import create_engine_client
 from docker_agent.state.logger import StructuredLogger
 from docker_agent.state.session_store import SessionRecord, SessionStore
-from docker_agent.state.state_store import StateStore
 from docker_agent.vault.api_key_store import create_api_key_store
 
 
@@ -58,9 +54,9 @@ _RESUME_LATEST = "__LATEST__"
 def _parse_resume(value: str | None) -> bool | str | None:
     """Typer callback for ``--resume [id]``.
 
-    - option omitted → None
-    - ``--resume`` alone → True (via ``_RESUME_LATEST`` sentinel)
-    - ``--resume <id>`` → id string
+    - option omitted â†’ None
+    - ``--resume`` alone â†’ True (via ``_RESUME_LATEST`` sentinel)
+    - ``--resume <id>`` â†’ id string
     """
     if value is None:
         return None
@@ -87,25 +83,17 @@ def _normalize_resume_argv(argv: list[str]) -> list[str]:
 
 
 def _create_deps(args: ParsedArgs) -> dict[str, Any]:
+
     user_config = load_user_config()
     provider_name = resolve_provider(flag=args.provider_flag, config=user_config)
     model = args.model or user_config.model
     cwd = str(Path.cwd())
-    state_store = StateStore(
-        project_state_dir(cwd),
-        states_dir=stack_states_dir(cwd),
-    )
-    compose_runner = ComposeRunner(cwd)
-    docker_engine = create_engine_client()
     api_key_store = create_api_key_store()
     provider = resolve_provider_for_request(provider_name, api_key_store=api_key_store)
     session_store = SessionStore(project_state_dir(cwd))
     deps: dict[str, Any] = {
         "cwd": cwd,
-        "state_store": state_store,
         "session_store": session_store,
-        "compose_runner": compose_runner,
-        "docker_engine": docker_engine,
         "provider": provider,
         "provider_name": provider_name,
         "api_key_store": api_key_store,
@@ -169,9 +157,6 @@ def _run_chat_session(
 
     engine = QueryEngine(
         cwd=deps["cwd"],
-        state_store=deps["state_store"],
-        docker_engine=deps["docker_engine"],
-        compose_runner=deps["compose_runner"],
         provider=deps["provider"],
         model=deps.get("model"),
         session_store=session_store,

@@ -1,7 +1,9 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 from pathlib import Path
+
+import pytest
 
 from docker_agent.mcp.config import (
     DEFAULT_DOCKER_SERVER,
@@ -97,9 +99,13 @@ def test_mcp_defaults_to_enabled(monkeypatch) -> None:
     assert is_mcp_enabled()
 
 
-def test_mcp_flag_accepts_explicit_false_values(monkeypatch) -> None:
+def test_mcp_flag_rejects_legacy_false_values(monkeypatch) -> None:
     monkeypatch.setenv("DOCKER_AGENT_MCP", "0")
-    assert not is_mcp_enabled()
+    with pytest.raises(RuntimeError, match="legacy MCP-off path has been removed"):
+        is_mcp_enabled()
 
     monkeypatch.setenv("DOCKER_AGENT_MCP", "false")
-    assert not is_mcp_enabled()
+    with pytest.raises(RuntimeError, match="legacy MCP-off path has been removed"):
+        is_mcp_enabled()
+
+

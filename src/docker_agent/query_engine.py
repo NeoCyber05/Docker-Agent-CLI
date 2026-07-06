@@ -1,7 +1,4 @@
-"""Reusable query engine orchestrating a backend turn.
-
-Parity: ``src/QueryEngine.ts``.
-"""
+"""Reusable query engine orchestrating a backend turn."""
 
 from __future__ import annotations
 
@@ -20,23 +17,21 @@ from pydantic import TypeAdapter
 from docker_agent.agent import BackendQueryParams, create_backend
 from docker_agent.config import is_valid_provider
 from docker_agent.core.iteration_limits import MAX_ITERATIONS
-from docker_agent.core.loop_context import PlanReadyPayload
+from docker_agent.core.loop_context import ActionReviewPayload
 from docker_agent.services.api.types import Provider
-from docker_agent.services.docker.compose_runner import ComposeRunner
 from docker_agent.state.logger import LogEntry, StructuredLogger
 from docker_agent.state.session_store import (
     SessionRecord,
     SessionStore,
     session_cwd_mismatch_warning,
 )
-from docker_agent.state.state_store import StateStore
 from docker_agent.types.events import (
+    ActionReview,
     AssistantText,
     Error,
     IterationStart,
     LoopEvent,
     PermissionRequest,
-    PlanReady,
     RollbackResult,
     RollbackStarted,
     ToolCall,
@@ -68,12 +63,8 @@ class _QueryLoopContext:
         self,
         *,
         cwd: str,
-        state_store: StateStore,
-        docker_engine: Any,
-        compose_runner: ComposeRunner,
         abort_signal: asyncio.Event,
         session_id: str,
-        health_check_deadline_ms: int | None,
         provider_name: str,
         model: str | None,
         request_permission: Callable[..., Awaitable[PermissionResponse]],
@@ -84,13 +75,8 @@ class _QueryLoopContext:
         logger: StructuredLogger | None,
     ) -> None:
         self.cwd = cwd
-        self.state_store = state_store
-        self.docker_engine = docker_engine
-        self.compose_runner = compose_runner
         self.abort_signal = abort_signal
-        self.image_validator = None
         self.session_id = session_id
-        self.health_check_deadline_ms = health_check_deadline_ms
         self.provider_name = provider_name
         self.model = model
         self.request_permission = request_permission
@@ -99,11 +85,12 @@ class _QueryLoopContext:
         self.request_secrets_input = request_secrets_input
         self.allow_set = allow_set
         self.logger = logger
+        self.resources: list[dict[str, Any]] = []
 
 
-DeferredBase = (
-    dict[str, Any]
-)  # permission_request | plan_ready | typed_confirm_request | secrets_input_request
+DeferredBase = dict[
+    str, Any
+]  # permission_request | action_review | typed_confirm_request | secrets_input_request
 
 
 class QueryEngine:
@@ -113,22 +100,14 @@ class QueryEngine:
         self,
         *,
         cwd: str,
-        state_store: StateStore,
-        docker_engine: Any,
-        compose_runner: ComposeRunner,
         provider: Provider,
         model: str | None = None,
         session_store: SessionStore | None = None,
-        health_check_deadline_ms: int | None = None,
     ) -> None:
         self._cwd = cwd
-        self._state_store = state_store
-        self._docker_engine = docker_engine
-        self._compose_runner = compose_runner
         self.provider = provider
         self.model = model
         self._session_store = session_store
-        self._health_check_deadline_ms = health_check_deadline_ms
 
         self._messages: list[Message] = []
         self._pending: dict[str, asyncio.Future[PermissionResponse]] = {}
@@ -206,26 +185,20 @@ class QueryEngine:
             self._pending[request_id] = future
             return future
 
-        async def request_permission(
-            tool: str, input_data: Any
-        ) -> PermissionResponse:
-            return await defer(
-                {"type": "permission_request", "tool": tool, "input": input_data}
-            )
+        async def request_permission(tool: str, input_data: Any) -> PermissionResponse:
+            return await defer({"type": "permission_request", "tool": tool, "input": input_data})
 
-        async def request_confirm(plan: PlanReadyPayload | dict[str, Any]) -> PermissionResponse:
-            if not isinstance(plan, PlanReadyPayload):
-                plan = PlanReadyPayload.model_validate(plan)
-            payload: dict[str, Any] = {
-                "type": "plan_ready",
-                "compose_yaml": plan.compose_yaml,
-                "diff": plan.diff,
-            }
-            if plan.auto_generated_secrets:
-                payload["auto_generated_secrets"] = plan.auto_generated_secrets
-            if plan.config_files:
-                payload["config_files"] = plan.config_files
-            return await defer(payload)
+        async def request_confirm(
+            review: ActionReviewPayload | dict[str, Any],
+        ) -> PermissionResponse:
+            if not isinstance(review, ActionReviewPayload):
+                review = ActionReviewPayload.model_validate(review)
+            return await defer(
+                {
+                    "type": "action_review",
+                    **review.model_dump(by_alias=True),
+                }
+            )
 
         async def request_typed_confirm(phrase: str, reason: str) -> PermissionResponse:
             return await defer(
@@ -246,12 +219,8 @@ class QueryEngine:
 
         ctx = _QueryLoopContext(
             cwd=self._cwd,
-            state_store=self._state_store,
-            docker_engine=self._docker_engine,
-            compose_runner=self._compose_runner,
             abort_signal=controller,
             session_id=self._session_id,
-            health_check_deadline_ms=self._health_check_deadline_ms,
             provider_name=self.provider.name,
             model=self.model,
             request_permission=request_permission,
@@ -298,8 +267,6 @@ class QueryEngine:
             self._active_controller = None
             with contextlib.suppress(Exception):
                 await task
-            # Backends accumulate assistant + tool-result messages on the params
-            # object; pull them back so the full transcript is persisted/resumable.
             self._messages = list(backend_params.messages)
             if self._logger is not None:
                 self._logger.log(
@@ -316,16 +283,10 @@ class QueryEngine:
                 now = datetime.now(UTC).isoformat()
                 if self._session_created_at is None:
                     self._session_created_at = now
-                first_user = next(
-                    (m for m in self._messages if isinstance(m, UserMessage)),
-                    None,
-                )
+                first_user = next((m for m in self._messages if isinstance(m, UserMessage)), None)
                 first_prompt = first_user.content if first_user is not None else "(empty)"
                 provider_name = getattr(self.provider, "name", "unknown")
-                resources = [
-                    {"server": "docker", "type": "stack", "name": stack.name}
-                    for stack in self._state_store.list()
-                ]
+                resources = list(getattr(ctx, "resources", []))
                 record: SessionRecord = {
                     "schema_version": 1,
                     "id": self._session_id,
@@ -335,7 +296,7 @@ class QueryEngine:
                     "provider": provider_name,
                     "model": self.model,
                     "first_prompt": first_prompt,
-                    "stack_names": [resource["name"] for resource in resources],
+                    "stack_names": [str(resource.get("name", "")) for resource in resources],
                     "resources": resources,
                     "messages": [m.model_dump(by_alias=True) for m in self._messages],
                 }
@@ -431,14 +392,14 @@ class QueryEngine:
                 message=f"tool_result: {ev.name}",
                 data={"name": ev.name, "output": ev.output},
             )
-        if isinstance(ev, PlanReady):
+        if isinstance(ev, ActionReview):
             return LogEntry(
                 ts=ts,
                 level="info",
                 session_id=session_id,
                 iteration=iteration,
-                category="plan_ready",
-                message="plan ready for confirmation",
+                category="action_review",
+                message=f"action review: {ev.tool}",
             )
         if isinstance(ev, PermissionRequest):
             return LogEntry(
@@ -474,10 +435,7 @@ class QueryEngine:
                 iteration=iteration,
                 category="usage",
                 message=f"tokens: {ev.input_tokens} in / {ev.output_tokens} out",
-                data={
-                    "input_tokens": ev.input_tokens,
-                    "output_tokens": ev.output_tokens,
-                },
+                data={"input_tokens": ev.input_tokens, "output_tokens": ev.output_tokens},
             )
         if isinstance(ev, RollbackStarted):
             return LogEntry(

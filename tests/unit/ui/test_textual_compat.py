@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from textual import events
 from textual.app import App, ComposeResult
@@ -21,7 +21,7 @@ async def test_forward_event_survives_orphan_widget_during_mousedown() -> None:
         await pilot.pause()
 
         orphan = Static("orphan text")
-        orphan._parent = None  # noqa: SLF001 — simulate DOM detach race
+        orphan._parent = None  # noqa: SLF001 â€” simulate DOM detach race
 
         region = pilot.app.query_one("#content", Static).region
         event = events.MouseDown(
@@ -70,3 +70,4 @@ async def test_forward_event_still_starts_selection_for_valid_widget() -> None:
         )
         screen._forward_event(event)
         assert screen._select_state is not None
+

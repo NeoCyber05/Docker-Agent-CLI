@@ -1,4 +1,4 @@
-"""Tests for InteractionSession."""
+﻿"""Tests for InteractionSession."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Parity tests for interaction_state — mirrors src/ui/__tests__/interactionState.test.ts."""
+﻿"""Parity tests for interaction_state â€” mirrors src/ui/__tests__/interactionState.test.ts."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Parity tests for command registry."""
+﻿"""Parity tests for command registry."""
 
 from __future__ import annotations
 

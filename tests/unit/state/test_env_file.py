@@ -1,4 +1,4 @@
-"""Parity tests for env_file — mirrors src/state/envFile.ts."""
+﻿"""Parity tests for env_file â€” mirrors src/state/envFile.ts."""
 
 import os
 import sys
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from docker_agent.state.env_file import (
+from docker_mcp_server.state.env_file import (
     merge_env,
     parse_env_file,
     read_env_file,

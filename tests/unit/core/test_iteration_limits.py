@@ -19,5 +19,6 @@ def test_build_graceful_summary_lists_tool_steps() -> None:
         ToolResultMessage(toolUseId="t1", content="done", isError=False),
     ]
     summary = build_graceful_summary(messages, 24)
-    assert "đã dùng hết 24 iterations" in summary
+    assert "\u0111\u00e3 d\u00f9ng h\u1ebft 24 iterations" in summary
     assert "tool (ok)" in summary
+

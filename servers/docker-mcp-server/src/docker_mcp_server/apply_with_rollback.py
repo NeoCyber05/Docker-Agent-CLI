@@ -1,4 +1,4 @@
-"""Apply Docker stacks with rollback-compatible transaction helpers."""
+﻿"""Apply Docker stacks with rollback-compatible transaction helpers."""
 
 from __future__ import annotations
 
@@ -8,29 +8,29 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import uuid4
 
-from docker_agent.state.rollback import capture_known_good, plan_rollback
-from docker_agent.state.state_store import HistoryEvent
-from docker_agent.tools.apply_stack import apply_stack
-from docker_agent.tools.base import ToolDone
-from docker_agent.tools.destroy_stack import destroy_stack
-from docker_agent.tools.shared.config_files import (
-    StagedConfigFile,
-    restore_config_files,
-    snapshot_config_files,
-    write_config_files,
-)
-from docker_agent.tools.shared.secret_staging import (
-    StagedSecretFile,
-    restore_secret_files,
-    snapshot_secret_files,
-    write_secret_files,
-)
-from docker_agent.types.events import (
+from docker_mcp_server.events import (
     RollbackResult,
     RollbackStarted,
     ToolCall,
     ToolProgress,
     ToolResult,
+)
+from docker_mcp_server.state.rollback import capture_known_good, plan_rollback
+from docker_mcp_server.state.state_store import HistoryEvent
+from docker_mcp_server.tools.apply_stack import apply_stack
+from docker_mcp_server.tools.base import ToolDone
+from docker_mcp_server.tools.destroy_stack import destroy_stack
+from docker_mcp_server.tools.shared.config_files import (
+    StagedConfigFile,
+    restore_config_files,
+    snapshot_config_files,
+    write_config_files,
+)
+from docker_mcp_server.tools.shared.secret_staging import (
+    StagedSecretFile,
+    restore_secret_files,
+    snapshot_secret_files,
+    write_secret_files,
 )
 
 
@@ -259,3 +259,4 @@ __all__ = [
     "run_apply_with_rollback",
     "run_rollback_transaction",
 ]
+

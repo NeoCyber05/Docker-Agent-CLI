@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from docker_agent.components.welcome_banner import (
     build_welcome_content,

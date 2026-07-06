@@ -1,13 +1,13 @@
-"""Parity tests for drift_detector — mirrors src/state/driftDetector.ts."""
+﻿"""Parity tests for drift_detector â€” mirrors src/state/driftDetector.ts."""
 
 from pathlib import Path
 
 import pytest
 
-from docker_agent.services.docker.types import ContainerInspect, ContainerSummary, EngineClient
-from docker_agent.state.drift_detector import detect_drift
-from docker_agent.state.state_store import StateStore
-from docker_agent.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
+from docker_mcp_server.services.docker.types import ContainerInspect, ContainerSummary, EngineClient
+from docker_mcp_server.state.drift_detector import detect_drift
+from docker_mcp_server.state.state_store import StateStore
+from docker_mcp_server.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
 
 
 def _make_store(tmp_path: Path, stack_name: str, spec: ServiceSpec) -> StateStore:

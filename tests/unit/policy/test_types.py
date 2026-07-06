@@ -1,9 +1,9 @@
-"""Parity tests for policy types — mirrors src/policy/types.ts."""
+﻿"""Parity tests for policy types â€” mirrors src/policy/types.ts."""
 
 import pytest
 from pydantic import ValidationError
 
-from docker_agent.policy.types import (
+from docker_mcp_server.policy.types import (
     DenyRule,
     PidsLimitConfig,
     PolicyConfig,

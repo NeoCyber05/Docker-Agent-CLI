@@ -1,4 +1,4 @@
-"""MCP server configuration for feature-flagged plugin experiments."""
+﻿"""MCP server configuration for feature-flagged plugin experiments."""
 
 from __future__ import annotations
 
@@ -45,16 +45,20 @@ def is_mcp_enabled(env: os._Environ[str] | dict[str, str] | None = None) -> bool
         "disabled",
         "legacy",
     }:
-        return False
-    return value in {
+        raise RuntimeError(
+            "DOCKER_AGENT_MCP=0 legacy MCP-off path has been removed. "
+            "Run with MCP enabled and configure plugins through DOCKER_AGENT_MCP_CONFIG."
+        )
+    if value in {
         "1",
         "true",
         "yes",
         "on",
         "enabled",
         "mcp",
-    }
-
+    }:
+        return True
+    raise RuntimeError(f"Unsupported DOCKER_AGENT_MCP value: {raw}")
 
 def mcp_config_path() -> str:
     override = os.environ.get("DOCKER_AGENT_MCP_CONFIG")
@@ -99,4 +103,5 @@ __all__ = [
     "mcp_config_path",
     "mcp_servers_for_langchain",
 ]
+
 

@@ -1,4 +1,4 @@
-"""Tests for MCP tool loading helpers."""
+﻿"""Tests for MCP tool loading helpers."""
 
 from __future__ import annotations
 
@@ -31,21 +31,25 @@ def test_warmup_mcp_stdio_transport_skips_non_windows(monkeypatch: pytest.Monkey
         patch.object(mcp_client.asyncio, "run") as run,
     ):
         mcp_client.warmup_mcp_stdio_transport()
-    enabled.assert_not_called()
+    enabled.assert_called_once()
     run.assert_not_called()
 
 
-def test_warmup_mcp_stdio_transport_skips_when_mcp_disabled(
+def test_warmup_mcp_stdio_transport_fails_when_mcp_disabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(mcp_client.sys, "platform", "win32")
     with (
-        patch.object(mcp_client, "is_mcp_enabled", return_value=False),
+        patch.object(
+            mcp_client,
+            "is_mcp_enabled",
+            side_effect=RuntimeError("legacy MCP-off path has been removed"),
+        ),
         patch.object(mcp_client.asyncio, "run") as run,
+        pytest.raises(RuntimeError, match="legacy MCP-off path has been removed"),
     ):
         mcp_client.warmup_mcp_stdio_transport()
     run.assert_not_called()
-
 
 def test_warmup_mcp_stdio_transport_runs_on_windows(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(mcp_client.sys, "platform", "win32")
@@ -74,6 +78,7 @@ def test_warmup_mcp_stdio_transport_wraps_startup_errors(
     with (
         patch.object(mcp_client, "is_mcp_enabled", return_value=True),
         patch.object(mcp_client.asyncio, "run", side_effect=_raise_bad_fd),
-        pytest.raises(RuntimeError, match="Failed to start the Docker MCP server"),
+        pytest.raises(RuntimeError, match="Failed to start configured MCP server"),
     ):
         mcp_client.warmup_mcp_stdio_transport()
+

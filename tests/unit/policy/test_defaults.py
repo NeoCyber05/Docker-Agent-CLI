@@ -1,17 +1,17 @@
-"""Tests for default global policy scaffolding."""
+﻿"""Tests for default global policy scaffolding."""
 
 from pathlib import Path
 
 import pytest
 import yaml
 
-from docker_agent.policy.defaults import (
+from docker_mcp_server.policy.defaults import (
     DEFAULT_GLOBAL_POLICY_YAML,
     ensure_global_policy,
     global_policy_path,
 )
-from docker_agent.policy.policy_engine import PolicyEngine
-from docker_agent.policy.types import DenyRule, PolicyConfig, RequireRule
+from docker_mcp_server.policy.policy_engine import PolicyEngine
+from docker_mcp_server.policy.types import DenyRule, PolicyConfig, RequireRule
 
 
 def test_global_policy_path_honors_env_override(
@@ -104,3 +104,4 @@ def test_policy_engine_picks_up_scaffolded_global_policy(
     assert global_path.exists()
     assert "privileged_containers" in effective.hard_deny
     assert "restart_policy" in effective.require
+

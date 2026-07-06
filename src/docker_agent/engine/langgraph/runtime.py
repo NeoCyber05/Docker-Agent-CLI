@@ -1,28 +1,23 @@
-"""LangGraphBackend orchestrator using an explicit runtime graph."""
+﻿"""LangGraphBackend orchestrator using an explicit plugin-neutral MCP runtime graph."""
 
 from __future__ import annotations
 
 import asyncio
 import json
 import os
-import re
 from collections.abc import AsyncIterator
-from pathlib import Path
 from typing import Any
 
-from langchain.agents import create_agent
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import ModelResponse
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
-from langgraph.checkpoint.memory import MemorySaver
-from langgraph.types import Command
 
 from docker_agent.agent import AgentBackend, BackendQueryParams
 from docker_agent.config import load_user_config
 from docker_agent.core.iteration_limits import derive_recursion_limit
+from docker_agent.core.loop_context import ActionReviewPayload
 from docker_agent.core.prompt_builder import build_system_prompt
-from docker_agent.engine.adapters.tool_adapter import run_tool
 from docker_agent.engine.langgraph.graph import build_langgraph_runtime_graph
 from docker_agent.engine.langgraph.model_factory import create_chat_model
 from docker_agent.mcp.capabilities import (
@@ -34,25 +29,18 @@ from docker_agent.mcp.capabilities import (
     mcp_commit_tool_name,
     mcp_context_summary,
     mcp_high_risk_tool_names,
+    mcp_list_resources,
     mcp_rollback_tool_name,
     model_visible_mcp_tools,
 )
 from docker_agent.mcp.client import load_mcp_langchain_tools
-from docker_agent.mcp.commands import CommandMatch, match_command
-from docker_agent.mcp.config import is_mcp_enabled
-from docker_agent.policy.defaults import ensure_global_policy
-from docker_agent.policy.policy_engine import PolicyEngine
-from docker_agent.tools.destroy_all_stacks import destroy_all_stacks
-from docker_agent.tools.destroy_stack import destroy_stack
-from docker_agent.tools.langchain_registry import get_langchain_tools, high_risk_tool_names
-from docker_agent.tools.stop_stack import stop_stack
+from docker_agent.mcp.commands import match_command
 from docker_agent.types.events import (
     AssistantText,
     Error,
     IterationStart,
     LoopEvent,
     ToolCall,
-    ToolProgress,
     ToolResult,
     Usage,
 )
@@ -87,62 +75,6 @@ class HighRiskToolCallMiddleware(AgentMiddleware):
         if len(high_risk_calls) <= 1:
             return response
         return ModelResponse(result=[AIMessage(content=_MULTI_HIGH_RISK_MSG)])
-
-
-def _is_destroy_all_prompt(content: str) -> bool:
-    return content.strip().lower() == "destroy all stacks"
-
-
-def _parse_direct_destroy_stack(content: str) -> dict[str, Any] | None:
-    trimmed = content.strip()
-    patterns = [
-        re.compile(r"^Destroy stack (\S+)(?:\s+with volumes)?$", re.IGNORECASE),
-        re.compile(r"^destroy (\S+)(?:\s+with volumes)?$", re.IGNORECASE),
-    ]
-    for pattern in patterns:
-        match = pattern.match(trimmed)
-        if not match or not match.group(1) or match.group(1).lower() == "all":
-            continue
-        return {
-            "stack_name": match.group(1),
-            "remove_volumes": bool(re.search(r"\swith volumes$", trimmed, re.IGNORECASE)),
-        }
-    return None
-
-
-def _parse_direct_stop_stack(content: str) -> dict[str, Any] | None:
-    trimmed = content.strip()
-    patterns = [
-        re.compile(r"^Stop stack (\S+)(?:\s+services?\s+(.+))?$", re.IGNORECASE),
-        re.compile(r"^stop (\S+)(?:\s+services?\s+(.+))?$", re.IGNORECASE),
-    ]
-    for pattern in patterns:
-        match = pattern.match(trimmed)
-        if not match or not match.group(1):
-            continue
-        stack_name = match.group(1)
-        services_raw = match.group(2)
-        if services_raw is None:
-            return {"stack_name": stack_name}
-        services = [part.strip() for part in re.split(r"[,\s]+", services_raw) if part.strip()]
-        if not services:
-            return {"stack_name": stack_name}
-        return {"stack_name": stack_name, "services": services}
-    return None
-
-
-async def _run_tool_events(
-    tool: Any,
-    input_data: Any,
-    ctx: Any,
-    emit: Any,
-) -> Any:
-    emit(ToolCall(name=tool.name, input=input_data))
-    run = await run_tool(tool, input_data, ctx)
-    for p in run.progress:
-        emit(ToolProgress(msg=p.msg))
-    emit(ToolResult(name=tool.name, output=run.output))
-    return run.output
 
 
 def _to_langchain_message(message: Message) -> BaseMessage:
@@ -235,104 +167,30 @@ async def _api_env_for_provider(provider: Any, provider_name: str) -> dict[str, 
     return env
 
 
-async def _run_legacy_command(
-    *,
-    last_user: UserMessage | None,
-    params: BackendQueryParams,
-    emit: Any,
-) -> bool:
-    if last_user is None:
-        return False
-    if _is_destroy_all_prompt(last_user.content):
-        typed = await params.ctx.request_typed_confirm(
-            "DESTROY ALL",
-            f"This will destroy {len(params.ctx.state_store.list())} stacks.",
-        )
-        typed_ok = permission_kind(typed) == "typed_confirm_value"
-        if not typed_ok or permission_value(typed) != "DESTROY ALL":
-            emit(AssistantText(delta="destroy_all aborted: typed confirmation did not match"))
-            return True
-        parsed = destroy_all_stacks.input_schema.model_validate({})
-        await _run_tool_events(destroy_all_stacks, parsed, params.ctx, emit)
-        return True
+def _stringify_tool_output(value: Any) -> str:
+    try:
+        return json.dumps(value, default=str, ensure_ascii=False)
+    except TypeError:
+        return str(value)
 
-    direct_destroy = _parse_direct_destroy_stack(last_user.content)
-    if direct_destroy is not None:
-        input_data = destroy_stack.input_schema.model_validate(
-            {
-                "stack_name": direct_destroy["stack_name"],
-                **({"remove_volumes": True} if direct_destroy["remove_volumes"] else {}),
-            }
-        )
-        if direct_destroy["remove_volumes"]:
-            phrase = f"DESTROY {direct_destroy['stack_name']}"
-            typed = await params.ctx.request_typed_confirm(
-                phrase,
-                (
-                    f"This will destroy the stack {direct_destroy['stack_name']} "
-                    "and delete all its volumes."
-                ),
+
+def _append_tool_message(
+    state: dict[str, Any],
+    call: dict[str, Any] | None,
+    output: Any,
+    *,
+    is_error: bool = False,
+) -> list[BaseMessage]:
+    messages = list(state.get("messages") or [])
+    if call and call.get("id"):
+        messages.append(
+            ToolMessage(
+                content=_stringify_tool_output(output),
+                tool_call_id=str(call["id"]),
+                status="error" if is_error else "success",
             )
-            typed_ok = permission_kind(typed) == "typed_confirm_value"
-            if not typed_ok or permission_value(typed) != phrase:
-                emit(AssistantText(delta="destroy_stack aborted: typed confirmation did not match"))
-                return True
-        elif "destroy_stack" not in params.ctx.allow_set:
-            resp = await params.ctx.request_permission("destroy_stack", input_data)
-            if permission_kind(resp) == "deny":
-                emit(AssistantText(delta="destroy_stack aborted: permission denied"))
-                return True
-            if permission_kind(resp) == "always_allow_in_session":
-                params.ctx.allow_set.add("destroy_stack")
-        await _run_tool_events(destroy_stack, input_data, params.ctx, emit)
-        return True
-
-    direct_stop = _parse_direct_stop_stack(last_user.content)
-    if direct_stop is not None:
-        input_data = stop_stack.input_schema.model_validate(
-            {
-                "stack_name": direct_stop["stack_name"],
-                **({"services": direct_stop["services"]} if direct_stop.get("services") else {}),
-            }
         )
-        if "stop_stack" not in params.ctx.allow_set:
-            resp = await params.ctx.request_permission("stop_stack", input_data)
-            if permission_kind(resp) == "deny":
-                emit(AssistantText(delta="stop_stack aborted: permission denied"))
-                return True
-            if permission_kind(resp) == "always_allow_in_session":
-                params.ctx.allow_set.add("stop_stack")
-        await _run_tool_events(stop_stack, input_data, params.ctx, emit)
-        return True
-    return False
-
-
-async def _execute_mcp_command_match(
-    match: CommandMatch,
-    *,
-    tools_by_name: dict[str, Any],
-    ctx: Any,
-    emit: Any,
-) -> None:
-    tool = tools_by_name.get(match.tool)
-    if tool is None:
-        emit(AssistantText(delta=f"{match.tool} is not available from MCP tools"))
-        return
-    if match.confirmation == "typed":
-        phrase = match.phrase or ""
-        reason = match.reason or f"Confirm {match.tool}."
-        typed = await ctx.request_typed_confirm(phrase, reason)
-        if permission_kind(typed) != "typed_confirm_value" or permission_value(typed) != phrase:
-            emit(AssistantText(delta=f"{match.tool} aborted: typed confirmation did not match"))
-            return
-    elif match.confirmation == "permission" and match.tool not in ctx.allow_set:
-        resp = await ctx.request_permission(match.tool, match.input)
-        if permission_kind(resp) == "deny":
-            emit(AssistantText(delta=f"{match.tool} aborted: permission denied"))
-            return
-        if permission_kind(resp) == "always_allow_in_session":
-            ctx.allow_set.add(match.tool)
-    await tool.ainvoke(match.input)
+    return messages
 
 
 def _high_risk_from_capabilities(capabilities: dict[str, Any]) -> set[str]:
@@ -348,90 +206,6 @@ def _high_risk_from_capabilities(capabilities: dict[str, Any]) -> set[str]:
     }
 
 
-async def _run_agent_loop(
-    *,
-    params: BackendQueryParams,
-    emit: Any,
-    policy_engine: PolicyEngine,
-    tools: list[Any],
-    high_risk_tools: set[str],
-    context_summary: str,
-) -> None:
-    provider_name = getattr(params.provider, "name", "unknown")
-    params.ctx.provider_name = provider_name
-    params.ctx.model = params.model
-    env = await _api_env_for_provider(params.provider, provider_name)
-    chat_model = create_chat_model(
-        provider_name=provider_name,
-        model=params.model,
-        env=env,
-    )
-    if not isinstance(chat_model, BaseChatModel):
-        raise TypeError("create_chat_model must return a BaseChatModel")
-
-    agent = create_agent(
-        model=chat_model,
-        tools=tools,
-        system_prompt=build_system_prompt(context_summary),
-        context_schema=dict,
-        checkpointer=MemorySaver(),
-        middleware=[HighRiskToolCallMiddleware(high_risk_tools)],
-    )
-
-    thread_id = params.ctx.session_id or "default"
-    config: dict[str, Any] = {
-        "configurable": {"thread_id": thread_id},
-        "recursion_limit": derive_recursion_limit(),
-    }
-    context = {
-        "ctx": params.ctx,
-        "emit": emit,
-        "policy_engine": policy_engine,
-        "provider_name": provider_name,
-        "model": params.model,
-    }
-    stream_input: dict[str, Any] | Command[Any] = {
-        "messages": [_to_langchain_message(m) for m in params.messages]
-    }
-    emit(IterationStart(n=1))
-
-    while True:
-        interrupted = False
-        async for event in agent.astream(
-            stream_input,
-            config=config,
-            context=context,
-            stream_mode="updates",
-        ):
-            if params.ctx.abort_signal.is_set():
-                return
-            if isinstance(event, dict) and "__interrupt__" in event:
-                interrupted = True
-                interrupt_payload = event["__interrupt__"][0].value
-                confirm = await params.ctx.request_confirm(interrupt_payload)
-                stream_input = Command[Any](resume=confirm)
-                break
-            if not isinstance(event, dict):
-                continue
-            model_update = event.get("model")
-            if isinstance(model_update, dict):
-                _emit_model_messages(model_update.get("messages", []), emit)
-
-        if not interrupted:
-            break
-
-    final_state = await agent.aget_state(config)
-    final_values = getattr(final_state, "values", None)
-    final_messages = final_values.get("messages") if isinstance(final_values, dict) else None
-    if final_messages is not None:
-        converted = [
-            converted
-            for msg in final_messages
-            if (converted := _from_langchain_message(msg)) is not None
-        ]
-        params.messages[:] = converted
-
-
 class RuntimeLangGraphBackend(AgentBackend):
     name = "langgraph"
 
@@ -443,59 +217,14 @@ class RuntimeLangGraphBackend(AgentBackend):
 
         async def runner() -> None:
             try:
-                user_config = load_user_config()
-                cwd = Path(params.ctx.cwd)
-                root_policy = cwd / "project-policies.yaml"
-                project_policy_path = str(root_policy)
-
-                if not root_policy.exists():
-                    mode = user_config.defaults.missing_project_policy
-                    if mode == "deny":
-                        default_content = "project:\n  hardDeny: []\n  require: []\n"
-                        resp = await params.ctx.request_permission(
-                            "initialize_project_policy",
-                            {
-                                "reason": (
-                                    "Project policy file (project-policies.yaml) is missing "
-                                    "but required by configuration."
-                                ),
-                                "path": str(root_policy),
-                                "content": default_content,
-                            },
-                        )
-                        if permission_kind(resp) in ("approve", "always_allow_in_session"):
-                            try:
-                                root_policy.write_text(default_content, encoding="utf-8")
-                                project_policy_path = str(root_policy)
-                                emit(
-                                    AssistantText(
-                                        delta=(
-                                            f"[docker-agent] Initialized default project "
-                                            f"policy at {root_policy}\n"
-                                        )
-                                    )
-                                )
-                            except Exception as err:
-                                emit(
-                                    AssistantText(
-                                        delta=(
-                                            f"[docker-agent] Failed to initialize project "
-                                            f"policy: {err}\n"
-                                        )
-                                    )
-                                )
-
-                ensure_global_policy()
-                policy_engine = PolicyEngine(
-                    user_config=user_config,
-                    project_policy_path=project_policy_path,
-                )
-
+                _user_config = load_user_config()
+                provider_name = getattr(params.provider, "name", "unknown")
+                params.ctx.provider_name = provider_name
+                params.ctx.model = params.model
                 last_user = next(
                     (m for m in reversed(params.messages) if m.role == "user"),
                     None,
                 )
-                mcp_enabled = is_mcp_enabled()
                 raw_mcp_tools: list[Any] | None = None
                 capabilities: dict[str, Any] = {}
 
@@ -522,37 +251,19 @@ class RuntimeLangGraphBackend(AgentBackend):
                         "model": getattr(params.ctx, "model", None),
                     }
 
-                def stringify_tool_output(value: Any) -> str:
-                    try:
-                        return json.dumps(value, default=str, ensure_ascii=False)
-                    except TypeError:
-                        return str(value)
-
-                def append_tool_message(
-                    state: dict[str, Any],
-                    call: dict[str, Any] | None,
-                    output: Any,
-                    *,
-                    is_error: bool = False,
-                ) -> list[BaseMessage]:
-                    messages = list(state.get("messages") or [])
-                    if call and call.get("id"):
-                        messages.append(
-                            ToolMessage(
-                                content=stringify_tool_output(output),
-                                tool_call_id=str(call["id"]),
-                                status="error" if is_error else "success",
-                            )
-                        )
-                    return messages
 
                 async def decision_for_pending(action: dict[str, Any]) -> dict[str, Any]:
                     kind = action.get("kind")
                     display = (
                         action.get("display") if isinstance(action.get("display"), dict) else {}
                     )
-                    if kind == "plan_review":
-                        response = await params.ctx.request_confirm(display)
+                    if kind in {"plan_review", "action_review"}:
+                        review = ActionReviewPayload.from_pending_action_display(
+                            pending_action_id=str(action.get("id") or ""),
+                            tool=str(action.get("tool") or ""),
+                            display=display,
+                        )
+                        response = await params.ctx.request_confirm(review)
                         return {
                             "decision": "approve"
                             if permission_kind(response) == "approve"
@@ -601,17 +312,21 @@ class RuntimeLangGraphBackend(AgentBackend):
                     return _coerce_mcp_payload(result) or result
 
                 async def context_loader_node(_state: dict[str, Any]) -> dict[str, Any]:
-                    if not mcp_enabled:
-                        return {"route": "command_router"}
                     raw, caps = await ensure_mcp_tools()
                     visible = model_visible_mcp_tools(raw, capabilities=caps)
                     summary = await mcp_context_summary(
                         raw,
                         capabilities=caps,
                         cwd=params.ctx.cwd,
-                        fallback=params.ctx.state_store.summary(),
+                        fallback="",
                     )
-                    provider_name = getattr(params.provider, "name", "unknown")
+                    resources = await mcp_list_resources(
+                        raw,
+                        capabilities=caps,
+                        cwd=params.ctx.cwd,
+                    )
+                    if hasattr(params.ctx, "resources"):
+                        params.ctx.resources = resources
                     langchain_messages: list[BaseMessage] = [
                         SystemMessage(content=build_system_prompt(summary)),
                         *[_to_langchain_message(message) for message in params.messages],
@@ -624,6 +339,7 @@ class RuntimeLangGraphBackend(AgentBackend):
                         "model_visible_tools": visible,
                         "capabilities": caps,
                         "context_summary": summary,
+                        "resources": resources,
                         "provider_name": provider_name,
                         "model": params.model,
                         "high_risk_tools": (
@@ -632,13 +348,6 @@ class RuntimeLangGraphBackend(AgentBackend):
                     }
 
                 async def command_router_node(state: dict[str, Any]) -> dict[str, Any]:
-                    if not mcp_enabled:
-                        handled = await _run_legacy_command(
-                            last_user=last_user,
-                            params=params,
-                            emit=emit,
-                        )
-                        return {"handled": handled, "route": "finalize" if handled else "reasoning"}
                     if last_user is None:
                         return {"handled": False, "route": "reasoning"}
                     caps = dict(state.get("capabilities") or {})
@@ -685,22 +394,8 @@ class RuntimeLangGraphBackend(AgentBackend):
                         }
                     return {"handled": True, "route": "finalize"}
 
-                async def reasoning_node(state: dict[str, Any]) -> dict[str, Any]:
-                    if not mcp_enabled:
-                        provider_name = getattr(params.provider, "name", "unknown")
-                        params.ctx.provider_name = provider_name
-                        params.ctx.model = params.model
-                        tools = get_langchain_tools()
-                        await _run_agent_loop(
-                            params=params,
-                            emit=emit,
-                            policy_engine=policy_engine,
-                            tools=tools,
-                            high_risk_tools=high_risk_tool_names(tools),
-                            context_summary=params.ctx.state_store.summary(),
-                        )
-                        return {"handled": True, "route": "finalize"}
 
+                async def reasoning_node(state: dict[str, Any]) -> dict[str, Any]:
                     loop_count = int(state.get("loop_count") or 0) + 1
                     if loop_count == 1:
                         emit(IterationStart(n=1))
@@ -709,7 +404,6 @@ class RuntimeLangGraphBackend(AgentBackend):
                         emit(AssistantText(delta=msg))
                         return {"loop_count": loop_count, "route": "finalize"}
 
-                    provider_name = str(state.get("provider_name") or "unknown")
                     env = await _api_env_for_provider(params.provider, provider_name)
                     chat_model = create_chat_model(
                         provider_name=provider_name,
@@ -774,7 +468,7 @@ class RuntimeLangGraphBackend(AgentBackend):
                         msg = f"{name} is not available from MCP tools"
                         emit(AssistantText(delta=msg))
                         return {
-                            "messages": append_tool_message(
+                            "messages": _append_tool_message(
                                 state,
                                 active,
                                 msg,
@@ -799,7 +493,7 @@ class RuntimeLangGraphBackend(AgentBackend):
                         msg = f"{name} is not available from MCP tools"
                         emit(AssistantText(delta=msg))
                         return {
-                            "messages": append_tool_message(state, active, msg, is_error=True),
+                            "messages": _append_tool_message(state, active, msg, is_error=True),
                             "route": "reasoning",
                         }
                     emit(ToolCall(name=name, input=args))
@@ -813,7 +507,7 @@ class RuntimeLangGraphBackend(AgentBackend):
                         output = {"status": "error", "result": str(err)}
                         emit(ToolResult(name=name, output=output))
                         return {
-                            "messages": append_tool_message(
+                            "messages": _append_tool_message(
                                 state,
                                 active,
                                 output,
@@ -830,10 +524,11 @@ class RuntimeLangGraphBackend(AgentBackend):
                         }
                     queued = list(state.get("queued_tool_calls") or [])
                     return {
-                        "messages": append_tool_message(state, active, result),
+                        "messages": _append_tool_message(state, active, result),
                         "active_tool_call": {},
                         "route": "tool_policy_gate" if queued else "reasoning",
                     }
+
 
                 async def human_approval_node(state: dict[str, Any]) -> dict[str, Any]:
                     action = dict(state.get("pending_action") or {})
@@ -844,7 +539,7 @@ class RuntimeLangGraphBackend(AgentBackend):
                         output = {"status": "ok", "result": f"denied {action.get('tool')}"}
                         return {
                             "approval_decision": decision,
-                            "messages": append_tool_message(
+                            "messages": _append_tool_message(
                                 state,
                                 state.get("pending_tool_call"),
                                 output,
@@ -869,7 +564,7 @@ class RuntimeLangGraphBackend(AgentBackend):
                         }
                         emit(AssistantText(delta=str(output["result"])))
                         return {
-                            "messages": append_tool_message(
+                            "messages": _append_tool_message(
                                 state,
                                 state.get("pending_tool_call"),
                                 output,
@@ -902,7 +597,7 @@ class RuntimeLangGraphBackend(AgentBackend):
                         "deploy_result": payload
                         if isinstance(payload, dict)
                         else {"result": payload},
-                        "messages": append_tool_message(
+                        "messages": _append_tool_message(
                             state,
                             state.get("pending_tool_call"),
                             payload,
@@ -917,7 +612,9 @@ class RuntimeLangGraphBackend(AgentBackend):
                         return {"route": "finalize"}
                     caps = dict(state.get("capabilities") or {})
                     tools_by_name = dict(state.get("mcp_tools_by_name") or {})
-                    tool_name = mcp_rollback_tool_name({"rollback_action": action}, caps)
+                    deploy_result = dict(state.get("deploy_result") or {})
+                    deploy_result.setdefault("rollback_action", action)
+                    tool_name = mcp_rollback_tool_name(deploy_result, caps)
                     rollback_tool = tools_by_name.get(tool_name)
                     if rollback_tool is None:
                         output = {
@@ -926,7 +623,7 @@ class RuntimeLangGraphBackend(AgentBackend):
                         }
                         emit(AssistantText(delta=str(output["result"])))
                         return {
-                            "messages": append_tool_message(
+                            "messages": _append_tool_message(
                                 state,
                                 state.get("pending_tool_call"),
                                 output,
@@ -947,7 +644,7 @@ class RuntimeLangGraphBackend(AgentBackend):
                         "rollback_result": payload
                         if isinstance(payload, dict)
                         else {"result": payload},
-                        "messages": append_tool_message(
+                        "messages": _append_tool_message(
                             state,
                             state.get("pending_tool_call"),
                             payload,
@@ -994,3 +691,5 @@ class RuntimeLangGraphBackend(AgentBackend):
 
 
 __all__ = ["RuntimeLangGraphBackend"]
+
+

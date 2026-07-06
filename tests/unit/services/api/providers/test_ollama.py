@@ -1,4 +1,4 @@
-"""Parity tests for Ollama provider."""
+﻿"""Parity tests for Ollama provider."""
 
 from unittest.mock import MagicMock, patch
 

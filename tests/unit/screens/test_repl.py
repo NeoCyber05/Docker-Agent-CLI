@@ -17,10 +17,7 @@ from docker_agent.query_engine import QueryEngine
 from docker_agent.screens.repl import REPL
 from docker_agent.services.api.types import CallModelParams, ProviderEvent
 from docker_agent.services.model_catalog import CatalogRowHeader, CatalogRowModel
-from docker_agent.state.state_store import StateStore
-from docker_agent.types.events import PermissionRequest
-from tests.mocks.mock_compose_runner import MockComposeRunner
-from tests.mocks.mock_docker_engine import MockDockerEngine
+from docker_agent.types.events import ActionReview, ActionReviewArtifact, PermissionRequest
 
 
 def fake_provider(events: list[ProviderEvent | dict[str, Any]] | None = None):
@@ -39,9 +36,6 @@ def fake_provider(events: list[ProviderEvent | dict[str, Any]] | None = None):
 def make_engine(tmp_project) -> QueryEngine:
     return QueryEngine(
         cwd=str(tmp_project),
-        state_store=StateStore(str(tmp_project / ".docker-agent")),
-        docker_engine=MockDockerEngine(),
-        compose_runner=MockComposeRunner(str(tmp_project)),
         provider=fake_provider(),
         model="test-model",
     )
@@ -177,22 +171,32 @@ async def test_permission_request_opens_dialog_and_responds(tmp_project) -> None
 
 
 @pytest.mark.asyncio
-async def test_plan_ready_shows_in_timeline_and_accepts_approval(tmp_project) -> None:
-    from docker_agent.types.events import PlanReady
-    from docker_agent.types.stack import StackDiff
-
+async def test_action_review_shows_in_timeline_and_accepts_approval(tmp_project) -> None:
+    artifacts = [
+        ActionReviewArtifact(
+            kind="manifest",
+            label="Compose YAML",
+            language="yaml",
+            content="services:\n  web:\n    image: nginx",
+        )
+    ]
     app = REPL(engine=make_engine(tmp_project), version="0.1.0-test", show_banner=False)
-    app.session.pending_event = PlanReady(
-        id="plan-1",
-        compose_yaml="services:\n  web:\n    image: nginx",
-        diff=StackDiff(stackName="demo", status="missing", serviceDiffs=[]),
+    app.session.pending_event = ActionReview(
+        id="review-1",
+        pendingActionId="pending-1",
+        tool="docker.deploy_stack",
+        title="Deploy Docker stack demo",
+        summary="Create web service",
+        artifacts=artifacts,
     )
     app.session.dispatch_activity(
         {
-            "type": "plan_ready",
-            "request_id": "plan-1",
-            "compose_yaml": "services:\n  web:\n    image: nginx",
-            "diff": StackDiff(stackName="demo", status="missing", serviceDiffs=[]),
+            "type": "action_review_ready",
+            "request_id": "review-1",
+            "tool": "docker.deploy_stack",
+            "title": "Deploy Docker stack demo",
+            "summary": "Create web service",
+            "artifacts": artifacts,
             "auto_generated_secrets": None,
             "config_files": None,
         }
@@ -204,17 +208,17 @@ async def test_plan_ready_shows_in_timeline_and_accepts_approval(tmp_project) ->
         prompt_input = pilot.app.query_one("#prompt-input")
         assert prompt_input.disabled is True
         timeline = str(pilot.app.query_one("#timeline-content").render())
-        assert "Plan preview" in timeline
+        assert "Action review" in timeline
         await pilot.press("y")
         await pilot.pause(delay=0.5)
         assert app.session.pending_event is None
         assert app.session.phase == "running"
         assert any(
-            item.type == "plan" and item.status == "approved"
+            item.type == "action_review" and item.status == "approved"
             for item in app.session.activity_state.items
         )
         timeline_after = str(pilot.app.query_one("#timeline-content").render())
-        assert "Plan approved" in timeline_after
+        assert "Action approved" in timeline_after
 
 
 @pytest.mark.asyncio
@@ -304,3 +308,4 @@ async def test_stop_log_pane_after_escape_does_not_pop_main_screen(tmp_project) 
         app._stop_log_pane()
         await pilot.pause()
         assert len(app.screen_stack) >= 1
+

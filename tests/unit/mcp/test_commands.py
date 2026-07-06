@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from docker_agent.mcp.commands import CommandSpec, match_command
 
@@ -39,3 +39,4 @@ def test_match_command_splits_services_from_metadata() -> None:
         "stack_name": "web",
         "services": ["api", "worker", "db"],
     }
+

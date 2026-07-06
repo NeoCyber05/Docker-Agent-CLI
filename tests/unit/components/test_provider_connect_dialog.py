@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from textual.app import App, ComposeResult
 from textual.widgets import Static
@@ -58,3 +58,4 @@ async def test_provider_connect_dialog_cancel() -> None:
         await pilot.press("escape")
         await pilot.pause()
         assert app.responses[0] is None
+

@@ -1,4 +1,4 @@
-"""Parity tests for slash router — mirrors src/__tests__/slashRouter.test.ts."""
+"""Parity tests for slash router â€” mirrors src/__tests__/slashRouter.test.ts."""
 
 from __future__ import annotations
 
@@ -11,43 +11,14 @@ from docker_agent.slash.router import (
     route_slash_command,
 )
 from docker_agent.state.session_store import SessionStore
-from docker_agent.state.state_store import StateStore
-from docker_agent.types.stack import DockerAgentMeta, EnvFileSource, ServiceSpec, StackDefinition
 from docker_agent.vault.api_key_store import MemoryApiKeyStore
 
 
 def make_ctx(tmp_project) -> SlashRouterContext:
     return SlashRouterContext(
         cwd=str(tmp_project),
-        state_store=StateStore(str(tmp_project / ".docker-agent")),
         active_provider_name="gemini",
         api_key_store=MemoryApiKeyStore(),
-    )
-
-
-def make_def(name: str) -> StackDefinition:
-    return StackDefinition(
-        x_docker_agent=DockerAgentMeta(
-            name=name,
-            createdAt="2026-05-26T00:00:00Z",
-            lastApplied="2026-06-01T12:00:00Z",
-            intent="test",
-            provider="gemini",
-            generatedBy="test",
-            envFileSources={
-                "web": EnvFileSource(
-                    generated=True,
-                    path=".docker-agent/env/web.env",
-                    addedKeys=["API_TOKEN"],
-                )
-            },
-        ),
-        services={
-            "web": ServiceSpec(
-                image="nginx:1.27-alpine",
-                environment={"POSTGRES_PASSWORD": "secret", "PORT": "8080"},
-            )
-        },
     )
 
 
@@ -103,7 +74,7 @@ async def test_stacks_emits_table_without_llm_submit(tmp_project) -> None:
     assert result.handled is True
     assert not any(effect["type"] == "submit_prompt" for effect in result.effects)
     assistant = next(effect for effect in result.effects if effect["type"] == "emit_assistant_text")
-    assert "Managed stacks" in assistant["delta"]
+    assert "List managed Docker stacks" in assistant["delta"]
 
 
 @pytest.mark.asyncio
@@ -114,13 +85,10 @@ async def test_yaml_requires_stack_arg(tmp_project) -> None:
 
 
 @pytest.mark.asyncio
-async def test_yaml_emits_redacted_yaml_for_existing_stack(tmp_project) -> None:
-    ctx = make_ctx(tmp_project)
-    ctx.state_store.write("webapp", make_def("webapp"))
-    result = await route_slash_command("/yaml webapp", ctx)
+async def test_yaml_emits_plugin_prompt_guidance(tmp_project) -> None:
+    result = await route_slash_command("/yaml webapp", make_ctx(tmp_project))
     assistant = next(effect for effect in result.effects if effect["type"] == "emit_assistant_text")
-    assert "***" in assistant["delta"]
-    assert "secret" not in assistant["delta"]
+    assert "Show YAML for stack webapp" in assistant["delta"]
 
 
 @pytest.mark.asyncio
@@ -313,7 +281,6 @@ async def test_resume_emits_open_session_picker(tmp_project) -> None:
         "/resume",
         SlashRouterContext(
             cwd=ctx.cwd,
-            state_store=ctx.state_store,
             active_provider_name=ctx.active_provider_name,
             api_key_store=ctx.api_key_store,
             session_store=session_store,
@@ -333,7 +300,6 @@ async def test_resume_rejects_session_id_argument(tmp_project) -> None:
         "/resume abc123",
         SlashRouterContext(
             cwd=ctx.cwd,
-            state_store=ctx.state_store,
             active_provider_name=ctx.active_provider_name,
             api_key_store=ctx.api_key_store,
             session_store=session_store,

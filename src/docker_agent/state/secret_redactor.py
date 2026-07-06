@@ -1,4 +1,4 @@
-"""Secret-key detection, HMAC hashing, and log scrubbing.
+﻿"""Secret-key detection, HMAC hashing, and log scrubbing.
 
 Parity: ``src/state/secretRedactor.ts:1-41``.
 """
@@ -8,7 +8,7 @@ import hmac
 import re
 from typing import Any
 
-from docker_agent.types.stack import EnvSnapshot
+from pydantic import BaseModel, ConfigDict, Field
 
 SECRET_KEY_PATTERN = re.compile(
     r"(?:^|[_-])(password|passwd|secret|token|api[_-]?key|credential|private[_-]?key|bearer|auth)\b(?:[_-]|$)",
@@ -20,6 +20,16 @@ CREDENTIAL_URI_PATTERN = re.compile(
 )
 
 REDACTION_PLACEHOLDER = "***"
+
+class EnvSnapshot(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    visible: dict[str, str] = Field(default_factory=dict)
+    secret_keys: list[str] = Field(default_factory=list, alias="secretKeys")
+    secret_hashes_by_key: dict[str, str] = Field(
+        default_factory=dict,
+        alias="secretHashesByKey",
+    )
 
 
 def should_redact(key: str) -> bool:
@@ -133,6 +143,7 @@ __all__ = [
     "CREDENTIAL_URI_PATTERN",
     "REDACTION_PLACEHOLDER",
     "SECRET_KEY_PATTERN",
+    "EnvSnapshot",
     "hash_secret",
     "looks_like_credential_uri",
     "redact_env",
@@ -141,3 +152,4 @@ __all__ = [
     "scrub_line",
     "should_redact",
 ]
+

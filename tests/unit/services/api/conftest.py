@@ -1,4 +1,4 @@
-"""Shared helpers for provider tests."""
+﻿"""Shared helpers for provider tests."""
 
 from __future__ import annotations
 

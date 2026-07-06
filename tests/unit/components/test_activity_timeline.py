@@ -31,24 +31,31 @@ async def test_activity_timeline_shows_running_tool() -> None:
         assert "List stacks" in str(timeline.content)
 
 
-def test_activity_timeline_renders_plan() -> None:
-    from docker_agent.types.stack import StackDiff
-    from docker_agent.ui.activity import PlanActivity
+def test_activity_timeline_renders_action_review() -> None:
+    from docker_agent.ui.activity import ActionReviewActivity, ActionReviewArtifactRef
 
-    diff = StackDiff(stackName="demo", status="missing", serviceDiffs=[])
     content = render_activity_timeline(
         [
-            PlanActivity(
-                id="plan-1",
+            ActionReviewActivity(
+                id="review-1",
                 request_id="req-1",
-                compose_yaml="services:\n  web:\n    image: nginx",
-                diff=diff,
+                tool="k8s.deploy",
+                title="Deploy workload",
+                summary="Create deployment/web",
+                artifacts=[
+                    ActionReviewArtifactRef(
+                        kind="manifest",
+                        label="Manifest",
+                        content="kind: Deployment",
+                        language="yaml",
+                    )
+                ],
                 status="approved",
             )
         ]
     )
-    assert "Plan preview" in str(content)
-    assert "Plan approved" in str(content)
+    assert "Action review" in str(content)
+    assert "Action approved" in str(content)
 
 
 def test_activity_timeline_renders_user_text() -> None:

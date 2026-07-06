@@ -1,7 +1,4 @@
-"""Drive a Provider stream and collect a structured turn.
-
-Parity: ``src/backend/langgraph/adapters/providerAdapter.ts``.
-"""
+﻿"""Drive a Provider stream and collect a structured turn."""
 
 from __future__ import annotations
 
@@ -22,7 +19,6 @@ from docker_agent.services.api.types import (
     ToolUseStopEvent,
     UsageEvent,
 )
-from docker_agent.tools import get_agent_tools
 from docker_agent.types.message import Message
 
 
@@ -51,16 +47,17 @@ async def drive_provider(
     model: str | None = None,
     on_event: Callable[[StreamedEvent], None],
     signal: Any | None = None,
+    tools: list[Any] | None = None,
 ) -> ProviderTurn:
-    tools = get_agent_tools()
-    system = build_system_prompt(ctx.state_store.summary())
+    del ctx
+    available_tools = tools or []
     params = CallModelParams(
         messages=messages,
         tools=[
             ToolSchema(name=t.name, description=t.description, input_schema=t.input_schema)
-            for t in tools
+            for t in available_tools
         ],
-        system=system,
+        system=build_system_prompt(""),
         model=model,
     )
 
@@ -94,3 +91,6 @@ async def drive_provider(
             on_event(StreamedEvent(type="error", error=ev.error))
             return turn
     return turn
+
+
+__all__ = ["ProviderTurn", "StreamedEvent", "drive_provider"]

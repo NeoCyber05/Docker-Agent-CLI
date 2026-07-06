@@ -1,58 +1,35 @@
-"""State persistence and drift/rollback modules."""
+﻿"""Core session/log state helpers."""
 
-from docker_agent.state.drift_detector import detect_drift
-from docker_agent.state.env_file import (
-    EnvValue,
-    merge_env,
-    parse_env_file,
-    read_env_file,
-    write_env_file,
-)
-from docker_agent.state.logger import LogEntry, LogLevel, StructuredLogger
-from docker_agent.state.rollback import (
-    KnownGood,
-    RollbackPlan,
-    capture_known_good,
-    plan_rollback,
-)
+from docker_agent.state.logger import LogEntry, StructuredLogger
 from docker_agent.state.secret_redactor import (
+    CREDENTIAL_URI_PATTERN,
+    REDACTION_PLACEHOLDER,
     SECRET_KEY_PATTERN,
+    EnvSnapshot,
     hash_secret,
+    looks_like_credential_uri,
     redact_env,
+    redact_text,
+    redact_value_deep,
     scrub_line,
     should_redact,
 )
-from docker_agent.state.session_store import (
-    SessionStore,
-    format_sessions_list,
-    redact_messages,
-    session_cwd_mismatch_warning,
-)
-from docker_agent.state.state_store import HistoryEvent, StateStore
+from docker_agent.state.session_store import SessionRecord, SessionStore
 
 __all__ = [
-    "SECRET_KEY_PATTERN",
-    "capture_known_good",
-    "detect_drift",
-    "format_sessions_list",
-    "hash_secret",
-    "HistoryEvent",
-    "KnownGood",
+    "CREDENTIAL_URI_PATTERN",
+    "EnvSnapshot",
     "LogEntry",
-    "LogLevel",
-    "merge_env",
-    "parse_env_file",
-    "plan_rollback",
-    "read_env_file",
-    "redact_env",
-    "redact_messages",
-    "RollbackPlan",
-    "scrub_line",
+    "REDACTION_PLACEHOLDER",
+    "SECRET_KEY_PATTERN",
+    "SessionRecord",
     "SessionStore",
-    "should_redact",
-    "StateStore",
     "StructuredLogger",
-    "session_cwd_mismatch_warning",
-    "write_env_file",
-    "EnvValue",
+    "hash_secret",
+    "looks_like_credential_uri",
+    "redact_env",
+    "redact_text",
+    "redact_value_deep",
+    "scrub_line",
+    "should_redact",
 ]

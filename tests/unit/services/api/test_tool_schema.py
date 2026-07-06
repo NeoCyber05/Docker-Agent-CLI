@@ -1,4 +1,4 @@
-"""Parity tests for toolSchema adapter."""
+﻿"""Parity tests for toolSchema adapter."""
 
 from typing import Literal
 

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from textual.app import App, ComposeResult
 
@@ -40,3 +40,4 @@ async def test_thinking_indicator_label_updates() -> None:
         indicator.label = "Apply stack: demo"
         rendered = str(indicator.content)
         assert "Apply stack: demo" in rendered
+

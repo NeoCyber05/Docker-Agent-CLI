@@ -1,4 +1,4 @@
-"""Parity tests for Gemini provider."""
+﻿"""Parity tests for Gemini provider."""
 
 from unittest.mock import MagicMock, patch
 

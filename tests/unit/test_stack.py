@@ -1,9 +1,9 @@
-"""Parity tests for docker_agent.types.stack — mirrors src/types/stack.ts:1-97."""
+﻿"""Parity tests for docker_mcp_server.types.stack â€” mirrors src/types/stack.ts:1-97."""
 
 import pytest
 from pydantic import ValidationError
 
-from docker_agent.types.stack import (
+from docker_mcp_server.types.stack import (
     DockerAgentMeta,
     EnvFileSource,
     EnvSnapshot,

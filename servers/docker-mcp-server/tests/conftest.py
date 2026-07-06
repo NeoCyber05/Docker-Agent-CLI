@@ -1,4 +1,4 @@
-"""Shared Docker MCP server test fixtures."""
+﻿"""Shared Docker MCP server test fixtures."""
 
 from __future__ import annotations
 
@@ -21,3 +21,5 @@ def isolated_global_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
     policy_path = tmp_path / "isolated-global-policies.yaml"
     policy_path.write_text("global:\n  hardDeny: []\n  require: []\n", encoding="utf-8")
     monkeypatch.setenv("DOCKER_AGENT_GLOBAL_POLICY", str(policy_path))
+
+

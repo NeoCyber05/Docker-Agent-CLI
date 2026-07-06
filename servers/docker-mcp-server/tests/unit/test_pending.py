@@ -1,8 +1,9 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
 import pytest
+
 from docker_mcp_server.pending import PendingAction, PendingActionStore
 
 
@@ -79,3 +80,6 @@ def test_pending_action_store_expires_and_removes_action() -> None:
         )
 
     assert store.get(action.id) is None
+
+
+

@@ -1,4 +1,4 @@
-"""Parity tests for config — mirrors src/config.ts:1-73."""
+﻿"""Parity tests for config â€” mirrors src/config.ts:1-73."""
 
 import json
 from pathlib import Path

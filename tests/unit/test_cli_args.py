@@ -1,4 +1,4 @@
-"""Parity tests for CLI argument parsing."""
+﻿"""Parity tests for CLI argument parsing."""
 
 from __future__ import annotations
 

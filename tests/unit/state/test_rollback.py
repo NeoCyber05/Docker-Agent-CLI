@@ -1,16 +1,16 @@
-"""Parity tests for rollback — mirrors src/state/rollback.ts."""
+﻿"""Parity tests for rollback â€” mirrors src/state/rollback.ts."""
 
 from pathlib import Path
 
 import yaml
 
-from docker_agent.state.rollback import (
+from docker_mcp_server.state.rollback import (
     KnownGood,
     capture_known_good,
     plan_rollback,
 )
-from docker_agent.state.state_store import StateStore
-from docker_agent.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
+from docker_mcp_server.state.state_store import StateStore
+from docker_mcp_server.types.stack import DockerAgentMeta, ServiceSpec, StackDefinition
 
 
 def _make_stack(name: str) -> StackDefinition:

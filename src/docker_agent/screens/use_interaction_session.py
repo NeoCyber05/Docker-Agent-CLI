@@ -10,11 +10,11 @@ from dataclasses import dataclass, field
 
 from docker_agent.query_engine import QueryEngine
 from docker_agent.types.events import (
+    ActionReview,
     AssistantText,
     Error,
     LoopEvent,
     PermissionRequest,
-    PlanReady,
     RollbackResult,
     RollbackStarted,
     SecretsInputRequest,
@@ -186,14 +186,16 @@ class InteractionSession:
                             "detail": ev.detail,
                         }
                     )
-                elif isinstance(ev, PlanReady):
+                elif isinstance(ev, ActionReview):
                     self.dispatch_activity(
                         {
-                            "type": "plan_ready",
+                            "type": "action_review_ready",
                             "request_id": ev.id,
-                            "compose_yaml": ev.compose_yaml,
-                            "diff": ev.diff,
-                            "auto_generated_secrets": ev.auto_generated_secrets,
+                            "tool": ev.tool,
+                            "title": ev.title,
+                            "summary": ev.summary,
+                            "artifacts": ev.artifacts,
+                            "auto_generated_secrets": ev.secrets,
                             "config_files": ev.config_files,
                         }
                     )
@@ -233,3 +235,7 @@ class InteractionSession:
 
 
 __all__ = ["InteractionSession"]
+
+
+
+

@@ -13,38 +13,38 @@ from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
 
-from docker_agent.config import load_user_config, project_state_dir, stack_states_dir
-from docker_agent.policy.defaults import ensure_global_policy
-from docker_agent.policy.policy_engine import PolicyEngine
-from docker_agent.query import format_plan_blocker
-from docker_agent.services.docker.compose_runner import ComposeRunner
-from docker_agent.services.docker.engine_client import create_engine_client
-from docker_agent.state.secret_redactor import scrub_line
-from docker_agent.state.state_store import HistoryEvent, StateStore
-from docker_agent.tools.base import ToolContext, ToolDone, ToolProgress
-from docker_agent.tools.destroy_all_stacks import destroy_all_stacks
-from docker_agent.tools.destroy_stack import destroy_stack
-from docker_agent.tools.exec_docker import exec_docker
-from docker_agent.tools.get_health import get_health
-from docker_agent.tools.get_logs import get_logs
-from docker_agent.tools.get_stack_status import get_stack_status
-from docker_agent.tools.inspect_drift import inspect_drift
-from docker_agent.tools.list_stacks import list_stacks
-from docker_agent.tools.plan_stack import PlanStackResultOk, plan_stack
-from docker_agent.tools.remediate_drift import remediate_drift
-from docker_agent.tools.remove_container import remove_container
-from docker_agent.tools.resolve_dependency import resolve_dependency
-from docker_agent.tools.shared.secret_keys import SecretKeysContext, collect_secret_keys
-from docker_agent.tools.shared.spec_schemas import StackDraft
-from docker_agent.tools.stop_stack import stop_stack
-from docker_agent.tools.validate_spec import validate_spec
 from docker_mcp_server.apply_with_rollback import (
     ApplyWithRollbackParams,
     RollbackTransaction,
     run_apply_transaction,
     run_rollback_transaction,
 )
+from docker_mcp_server.config import load_user_config, project_state_dir, stack_states_dir
+from docker_mcp_server.formatting import format_plan_blocker
 from docker_mcp_server.pending import PendingAction, PendingActionStore
+from docker_mcp_server.policy.defaults import ensure_global_policy
+from docker_mcp_server.policy.policy_engine import PolicyEngine
+from docker_mcp_server.services.docker.compose_runner import ComposeRunner
+from docker_mcp_server.services.docker.engine_client import create_engine_client
+from docker_mcp_server.state.secret_redactor import scrub_line
+from docker_mcp_server.state.state_store import HistoryEvent, StateStore
+from docker_mcp_server.tools.base import ToolContext, ToolDone, ToolProgress
+from docker_mcp_server.tools.destroy_all_stacks import destroy_all_stacks
+from docker_mcp_server.tools.destroy_stack import destroy_stack
+from docker_mcp_server.tools.exec_docker import exec_docker
+from docker_mcp_server.tools.get_health import get_health
+from docker_mcp_server.tools.get_logs import get_logs
+from docker_mcp_server.tools.get_stack_status import get_stack_status
+from docker_mcp_server.tools.inspect_drift import inspect_drift
+from docker_mcp_server.tools.list_stacks import list_stacks
+from docker_mcp_server.tools.plan_stack import PlanStackResultOk, plan_stack
+from docker_mcp_server.tools.remediate_drift import remediate_drift
+from docker_mcp_server.tools.remove_container import remove_container
+from docker_mcp_server.tools.resolve_dependency import resolve_dependency
+from docker_mcp_server.tools.shared.secret_keys import SecretKeysContext, collect_secret_keys
+from docker_mcp_server.tools.shared.spec_schemas import StackDraft
+from docker_mcp_server.tools.stop_stack import stop_stack
+from docker_mcp_server.tools.validate_spec import validate_spec
 
 _PENDING = PendingActionStore()
 _ROLLBACKS: dict[str, RollbackTransaction] = {}
@@ -152,8 +152,21 @@ def _plan_confirm_payload(
         SecretKeysContext(cwd=ctx.cwd, state_store=ctx.state_store),
     )
     payload: dict[str, Any] = {
-        "compose_yaml": plan_result.compose_yaml,
-        "diff": _jsonable(plan_result.diff),
+        "title": f"Deploy Docker stack {parsed_input.stack_name}",
+        "summary": parsed_input.intent,
+        "artifacts": [
+            {
+                "kind": "manifest",
+                "label": "Compose YAML",
+                "language": "yaml",
+                "content": plan_result.compose_yaml,
+            },
+            {
+                "kind": "diff",
+                "label": "Stack diff",
+                "content": _jsonable(plan_result.diff),
+            },
+        ],
         "hash": plan_result.hash,
     }
     if plan_result.auto_generated_secrets:
@@ -341,8 +354,21 @@ def pending_confirmation_stub(
         hash="stub",
         expires_at=datetime.now(UTC) + timedelta(seconds=ttl_seconds),
         payload={
-            "compose_yaml": "services: {}",
-            "diff": {"stackName": "stub", "status": "missing", "serviceDiffs": []},
+            "title": "Review Docker action",
+            "summary": "Pending confirmation stub.",
+            "artifacts": [
+                {
+                    "kind": "manifest",
+                    "label": "Compose YAML",
+                    "language": "yaml",
+                    "content": "services: {}",
+                },
+                {
+                    "kind": "diff",
+                    "label": "Stack diff",
+                    "content": {"stackName": "stub", "status": "missing", "serviceDiffs": []},
+                },
+            ],
             "auto_generated_secrets": [],
             "config_files": [],
         },
@@ -894,3 +920,4 @@ __all__ = [
     "pending_confirmation_stub",
     "summarize_context_payload",
 ]
+

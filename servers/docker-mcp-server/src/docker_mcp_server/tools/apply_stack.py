@@ -1,4 +1,4 @@
-﻿"""apply_stack tool.
+"""apply_stack tool.
 
 Parity: ``src/tools/applyStack.ts``.
 """
@@ -482,145 +482,140 @@ class _ApplyStackTool:
             SecretKeysContext(ctx.cwd, ctx.state_store),
         )
 
-        yield ToolProgress(msg="Acquiring stack lock...")
-        release = ctx.state_store.acquire_lock(input.stack_name, timeout_ms=30_000)
+        yield ToolProgress(msg="Running Compose up -d...")
+        bound = ctx.compose_runner.for_stack(input.stack_name, yaml_path)
+        captured = ""
+        async for line in bound.up(detach=True, scale=input.scale_overrides):
+            captured += line
+            scrubbed = scrub_line(line, secret_keys)
+            yield ToolProgress(msg=scrubbed.rstrip())
+        exit_code = getattr(bound, "last_exit_code", 0)
 
-        try:
-            yield ToolProgress(msg="Running Compose up -d...")
-            bound = ctx.compose_runner.for_stack(input.stack_name, yaml_path)
-            captured = ""
-            async for line in bound.up(detach=True, scale=input.scale_overrides):
-                captured += line
-                scrubbed = scrub_line(line, secret_keys)
-                yield ToolProgress(msg=scrubbed.rstrip())
-            exit_code = getattr(bound, "last_exit_code", 0)
+        ctx.state_store.append_history(
+            HistoryEvent(
+                ts=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+                session_id=ctx.session_id or "unknown",
+                stack_name=input.stack_name,
+                action="apply",
+                details={"exitCode": exit_code},
+            )
+        )
 
-            ctx.state_store.append_history(
-                HistoryEvent(
-                    ts=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-                    session_id=ctx.session_id or "unknown",
-                    stack_name=input.stack_name,
-                    action="apply",
-                    details={"exitCode": exit_code},
+        if exit_code != 0:
+            yield ToolDone(
+                ApplyStackResult(
+                    ok=False,
+                    exit_code=exit_code,
+                    yaml_path=yaml_path,
+                    error_output=captured,
+                    running_services=await _running_service_names(bound),
                 )
             )
+            return
 
-            if exit_code != 0:
-                yield ToolDone(
-                    ApplyStackResult(
-                        ok=False,
-                        exit_code=exit_code,
-                        yaml_path=yaml_path,
-                        error_output=captured,
-                        running_services=await _running_service_names(bound),
-                    )
+        expected_services = list(definition.services.keys())
+        raw_deadline = (
+            ctx.health_check_deadline_ms
+            if ctx.health_check_deadline_ms is not None
+            else HEALTH_DEADLINE_MS_DEFAULT
+        )
+        deadline_ms = (
+            raw_deadline
+            if ctx.health_check_deadline_ms is not None
+            else _clamp(raw_deadline, 10_000, 600_000)
+        )
+
+        yield ToolProgress(msg="Waiting for services to become healthy...")
+        health_result: dict[str, object] | None = None
+        async for item in verify_health(
+            bound,
+            expected_services,
+            deadline_ms,
+            ctx.abort_signal,
+        ):
+            if isinstance(item, ToolProgress):
+                yield item
+            else:
+                health_result = item
+
+        if health_result is None or not health_result["healthy"]:
+            unhealthy = health_result["unhealthy"] if health_result else []
+            assert isinstance(unhealthy, list)
+            failed_names = [item.service for item in unhealthy]
+            logs = await _collect_failure_logs(bound, failed_names, secret_keys)
+            yield ToolDone(
+                ApplyStackResult(
+                    ok=False,
+                    exit_code=0,
+                    yaml_path=yaml_path,
+                    healthy=False,
+                    unhealthy_services=[
+                        f"{item.service} ({item.status})" for item in unhealthy
+                    ],
+                    running_services=await _running_service_names(bound),
+                    error_output=logs or None,
                 )
-                return
-
-            expected_services = list(definition.services.keys())
-            raw_deadline = (
-                ctx.health_check_deadline_ms
-                if ctx.health_check_deadline_ms is not None
-                else HEALTH_DEADLINE_MS_DEFAULT
             )
-            deadline_ms = (
-                raw_deadline
-                if ctx.health_check_deadline_ms is not None
-                else _clamp(raw_deadline, 10_000, 600_000)
-            )
+            return
 
-            yield ToolProgress(msg="Waiting for services to become healthy...")
-            health_result: dict[str, object] | None = None
-            async for item in verify_health(
+        yield ToolProgress(msg="Running post-deploy HTTP probe verification...")
+        http_check = await _verify_http_services(definition, ctx.abort_signal)
+        if not http_check["ok"]:
+            failed = http_check["failed_services"]
+            assert isinstance(failed, list)
+            logs = await _collect_failure_logs(
                 bound,
-                expected_services,
-                deadline_ms,
-                ctx.abort_signal,
-            ):
-                if isinstance(item, ToolProgress):
-                    yield item
-                else:
-                    health_result = item
-
-            if health_result is None or not health_result["healthy"]:
-                unhealthy = health_result["unhealthy"] if health_result else []
-                assert isinstance(unhealthy, list)
-                failed_names = [item.service for item in unhealthy]
-                logs = await _collect_failure_logs(bound, failed_names, secret_keys)
-                yield ToolDone(
-                    ApplyStackResult(
-                        ok=False,
-                        exit_code=0,
-                        yaml_path=yaml_path,
-                        healthy=False,
-                        unhealthy_services=[
-                            f"{item.service} ({item.status})" for item in unhealthy
-                        ],
-                        running_services=await _running_service_names(bound),
-                        error_output=logs or None,
-                    )
-                )
-                return
-
-            yield ToolProgress(msg="Running post-deploy HTTP probe verification...")
-            http_check = await _verify_http_services(definition, ctx.abort_signal)
-            if not http_check["ok"]:
-                failed = http_check["failed_services"]
-                assert isinstance(failed, list)
-                logs = await _collect_failure_logs(
-                    bound,
-                    [str(name) for name in failed],
-                    secret_keys,
-                )
-                yield ToolDone(
-                    ApplyStackResult(
-                        ok=False,
-                        exit_code=0,
-                        yaml_path=yaml_path,
-                        healthy=False,
-                        unhealthy_services=[
-                            f"{service} (HTTP probe failed: {http_check['error']})"
-                            for service in failed
-                        ],
-                        running_services=await _running_service_names(bound),
-                        error_output=logs or None,
-                    )
-                )
-                return
-
-            deploy_warnings: list[str] = []
-            http_warnings = http_check.get("warnings")
-            if isinstance(http_warnings, list):
-                deploy_warnings.extend(str(item) for item in http_warnings)
-
-            yield ToolProgress(msg="Scanning service logs for errors...")
-            log_warnings = await _scan_logs_for_errors(
-                bound,
-                expected_services,
+                [str(name) for name in failed],
                 secret_keys,
-            )
-            deploy_warnings.extend(log_warnings)
-
-            last_applied = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-            updated_meta = definition.x_docker_agent.model_copy(
-                update={"last_applied": last_applied}
-            )
-            ctx.state_store.write(
-                input.stack_name,
-                definition.model_copy(update={"x_docker_agent": updated_meta}),
             )
             yield ToolDone(
                 ApplyStackResult(
-                    ok=True,
-                    exit_code=exit_code,
+                    ok=False,
+                    exit_code=0,
                     yaml_path=yaml_path,
-                    healthy=True,
-                    unhealthy_services=[],
-                    warnings=deploy_warnings or None,
+                    healthy=False,
+                    unhealthy_services=[
+                        f"{service} (HTTP probe failed: {http_check['error']})"
+                        for service in failed
+                    ],
+                    running_services=await _running_service_names(bound),
+                    error_output=logs or None,
                 )
             )
-        finally:
-            release()
+            return
+
+        deploy_warnings: list[str] = []
+        http_warnings = http_check.get("warnings")
+        if isinstance(http_warnings, list):
+            deploy_warnings.extend(str(item) for item in http_warnings)
+
+        yield ToolProgress(msg="Scanning service logs for errors...")
+        log_warnings = await _scan_logs_for_errors(
+            bound,
+            expected_services,
+            secret_keys,
+        )
+        deploy_warnings.extend(log_warnings)
+
+        last_applied = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        updated_meta = definition.x_infra_agent.model_copy(
+            update={"last_applied": last_applied}
+        )
+        ctx.state_store.write(
+            input.stack_name,
+            definition.model_copy(update={"x_infra_agent": updated_meta}),
+        )
+        yield ToolDone(
+            ApplyStackResult(
+                ok=True,
+                exit_code=exit_code,
+                yaml_path=yaml_path,
+                healthy=True,
+                unhealthy_services=[],
+                warnings=deploy_warnings or None,
+            )
+        )
+
 
 
 apply_stack = _ApplyStackTool()

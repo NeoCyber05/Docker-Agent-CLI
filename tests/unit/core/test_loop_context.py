@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from docker_agent.core.loop_context import ActionReviewPayload
+from infra_agent.core.loop_context import ActionReviewPayload
 
 
 def test_action_review_payload_accepts_plugin_neutral_artifacts() -> None:

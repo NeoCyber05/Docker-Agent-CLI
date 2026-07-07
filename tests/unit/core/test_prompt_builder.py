@@ -1,18 +1,42 @@
 from __future__ import annotations
 
-from docker_agent.core.prompt_builder import build_system_prompt
+from infra_agent.core.prompt_builder import build_system_prompt
 
 
-def test_prompt_describes_deploy_stack_as_primary_deploy_tool() -> None:
+def test_base_prompt_is_domain_agnostic() -> None:
     prompt = build_system_prompt("stacks: {}\n")
 
-    assert "Every deployment or stack change MUST go through `docker.deploy_stack`" in prompt
-    assert "server-side `plan_stack` gate" in prompt
-    assert "Do NOT invoke `plan_stack`" in prompt
-    assert "use `docker.validate_spec` only as an optional diagnostic" in prompt
-    assert "same full draft preflight" in prompt
-    assert "dependency order" in prompt
-    assert "Preflight report artifact" in prompt
-    assert "required workflow preflight" not in prompt
-    assert "Before `plan_stack`:" not in prompt
-    assert "Call `plan_stack` only" not in prompt
+    # Generic, domain-neutral control-plane guidance lives in the core prompt.
+    assert "infrastructure automation assistant" in prompt
+    assert "two-phase flow" in prompt
+    assert "namespaced set" in prompt
+    # Docker-specific guidance must NOT be hardcoded in the core prompt anymore;
+    # it is contributed by the Docker plugin's capabilities instead.
+    assert "docker.deploy_stack" not in prompt
+    assert "catalogId" not in prompt
+
+
+def test_prompt_injects_plugin_instructions() -> None:
+    instructions = "## Widgets\n\nUse `widget.apply` for everything."
+    prompt = build_system_prompt("stacks: {}\n", plugin_instructions=instructions)
+
+    assert "## Widgets" in prompt
+    assert "Use `widget.apply` for everything." in prompt
+
+
+def test_prompt_without_plugins_notes_none_connected() -> None:
+    prompt = build_system_prompt("stacks: {}\n")
+
+    assert "No infrastructure plugins are currently connected." in prompt
+
+
+def test_prompt_injects_state_summary() -> None:
+    prompt = build_system_prompt("stacks:\n  web: running\n")
+
+    assert "web: running" in prompt
+
+
+def test_prompt_defaults_empty_state_summary() -> None:
+    prompt = build_system_prompt("")
+
+    assert "(none)" in prompt

@@ -280,8 +280,8 @@ async def assemble_compose(
         ctx.model or f"{ctx.provider_name}-default",
     )
     definition = build.definition
-    definition.x_docker_agent.env_file_sources = {
-        **definition.x_docker_agent.env_file_sources,
+    definition.x_infra_agent.env_file_sources = {
+        **definition.x_infra_agent.env_file_sources,
         **generated_env_file_sources,
     }
     compose_yaml = stack_to_yaml(definition)

@@ -1,4 +1,4 @@
-﻿"""Parity tests for yaml_round_trip â€” mirrors src/tools/shared/__tests__/yamlRoundTrip.test.ts."""
+"""Parity tests for yaml_round_trip â€” mirrors src/tools/shared/__tests__/yamlRoundTrip.test.ts."""
 
 import yaml
 
@@ -8,7 +8,7 @@ from docker_mcp_server.types.stack import DockerAgentMeta, ServiceSpec, StackDef
 
 def _valid_def() -> StackDefinition:
     return StackDefinition(
-        x_docker_agent=DockerAgentMeta(
+        x_infra_agent=DockerAgentMeta(
             name="test",
             created_at="2026-01-01T00:00:00.000Z",
             last_applied=None,

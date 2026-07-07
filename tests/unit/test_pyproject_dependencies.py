@@ -1,4 +1,4 @@
-﻿"""Dependency contract tests for the Python package metadata."""
+"""Dependency contract tests for the Python package metadata."""
 
 from __future__ import annotations
 
@@ -16,10 +16,10 @@ def _pyproject_dependencies() -> list[str]:
 
 def _uv_lock_project_requirements() -> list[dict[str, str]]:
     lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
-    docker_agent = next(
+    infra_agent = next(
         package for package in lock["package"] if package["name"] == "docker-agent"
     )
-    return list(docker_agent["metadata"]["requires-dist"])
+    return list(infra_agent["metadata"]["requires-dist"])
 
 
 def test_langgraph_dependency_matches_native_langchain_agent_range() -> None:

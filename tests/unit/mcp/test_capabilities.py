@@ -5,11 +5,13 @@ from typing import Any
 
 import pytest
 
-from docker_agent.mcp.capabilities import (
+from infra_agent.mcp.capabilities import (
     load_mcp_capabilities,
+    mcp_commit_tool_name,
     mcp_command_specs,
     mcp_context_summary,
     mcp_high_risk_tool_names,
+    mcp_plugin_instructions,
     model_visible_mcp_tools,
 )
 
@@ -47,6 +49,7 @@ async def test_load_mcp_capabilities_merges_all_plugin_capability_tools() -> Non
                 "summarize_tool": "docker.summarize_context",
                 "list_resources_tool": "docker.list_resources",
             },
+            "instructions": "## Docker\n\nUse `docker.deploy_stack`.",
         },
     )
     k8s_caps = _FakeMcpTool(
@@ -61,6 +64,7 @@ async def test_load_mcp_capabilities_merges_all_plugin_capability_tools() -> Non
                 "summarize_tool": "k8s.summarize_context",
                 "list_resources_tool": "k8s.list_resources",
             },
+            "instructions": "## Kubernetes\n\nUse `k8s.deploy`.",
         },
     )
 
@@ -85,6 +89,26 @@ async def test_load_mcp_capabilities_merges_all_plugin_capability_tools() -> Non
         "docker.list_resources",
         "k8s.list_resources",
     ]
+    # Each connected plugin contributes its own domain guidance, composed in order.
+    composed = mcp_plugin_instructions(capabilities)
+    assert composed == "## Docker\n\nUse `docker.deploy_stack`.\n\n## Kubernetes\n\nUse `k8s.deploy`."
+
+
+@pytest.mark.asyncio
+async def test_plugin_instructions_empty_when_no_plugin_supplies_any() -> None:
+    caps = _FakeMcpTool(
+        "docker.capabilities",
+        {
+            "tools": [
+                {"namespace": "docker", "name": "docker.list_stacks", "operation": "read"},
+            ],
+        },
+    )
+
+    capabilities = await load_mcp_capabilities([caps])
+
+    assert capabilities["instructions"] == []
+    assert mcp_plugin_instructions(capabilities) == ""
 
 
 @pytest.mark.asyncio
@@ -160,4 +184,18 @@ async def test_capability_payload_may_be_text_wrapped_json() -> None:
         "tools": [{"name": "docker.list"}],
         "commands": [],
         "context": {"summarize_tools": [], "list_resources_tools": []},
+        "instructions": [],
     }
+
+
+def test_mcp_commit_tool_name_falls_back_for_non_namespaced_pending_tools() -> None:
+    capabilities = {
+        "tools": [
+            {"name": "docker.deploy_stack", "commit_tool": "docker.commit_action"},
+            {"name": "docker.commit_action", "operation": "commit"},
+        ]
+    }
+
+    pending_action = {"tool": "initialize_project_policy"}
+
+    assert mcp_commit_tool_name(pending_action, capabilities) == "docker.commit_action"

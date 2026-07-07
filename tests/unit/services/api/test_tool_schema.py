@@ -1,15 +1,15 @@
-﻿"""Parity tests for toolSchema adapter."""
+"""Parity tests for toolSchema adapter."""
 
 from typing import Literal
 
 from pydantic import BaseModel
 
-from docker_agent.services.api.tool_schema import (
+from infra_agent.services.api.tool_schema import (
     to_gemini_function_declaration,
     to_json_schema,
     to_openai_function,
 )
-from docker_agent.services.api.types import ToolSchema
+from infra_agent.services.api.types import ToolSchema
 
 
 class SampleInput(BaseModel):

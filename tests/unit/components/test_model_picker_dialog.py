@@ -1,14 +1,14 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from textual.app import App, ComposeResult
 from textual.widgets import Static
 
-from docker_agent.components.model_picker_dialog import (
+from infra_agent.components.model_picker_dialog import (
     ModelChoice,
     ModelPickerClosed,
     ModelPickerDialog,
 )
-from docker_agent.services.model_catalog import CatalogRowHeader, CatalogRowModel
+from infra_agent.services.model_catalog import CatalogRowHeader, CatalogRowModel
 
 
 class Host(App):

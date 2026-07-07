@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from docker_agent.types.message import (
+from infra_agent.types.message import (
     AssistantBlock,
     AssistantMessage,
     ToolResultMessage,
     UserMessage,
 )
-from docker_agent.ui.activity import (
+from infra_agent.ui.activity import (
     ActivityState,
     activity_reducer,
     project_messages_to_activities,
@@ -234,7 +234,7 @@ def test_action_review_ready_resolved_and_toggle() -> None:
 
 
 def test_action_review_ready_accepts_pydantic_secret_refs() -> None:
-    from docker_agent.ui.activity import PlanConfigRef, PlanSecretRef
+    from infra_agent.ui.activity import PlanConfigRef, PlanSecretRef
 
     state = activity_reducer(
         make_state(),
@@ -263,7 +263,7 @@ def test_action_review_ready_accepts_pydantic_secret_refs() -> None:
 
 
 def test_serialize_and_deserialize_action_review_activity() -> None:
-    from docker_agent.ui.activity import (
+    from infra_agent.ui.activity import (
         ActionReviewActivity,
         ActionReviewArtifactRef,
         deserialize_activity_items,

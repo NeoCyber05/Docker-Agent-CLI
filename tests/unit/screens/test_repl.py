@@ -10,14 +10,14 @@ from unittest.mock import patch
 import pytest
 from rich.console import Console
 
-from docker_agent.components.activity_timeline import ActivityTimeline
-from docker_agent.components.model_picker_dialog import ModelPickerDialog
-from docker_agent.components.welcome_banner import WelcomeBanner
-from docker_agent.query_engine import QueryEngine
-from docker_agent.screens.repl import REPL
-from docker_agent.services.api.types import CallModelParams, ProviderEvent
-from docker_agent.services.model_catalog import CatalogRowHeader, CatalogRowModel
-from docker_agent.types.events import ActionReview, ActionReviewArtifact, PermissionRequest
+from infra_agent.components.activity_timeline import ActivityTimeline
+from infra_agent.components.model_picker_dialog import ModelPickerDialog
+from infra_agent.components.welcome_banner import WelcomeBanner
+from infra_agent.query_engine import QueryEngine
+from infra_agent.screens.repl import REPL
+from infra_agent.services.api.types import CallModelParams, ProviderEvent
+from infra_agent.services.model_catalog import CatalogRowHeader, CatalogRowModel
+from infra_agent.types.events import ActionReview, ActionReviewArtifact, PermissionRequest
 
 
 def fake_provider(events: list[ProviderEvent | dict[str, Any]] | None = None):
@@ -59,7 +59,7 @@ async def test_welcome_banner_visible(tmp_project) -> None:
         buffer = StringIO()
         Console(file=buffer, width=100).print(banner.content)
         rendered = buffer.getvalue()
-        assert "Docker Agent CLI" in rendered
+        assert "infra-agent CLI" in rendered
         assert "##" in rendered
         assert "Tips for getting started" in rendered
         prompt = pilot.app.query_one("#prompt-input")
@@ -222,6 +222,62 @@ async def test_action_review_shows_in_timeline_and_accepts_approval(tmp_project)
 
 
 @pytest.mark.asyncio
+async def test_action_review_deny_collects_feedback_before_responding(tmp_project) -> None:
+    artifacts = [
+        ActionReviewArtifact(
+            kind="manifest",
+            label="Compose YAML",
+            language="yaml",
+            content="services:\n  web:\n    image: nginx",
+        )
+    ]
+    app = REPL(engine=make_engine(tmp_project), version="0.1.0-test", show_banner=False)
+    app.session.pending_event = ActionReview(
+        id="review-2",
+        pendingActionId="pending-2",
+        tool="docker.deploy_stack",
+        title="Deploy Docker stack demo",
+        summary="Create web service",
+        artifacts=artifacts,
+    )
+    app.session.dispatch_activity(
+        {
+            "type": "action_review_ready",
+            "request_id": "review-2",
+            "tool": "docker.deploy_stack",
+            "title": "Deploy Docker stack demo",
+            "summary": "Create web service",
+            "artifacts": artifacts,
+            "auto_generated_secrets": None,
+            "config_files": None,
+        }
+    )
+    app.session.interaction.phase = "awaiting_input"
+
+    async with app.run_test(size=(100, 30)) as pilot:
+        await pilot.pause(delay=0.5)
+        prompt_input = pilot.app.query_one("#prompt-input")
+        assert prompt_input.disabled is True
+
+        await pilot.press("n")
+        await pilot.pause(delay=0.2)
+        assert prompt_input.disabled is False
+        assert app.session.pending_event is not None
+
+        await pilot.click("#prompt-input")
+        prompt_input.value = "xin sua port"
+        await pilot.press("enter")
+        await pilot.pause(delay=0.5)
+
+        assert app.session.pending_event is None
+        assert app.session.phase == "running"
+        assert any(
+            item.type == "action_review" and item.status == "denied"
+            for item in app.session.activity_state.items
+        )
+
+
+@pytest.mark.asyncio
 async def test_policy_permission_always_allow_unblocks_prompt(tmp_project) -> None:
     app = REPL(engine=make_engine(tmp_project), version="0.1.0-test", show_banner=False)
     app.session.pending_event = PermissionRequest(
@@ -292,7 +348,7 @@ async def test_model_picker_selects_and_closes(tmp_project) -> None:
 
 @pytest.mark.asyncio
 async def test_stop_log_pane_after_escape_does_not_pop_main_screen(tmp_project) -> None:
-    from docker_agent.components.log_pane import LogPane
+    from infra_agent.components.log_pane import LogPane
 
     app = REPL(engine=make_engine(tmp_project), version="0.1.0-test", show_banner=False)
     async with app.run_test() as pilot:

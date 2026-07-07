@@ -1,15 +1,13 @@
-﻿"""YAML stack state store with archive, history, and file locking.
+"""YAML stack state store with archive and history.
 
 Parity: ``src/state/StateStore.ts:1-319``.
 """
 
-import contextlib
 import json
 import os
 import re
 import shutil
 import sys
-import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -69,7 +67,7 @@ def _parse_stack_definition(raw: object, source: str) -> StackDefinition:
 
 
 class StateStore:
-    """Owns ``docker-stacks/<name>.yaml`` plus archive/history/locks."""
+    """Owns ``docker-stacks/<name>.yaml`` plus archive/history."""
 
     def __init__(
         self,
@@ -89,13 +87,11 @@ class StateStore:
             self._states_dir = self._root / STACK_STATES_DIR_NAME
 
         self._archive_dir = self._root / "archive"
-        self._locks_dir = self._root / "locks"
 
         self._migrate_legacy_stacks_dir()
         self._states_dir.mkdir(parents=True, exist_ok=True)
         self._archive_dir.mkdir(parents=True, exist_ok=True)
         (self._root / "sessions").mkdir(parents=True, exist_ok=True)
-        self._locks_dir.mkdir(parents=True, exist_ok=True)
         (self._root / "logs").mkdir(parents=True, exist_ok=True)
         (self._root / "secrets").mkdir(parents=True, exist_ok=True, mode=0o700)
 
@@ -142,7 +138,7 @@ class StateStore:
                     f"Skipping invalid stack state at {entry}: {_error_message(err)}"
                 )
                 continue
-            meta = definition.x_docker_agent
+            meta = definition.x_infra_agent
             out.append(
                 StackSummary.model_validate(
                     {
@@ -196,67 +192,13 @@ class StateStore:
         with p.open("a", encoding="utf-8") as f:
             f.write(line)
 
-    def acquire_lock(
-        self, name: str, *, timeout_ms: int = 0
-    ) -> Callable[[], None]:
-        lock_path = self._locks_dir / f"{name}.lock"
-        deadline = time.monotonic() * 1000 + timeout_ms
-
-        while True:
-            try:
-                fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    f.write(str(os.getpid()))
-                break
-            except FileExistsError:
-                if self._remove_stale_lock(lock_path):
-                    continue
-                if time.monotonic() * 1000 >= deadline:
-                    raise RuntimeError(f"acquireLock: lock held for {name}") from None
-                time.sleep(0.01)
-
-        def unlock() -> None:
-            with contextlib.suppress(FileNotFoundError):
-                lock_path.unlink()
-
-        return unlock
-
-    def _remove_stale_lock(self, lock_path: Path) -> bool:
-        try:
-            text = lock_path.read_text(encoding="utf-8").strip()
-            pid = int(text)
-            if pid > 0 and self._is_process_alive(pid):
-                return False
-            lock_path.unlink()
-            return True
-        except Exception:  # noqa: BLE001
-            return False
-
-    def _is_process_alive(self, pid: int) -> bool:
-        if sys.platform == "win32":
-            import ctypes
-
-            process_query_limited = 0x1000
-            handle = ctypes.windll.kernel32.OpenProcess(process_query_limited, False, pid)
-            if handle:
-                ctypes.windll.kernel32.CloseHandle(handle)
-                return True
-            return False
-        try:
-            os.kill(pid, 0)
-            return True
-        except ProcessLookupError:
-            return False
-        except Exception:  # noqa: BLE001
-            return True
-
     def summary(self) -> str:
         out: dict[str, dict[str, Any]] = {}
         for summary in self.list():
             definition = self.read(summary.name)
             if definition is None:
                 continue
-            meta = definition.x_docker_agent
+            meta = definition.x_infra_agent
             services_out: dict[str, dict[str, Any]] = {}
             for svc_name, spec in definition.services.items():
                 visible_env: dict[str, str] = {}

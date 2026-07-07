@@ -1,13 +1,13 @@
-﻿"""Parity tests for Gemini provider."""
+"""Parity tests for Gemini provider."""
 
 from unittest.mock import MagicMock, patch
 
 import pytest
 from pydantic import BaseModel
 
-from docker_agent.services.api.providers.gemini import GeminiProvider
-from docker_agent.services.api.types import CallModelParams, ToolSchema
-from docker_agent.types.message import UserMessage
+from infra_agent.services.api.providers.gemini import GeminiProvider
+from infra_agent.services.api.types import CallModelParams, ToolSchema
+from infra_agent.types.message import UserMessage
 from tests.unit.services.api.conftest import drain_events
 
 

@@ -1,9 +1,9 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from textual.app import App, ComposeResult
 from textual.widgets import Static
 
-from docker_agent.components.typed_confirm_dialog import TypedConfirmDialog
+from infra_agent.components.typed_confirm_dialog import TypedConfirmDialog
 
 
 class Host(App):

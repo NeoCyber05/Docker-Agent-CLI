@@ -1,4 +1,4 @@
-﻿"""Parity tests for state_store â€” mirrors src/state/StateStore.ts."""
+"""Parity tests for state_store â€” mirrors src/state/StateStore.ts."""
 
 import json
 import os
@@ -14,7 +14,7 @@ from docker_mcp_server.types.stack import DockerAgentMeta, ServiceSpec, StackDef
 
 def _make_stack(name: str = "web") -> StackDefinition:
     return StackDefinition(
-        x_docker_agent=DockerAgentMeta(
+        x_infra_agent=DockerAgentMeta(
             name=name,
             created_at="2026-06-27T00:00:00Z",
             last_applied=None,
@@ -35,7 +35,7 @@ def test_constructor_creates_state_dirs(tmp_path: Path) -> None:
     assert (tmp_path / "docker-stacks").exists()
     assert (root / "archive").exists()
     assert (root / "sessions").exists()
-    assert (root / "locks").exists()
+    assert not (root / "locks").exists()
     assert (root / "logs").exists()
     assert (root / "secrets").exists()
     if sys.platform != "win32":
@@ -51,7 +51,7 @@ def test_constructor_migrates_legacy_stacks_dir(tmp_path: Path) -> None:
     assert (tmp_path / "docker-stacks" / "old.yaml").exists()
 
 
-def test_constructor_with_non_docker_agent_root_puts_states_inside(tmp_path: Path) -> None:
+def test_constructor_with_non_infra_agent_root_puts_states_inside(tmp_path: Path) -> None:
     StateStore(str(tmp_path / "custom"))
     assert (tmp_path / "custom" / "docker-stacks").exists()
 
@@ -65,14 +65,14 @@ def test_write_and_read_round_trip(tmp_path: Path) -> None:
     store.write("web", stack)
     read = store.read("web")
     assert read is not None
-    assert read.x_docker_agent.name == "web"
+    assert read.x_infra_agent.name == "web"
     assert read.services["web"].image == "nginx:1.27"
 
 
 def test_write_omits_null_fields_in_yaml(tmp_path: Path) -> None:
     store = StateStore(str(tmp_path / ".docker-agent"))
     stack = StackDefinition(
-        x_docker_agent=DockerAgentMeta(
+        x_infra_agent=DockerAgentMeta(
             name="app",
             created_at="2026-06-27T00:00:00Z",
             last_applied=None,
@@ -170,7 +170,7 @@ def test_read_archive_returns_stable_copy(tmp_path: Path) -> None:
     store.remove("web")
     archived = store.read_archive("web")
     assert archived is not None
-    assert archived.x_docker_agent.name == "web"
+    assert archived.x_infra_agent.name == "web"
 
 
 def test_has_archive_marker_detects_timestamped_file(tmp_path: Path) -> None:
@@ -198,32 +198,12 @@ def test_append_history_writes_ndjson(tmp_path: Path) -> None:
     assert json.loads(lines[0])["action"] == "apply"
 
 
-# --- lock ----------------------------------------------------------------
-
-def test_acquire_lock_writes_pid_and_unlock_removes(tmp_path: Path) -> None:
-    store = StateStore(str(tmp_path / ".docker-agent"))
-    unlock = store.acquire_lock("web")
-    lock_file = tmp_path / ".docker-agent" / "locks" / "web.lock"
-    assert lock_file.exists()
-    assert int(lock_file.read_text().strip()) == os.getpid()
-    unlock()
-    assert not lock_file.exists()
-
-
-def test_acquire_lock_times_out_when_held(tmp_path: Path) -> None:
-    store = StateStore(str(tmp_path / ".docker-agent"))
-    other = tmp_path / ".docker-agent" / "locks" / "web.lock"
-    other.write_text("99999999")  # fake pid, definitely not alive
-    unlock = store.acquire_lock("web")
-    assert unlock
-
-
 # --- summary -------------------------------------------------------------
 
 def test_summary_redacts_secret_env_and_keeps_visible(tmp_path: Path) -> None:
     store = StateStore(str(tmp_path / ".docker-agent"))
     stack = StackDefinition(
-        x_docker_agent=DockerAgentMeta(
+        x_infra_agent=DockerAgentMeta(
             name="web",
             created_at="t",
             last_applied=None,

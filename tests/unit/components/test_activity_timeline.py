@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from textual.app import App, ComposeResult
 
-from docker_agent.components.activity_timeline import ActivityTimeline, render_activity_timeline
-from docker_agent.ui.activity import TextActivity, ToolActivity
+from infra_agent.components.activity_timeline import ActivityTimeline, render_activity_timeline
+from infra_agent.ui.activity import TextActivity, ToolActivity
 
 
 class TimelineApp(App):
@@ -32,7 +32,7 @@ async def test_activity_timeline_shows_running_tool() -> None:
 
 
 def test_activity_timeline_renders_action_review() -> None:
-    from docker_agent.ui.activity import ActionReviewActivity, ActionReviewArtifactRef
+    from infra_agent.ui.activity import ActionReviewActivity, ActionReviewArtifactRef
 
     content = render_activity_timeline(
         [

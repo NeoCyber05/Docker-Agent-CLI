@@ -1,10 +1,10 @@
-﻿"""Smoke tests for the CLI entrypoint."""
+"""Smoke tests for the CLI entrypoint."""
 
 from __future__ import annotations
 
 from typer.testing import CliRunner
 
-from docker_agent.cli import cli
+from infra_agent.cli import cli
 
 runner = CliRunner()
 

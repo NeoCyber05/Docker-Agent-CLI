@@ -1,11 +1,11 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from textual import events
 from textual.app import App, ComposeResult
 from textual.geometry import Offset
 from textual.widgets import Static
 
-from docker_agent.ui.textual_compat import patch_selection_none_parent_crash
+from infra_agent.ui.textual_compat import patch_selection_none_parent_crash
 
 
 class _SelectableHost(App):

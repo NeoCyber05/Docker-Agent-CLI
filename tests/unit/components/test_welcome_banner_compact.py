@@ -1,6 +1,6 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
-from docker_agent.components.welcome_banner import (
+from infra_agent.components.welcome_banner import (
     build_welcome_content,
     should_show_compact_banner,
 )

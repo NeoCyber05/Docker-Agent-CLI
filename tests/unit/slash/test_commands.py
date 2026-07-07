@@ -1,9 +1,9 @@
-﻿"""Parity tests for slash command autocomplete."""
+"""Parity tests for slash command autocomplete."""
 
 from __future__ import annotations
 
-from docker_agent.slash.commands import SLASH_COMMANDS, get_slash_command_suggestions
-from docker_agent.slash.router import SLASH_COMMAND_DEFS
+from infra_agent.slash.commands import SLASH_COMMANDS, get_slash_command_suggestions
+from infra_agent.slash.router import SLASH_COMMAND_DEFS
 
 
 def test_slash_commands_matches_defs() -> None:

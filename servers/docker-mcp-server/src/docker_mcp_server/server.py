@@ -1,9 +1,3 @@
-"""Compatibility-first Docker MCP server.
-
-The server imports the existing docker_agent implementation during the compatibility
-window. Docker logic can move physically after the MCP path reaches parity.
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -19,8 +13,13 @@ from docker_mcp_server.apply_with_rollback import (
     run_apply_transaction,
     run_rollback_transaction,
 )
-from docker_mcp_server.config import load_user_config, project_state_dir, stack_states_dir
+from docker_mcp_server.config import (
+    load_user_config,
+    project_state_dir,
+    stack_states_dir,
+)
 from docker_mcp_server.formatting import format_plan_blocker
+from docker_mcp_server.instructions import DOCKER_INSTRUCTIONS
 from docker_mcp_server.pending import PendingAction, PendingActionStore
 from docker_mcp_server.policy.defaults import ensure_global_policy
 from docker_mcp_server.policy.policy_engine import PolicyEngine
@@ -46,7 +45,12 @@ from docker_mcp_server.tools.shared.spec_schemas import StackDraft
 from docker_mcp_server.tools.stop_stack import stop_stack
 from docker_mcp_server.tools.validate_spec import validate_spec
 
-_PENDING = PendingActionStore()
+# Pending actions gate on an interactive human approval, so the TTL must cover
+# realistic deliberation time. The previous 5-minute window routinely expired
+# mid-review, causing commit to fail and the agent to loop on re-planning.
+_PENDING_TTL_SECONDS = 1800
+
+_PENDING_STORES: dict[str, PendingActionStore] = {}
 _ROLLBACKS: dict[str, RollbackTransaction] = {}
 _READ_ONLY_TOOLS = [
     validate_spec,
@@ -60,6 +64,8 @@ _READ_ONLY_TOOLS = [
 _PERMISSION_TOOLS = [exec_docker]
 _HIGH_RISK_PERMISSION_TOOLS = [remediate_drift]
 _MUTATING_TOOLS = [destroy_stack, destroy_all_stacks, stop_stack, remove_container]
+_PROJECT_POLICY_FILENAME = "project-policies.yaml"
+_PROJECT_POLICY_DEFAULT_CONTENT = "project:\n  deny: []\n  require: []\n"
 
 
 class _UnavailableDockerEngine:
@@ -73,6 +79,16 @@ class _UnavailableDockerEngine:
 
 def _state_store(cwd: str) -> StateStore:
     return StateStore(project_state_dir(cwd), states_dir=stack_states_dir(cwd))
+
+
+def _pending_store(cwd: str) -> PendingActionStore:
+    root = Path(project_state_dir(cwd))
+    key = str(root.resolve())
+    store = _PENDING_STORES.get(key)
+    if store is None:
+        store = PendingActionStore(root / "pending-actions.json")
+        _PENDING_STORES[key] = store
+    return store
 
 
 def _engine_client() -> Any:
@@ -139,6 +155,92 @@ def _policy_engine(cwd: str) -> PolicyEngine:
 def _policy_block_message(violations: list[Any]) -> str:
     msgs = "\n".join(f"[{v.service}] {v.rule}: {v.message}" for v in violations)
     return f"Policy violation(s) detected. Deployment is blocked:\n{msgs}"
+
+
+def _project_policy_path(cwd: str) -> Path:
+    return Path(cwd) / _PROJECT_POLICY_FILENAME
+
+
+def _has_missing_project_policy_violation(violations: list[Any]) -> bool:
+    return any(getattr(item, "rule", "") == "project_policy_missing" for item in violations)
+
+
+def _pending_initialize_project_policy(
+    *,
+    cwd: str,
+    session_id: str,
+    ttl_seconds: int = _PENDING_TTL_SECONDS,
+    draft: StackDraft | None = None,
+    provider_name: str = "mcp",
+    model: str | None = None,
+) -> dict[str, Any]:
+    target = _project_policy_path(cwd)
+    private_payload: dict[str, Any] = {
+        "path": str(target),
+        "content": _PROJECT_POLICY_DEFAULT_CONTENT,
+    }
+    if draft is not None:
+        # Stash the in-flight deploy draft so approval can auto-replan instead of
+        # dropping it — otherwise the caller must remember to re-call deploy_stack,
+        # and the LLM often forgets, leaving the user waiting on a plan that never
+        # gets created (see: agent stalls after policy init with no real plan).
+        private_payload["draft"] = draft.model_dump(by_alias=True, exclude_none=True)
+        private_payload["provider_name"] = provider_name
+        private_payload["model"] = model
+    action = PendingAction(
+        id=str(uuid4()),
+        session_id=session_id,
+        cwd=cwd,
+        tool="initialize_project_policy",
+        kind="permission",
+        expires_at=datetime.now(UTC) + timedelta(seconds=ttl_seconds),
+        payload={
+            "reason": "Project policy file (project-policies.yaml) is missing",
+            "path": str(target),
+            "content": _PROJECT_POLICY_DEFAULT_CONTENT,
+        },
+        private_payload=private_payload,
+    )
+    return _pending_store(cwd).add(action).response_payload()
+
+
+async def _approve_initialize_project_policy(action: PendingAction) -> dict[str, Any]:
+    path = Path(str(action.private_payload.get("path") or ""))
+    content = str(action.private_payload.get("content") or _PROJECT_POLICY_DEFAULT_CONTENT)
+    if not path:
+        return {"status": "error", "result": "initialize_project_policy missing target path"}
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+
+    draft_dict = action.private_payload.get("draft")
+    if not isinstance(draft_dict, dict):
+        return {"status": "ok", "result": f"created {path}"}
+
+    # Policy is satisfied now — replan immediately so this hop returns the real
+    # deploy plan for review instead of leaving the caller to guess it must call
+    # docker.deploy_stack again.
+    draft = StackDraft.model_validate(draft_dict)
+    provider_name = str(action.private_payload.get("provider_name") or "mcp")
+    model = action.private_payload.get("model")
+    model = model if isinstance(model, str) else None
+    ctx, result, progress = await _plan_deploy(
+        cwd=action.cwd,
+        session_id=action.session_id,
+        provider_name=provider_name,
+        model=model,
+        draft=draft,
+    )
+    return await _finalize_plan_result(
+        ctx=ctx,
+        result=result,
+        progress=progress,
+        draft=draft,
+        session_id=action.session_id,
+        cwd=action.cwd,
+        provider_name=provider_name,
+        model=model,
+    )
 
 
 def _plan_confirm_payload(
@@ -223,6 +325,18 @@ async def _plan_deploy(
     plan_result: PlanStackResultOk = result
     violations = _policy_engine(cwd).evaluate(plan_result.compose_yaml)
     if violations:
+        if _has_missing_project_policy_violation(violations):
+            pending = _pending_initialize_project_policy(
+                cwd=cwd,
+                session_id=session_id,
+                draft=draft,
+                provider_name=provider_name,
+                model=model,
+            )
+            return ctx, {
+                **pending,
+                "progress": progress,
+            }, progress
         return ctx, {
             "status": "blocked",
             "result": _policy_block_message(violations),
@@ -355,6 +469,7 @@ def capabilities_payload() -> dict[str, Any]:
             "summarize_tool": "docker.summarize_context",
             "list_resources_tool": "docker.list_resources",
         },
+        "instructions": DOCKER_INSTRUCTIONS,
     }
 
 
@@ -363,7 +478,7 @@ def pending_confirmation_stub(
     cwd: str,
     session_id: str,
     tool: str,
-    ttl_seconds: int = 300,
+    ttl_seconds: int = _PENDING_TTL_SECONDS,
 ) -> dict[str, Any]:
     action = PendingAction(
         id=str(uuid4()),
@@ -393,26 +508,21 @@ def pending_confirmation_stub(
             "config_files": [],
         },
     )
-    return _PENDING.add(action).response_payload()
+    return _pending_store(cwd).add(action).response_payload()
 
 
-async def deploy_stack_payload(
+async def _finalize_plan_result(
     *,
-    cwd: str,
+    ctx: ToolContext,
+    result: PlanStackResultOk | dict[str, Any],
+    progress: list[str],
+    draft: StackDraft,
     session_id: str,
-    provider_name: str = "mcp",
-    model: str | None = None,
-    ttl_seconds: int = 300,
-    **kwargs: Any,
+    cwd: str,
+    provider_name: str,
+    model: str | None,
+    ttl_seconds: int = _PENDING_TTL_SECONDS,
 ) -> dict[str, Any]:
-    draft = StackDraft.model_validate(kwargs)
-    ctx, result, progress = await _plan_deploy(
-        cwd=cwd,
-        session_id=session_id,
-        provider_name=provider_name,
-        model=model,
-        draft=draft,
-    )
     if isinstance(result, dict):
         return {**result, "progress": progress}
     plan_result = result
@@ -438,7 +548,7 @@ async def deploy_stack_payload(
         expires_at=datetime.now(UTC) + timedelta(seconds=ttl_seconds),
         payload=_plan_confirm_payload(plan_result, draft, ctx),
         private_payload={
-            "draft": draft,
+            "draft": draft.model_dump(by_alias=True, exclude_none=True),
             "stack_name": draft.stack_name,
             "compose_yaml": plan_result.compose_yaml,
             "config_files": plan_result.config_files,
@@ -448,9 +558,39 @@ async def deploy_stack_payload(
             "model": model,
         },
     )
-    response = _PENDING.add(action).response_payload()
+    response = _pending_store(cwd).add(action).response_payload()
     response["progress"] = progress
     return response
+
+
+async def deploy_stack_payload(
+    *,
+    cwd: str,
+    session_id: str,
+    provider_name: str = "mcp",
+    model: str | None = None,
+    ttl_seconds: int = _PENDING_TTL_SECONDS,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    draft = StackDraft.model_validate(kwargs)
+    ctx, result, progress = await _plan_deploy(
+        cwd=cwd,
+        session_id=session_id,
+        provider_name=provider_name,
+        model=model,
+        draft=draft,
+    )
+    return await _finalize_plan_result(
+        ctx=ctx,
+        result=result,
+        progress=progress,
+        draft=draft,
+        session_id=session_id,
+        cwd=cwd,
+        provider_name=provider_name,
+        model=model,
+        ttl_seconds=ttl_seconds,
+    )
 
 
 async def _run_core_tool_payload(
@@ -476,6 +616,8 @@ async def _run_core_tool_payload(
 async def _approve_deploy(action: PendingAction) -> dict[str, Any]:
     private = action.private_payload
     draft = private.get("draft")
+    if isinstance(draft, dict):
+        draft = StackDraft.model_validate(draft)
     if not isinstance(draft, StackDraft):
         return {"status": "ok", "result": f"confirmed {action.tool}"}
     provider_name = str(private.get("provider_name") or "mcp")
@@ -536,15 +678,43 @@ async def commit_action_payload(
     secrets: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     del typed_phrase, secrets
-    action = _PENDING.consume(
-        pending_action_id,
-        session_id=session_id,
-        cwd=cwd,
-    )
+    try:
+        action = _pending_store(cwd).consume(
+            pending_action_id,
+            session_id=session_id,
+            cwd=cwd,
+        )
+    except TimeoutError:
+        return {
+            "status": "error",
+            "result": (
+                "This plan preview expired before it was approved. "
+                "Re-run the deployment to generate a fresh plan, then approve it."
+            ),
+        }
+    except KeyError:
+        return {
+            "status": "error",
+            "result": (
+                "No matching pending action was found for this approval. "
+                "It may already have been committed or cancelled. "
+                "Re-run the deployment if you still want to proceed."
+            ),
+        }
+    except PermissionError:
+        return {
+            "status": "error",
+            "result": (
+                "This pending action belongs to a different session or working "
+                "directory and cannot be committed here."
+            ),
+        }
     if decision == "deny":
         return {"status": "ok", "result": f"denied {action.tool}"}
     if action.tool == "docker.deploy_stack":
         return await _approve_deploy(action)
+    if action.tool == "initialize_project_policy":
+        return await _approve_initialize_project_policy(action)
     return {"status": "ok", "result": f"confirmed {action.tool}"}
 
 
@@ -567,25 +737,6 @@ async def rollback_action_payload(
         "ok": rollback_ok,
         "events": [_jsonable(event) for event in events],
     }
-
-
-async def confirm_action_payload(
-    *,
-    pending_action_id: str,
-    session_id: str,
-    cwd: str,
-    decision: Literal["approve", "deny"],
-    typed_phrase: str | None = None,
-    secrets: dict[str, str] | None = None,
-) -> dict[str, Any]:
-    return await commit_action_payload(
-        pending_action_id=pending_action_id,
-        session_id=session_id,
-        cwd=cwd,
-        decision=decision,
-        typed_phrase=typed_phrase,
-        secrets=secrets,
-    )
 
 
 def build_server() -> Any:
@@ -897,36 +1048,6 @@ def build_server() -> Any:
             stackName=stackName,
         )
 
-    @mcp.tool(name="docker.pending_confirmation_stub")
-    def docker_pending_confirmation_stub(
-        cwd: str,
-        session_id: str,
-        tool: str = "docker.deploy_stack",
-    ) -> dict[str, Any]:
-        """Return a PendingAction payload without applying changes."""
-
-        return pending_confirmation_stub(cwd=cwd, session_id=session_id, tool=tool)
-
-    @mcp.tool(name="docker.confirm_action")
-    async def docker_confirm_action(
-        pending_action_id: str,
-        session_id: str,
-        cwd: str,
-        decision: Literal["approve", "deny"],
-        typed_phrase: str | None = None,
-        secrets: dict[str, str] | None = None,
-    ) -> dict[str, Any]:
-        """Consume a pending action and run the confirmed operation."""
-
-        return await confirm_action_payload(
-            pending_action_id=pending_action_id,
-            session_id=session_id,
-            cwd=cwd,
-            decision=decision,
-            typed_phrase=typed_phrase,
-            secrets=secrets,
-        )
-
     return mcp
 
 
@@ -937,7 +1058,6 @@ def main() -> None:
 __all__ = [
     "build_server",
     "capabilities_payload",
-    "confirm_action_payload",
     "deploy_stack_payload",
     "list_resources_payload",
     "list_stacks_payload",

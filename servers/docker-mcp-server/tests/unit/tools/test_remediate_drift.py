@@ -1,4 +1,4 @@
-﻿"""Parity tests for remediate_drift."""
+"""Parity tests for remediate_drift."""
 
 from __future__ import annotations
 
@@ -65,7 +65,7 @@ def _seed_stack(store: StateStore, name: str, *, image: str = "nginx:1.27") -> N
     store.write(
         name,
         StackDefinition(
-            x_docker_agent=DockerAgentMeta(
+            x_infra_agent=DockerAgentMeta(
                 name=name,
                 created_at="t",
                 last_applied="t",

@@ -1,4 +1,4 @@
-﻿# ADR 0001: MCP Plugin Boundary
+# ADR 0001: MCP Plugin Boundary
 
 ## Status
 
@@ -29,8 +29,7 @@ The core/plugin contract is:
 - Every plugin exposes `*.capabilities`; the core loads all capability tools and
   merges tool metadata, commands, context tools, commit tools, and rollback tools.
 - Model-visible tools can propose or observe; lifecycle tools such as
-  `*.commit_action`, `*.confirm_action`, and `*.rollback_action` stay hidden from
-  the model.
+  `*.commit_action` and `*.rollback_action` stay hidden from the model.
 - Mutating tools use a two-phase `PendingAction` contract.
 - Pending actions are single-use, session/cwd-bound, time-limited, and revalidated
   before commit.
@@ -52,12 +51,10 @@ legacy-path-removed message.
 The Docker server exposes the Docker tool surface through namespaced MCP tools.
 `docker.deploy_stack` returns a PendingAction, `docker.commit_action` revalidates
 and applies the approved deployment transaction, and `docker.rollback_action`
-executes rollback transactions returned by failed commits. `docker.confirm_action`
-can remain inside the Docker plugin only as a compatibility wrapper around
-`docker.commit_action`.
+executes rollback transactions returned by failed commits.
 
 Docker-specific tool, state, policy, path, redaction, Docker engine, Compose
 runner, image validation, drift, apply, and rollback implementation lives under
 `servers/docker-mcp-server/src/docker_mcp_server`. The core package must not
-import `docker_mcp_server`, `docker_agent.tools`, `docker_agent.services.docker`,
-`docker_agent.policy`, or Docker stack types.
+import `docker_mcp_server`, `infra_agent.tools`, `infra_agent.services.docker`,
+`infra_agent.policy`, or Docker stack types.

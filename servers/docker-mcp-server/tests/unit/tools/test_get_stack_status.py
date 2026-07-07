@@ -1,4 +1,4 @@
-﻿"""Parity tests for get_stack_status â€” mirrors getStackStatus.test.ts."""
+"""Parity tests for get_stack_status â€” mirrors getStackStatus.test.ts."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ async def test_scrubs_secret_values_appearing_in_log_tail(tmp_project) -> None:
     ctx.state_store.write(
         "web",
         StackDefinition(
-            x_docker_agent=DockerAgentMeta(
+            x_infra_agent=DockerAgentMeta(
                 name="web",
                 created_at="x",
                 last_applied=None,

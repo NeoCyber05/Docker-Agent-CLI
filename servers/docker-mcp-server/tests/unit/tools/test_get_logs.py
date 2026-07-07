@@ -1,4 +1,4 @@
-﻿"""Parity tests for get_logs â€” mirrors getLogs.test.ts."""
+"""Parity tests for get_logs â€” mirrors getLogs.test.ts."""
 
 from __future__ import annotations
 
@@ -91,7 +91,7 @@ async def test_redacts_secret_values_using_collect_secret_keys(tmp_project) -> N
     ctx.state_store.write(
         "web",
         StackDefinition(
-            x_docker_agent=DockerAgentMeta(
+            x_infra_agent=DockerAgentMeta(
                 name="web",
                 created_at="x",
                 last_applied=None,
@@ -118,7 +118,7 @@ async def test_redacts_secret_values_using_collect_secret_keys(tmp_project) -> N
     ctx.state_store.write(
         "web",
         StackDefinition(
-            x_docker_agent=DockerAgentMeta(
+            x_infra_agent=DockerAgentMeta(
                 name="web",
                 created_at="x",
                 last_applied=None,

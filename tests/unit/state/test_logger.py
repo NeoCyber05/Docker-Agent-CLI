@@ -1,4 +1,4 @@
-﻿"""Parity tests for logger â€” mirrors src/state/logger.ts."""
+"""Parity tests for logger â€” mirrors src/state/logger.ts."""
 
 import json
 import time
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from docker_agent.state.logger import LogEntry, StructuredLogger
+from infra_agent.state.logger import LogEntry, StructuredLogger
 
 
 @pytest.fixture

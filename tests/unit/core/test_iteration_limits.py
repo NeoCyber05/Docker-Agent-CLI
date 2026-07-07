@@ -1,11 +1,11 @@
 """Tests for iteration_limits helpers."""
 
-from docker_agent.core.iteration_limits import (
+from infra_agent.core.iteration_limits import (
     MAX_ITERATIONS,
     build_graceful_summary,
     derive_recursion_limit,
 )
-from docker_agent.types.message import ToolResultMessage, UserMessage
+from infra_agent.types.message import ToolResultMessage, UserMessage
 
 
 def test_derive_recursion_limit_scales_with_max_iterations() -> None:

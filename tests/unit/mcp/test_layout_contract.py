@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import importlib
 import importlib.util
@@ -15,21 +15,20 @@ def _load_toml(path: Path) -> dict:
 
 def test_mcp_client_modules_live_outside_engine() -> None:
     for module_name in (
-        "docker_agent.mcp.config",
-        "docker_agent.mcp.commands",
-        "docker_agent.mcp.client",
-        "docker_agent.mcp.capabilities",
-        "docker_agent.mcp.approval",
+        "infra_agent.mcp.config",
+        "infra_agent.mcp.commands",
+        "infra_agent.mcp.client",
+        "infra_agent.mcp.capabilities",
     ):
         importlib.import_module(module_name)
 
 
 def test_legacy_mcp_modules_are_removed() -> None:
     for module_name in (
-        "docker_agent.mcp_config",
-        "docker_agent.command_router",
-        "docker_agent.engine.mcp_tools",
-        "docker_agent.engine.confirmation",
+        "infra_agent.mcp_config",
+        "infra_agent.command_router",
+        "infra_agent.engine.mcp_tools",
+        "infra_agent.engine.confirmation",
     ):
         assert importlib.util.find_spec(module_name) is None
 
@@ -56,7 +55,7 @@ def test_docker_mcp_server_workspace_name_and_command(tmp_path: Path, monkeypatc
     }
 
     monkeypatch.setenv("DOCKER_AGENT_MCP_CONFIG", str(tmp_path / "mcp_servers.json"))
-    config = importlib.import_module("docker_agent.mcp.config")
+    config = importlib.import_module("infra_agent.mcp.config")
     servers = config.mcp_servers_for_langchain()
     assert servers["docker"]["command"] == "docker-mcp-server"
 

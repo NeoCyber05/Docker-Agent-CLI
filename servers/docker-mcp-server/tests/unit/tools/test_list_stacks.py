@@ -1,4 +1,4 @@
-﻿"""Parity tests for list_stacks â€” mirrors listStacks.test.ts."""
+"""Parity tests for list_stacks â€” mirrors listStacks.test.ts."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ async def test_returns_summary_list(tmp_project) -> None:
     ctx.state_store.write(
         "a",
         StackDefinition(
-            x_docker_agent=DockerAgentMeta(
+            x_infra_agent=DockerAgentMeta(
                 name="a",
                 created_at="x",
                 last_applied=None,

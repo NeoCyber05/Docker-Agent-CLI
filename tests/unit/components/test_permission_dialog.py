@@ -1,9 +1,9 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from textual.app import App, ComposeResult
 from textual.widgets import Static
 
-from docker_agent.components.permission_dialog import PermissionAnswered, PermissionDialog
+from infra_agent.components.permission_dialog import PermissionAnswered, PermissionDialog
 
 
 class Host(App):

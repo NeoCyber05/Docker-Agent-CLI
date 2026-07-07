@@ -1,4 +1,4 @@
-﻿"""Parity tests for compose_builder â€” mirrors src/tools/shared/composeBuilder.test.ts."""
+"""Parity tests for compose_builder â€” mirrors src/tools/shared/composeBuilder.test.ts."""
 
 import yaml
 
@@ -13,7 +13,7 @@ from docker_mcp_server.types.stack import DockerAgentMeta, ServiceSpec, StackDef
 
 def _previous() -> StackDefinition:
     return StackDefinition(
-        x_docker_agent=DockerAgentMeta(
+        x_infra_agent=DockerAgentMeta(
             name="redis-cache",
             created_at="2026-06-23T06:11:12.361Z",
             last_applied="2026-06-23T06:13:01.634Z",
@@ -37,9 +37,9 @@ def test_build_stack_definition_preserves_created_at_and_scale_overrides() -> No
         "gemini",
         "test",
     )
-    assert result.definition.x_docker_agent.created_at == "2026-06-23T06:11:12.361Z"
-    assert result.definition.x_docker_agent.last_applied == "2026-06-23T06:13:01.634Z"
-    assert result.definition.x_docker_agent.provider == "gemini"
+    assert result.definition.x_infra_agent.created_at == "2026-06-23T06:11:12.361Z"
+    assert result.definition.x_infra_agent.last_applied == "2026-06-23T06:13:01.634Z"
+    assert result.definition.x_infra_agent.provider == "gemini"
     assert result.scale_overrides == {"web": 2}
 
 
@@ -60,7 +60,7 @@ def test_stack_to_yaml_round_trips() -> None:
     assert parsed["services"]["web"]["image"] == "nginx:1.27-alpine"
 
 
-def test_compose_yaml_for_preview_removes_x_docker_agent_metadata() -> None:
+def test_compose_yaml_for_preview_removes_x_infra_agent_metadata() -> None:
     yaml_text = "\n".join(
         [
             "x-docker-agent:",

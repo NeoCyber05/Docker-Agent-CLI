@@ -1,4 +1,4 @@
-﻿"""Tests for apply_slash_effects."""
+"""Tests for apply_slash_effects."""
 
 from __future__ import annotations
 
@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from docker_agent.screens.apply_slash_effects import SlashEffectApplierDeps, apply_slash_effects
-from docker_agent.screens.use_interaction_session import InteractionSession
-from docker_agent.vault.api_key_store import MemoryApiKeyStore
+from infra_agent.screens.apply_slash_effects import SlashEffectApplierDeps, apply_slash_effects
+from infra_agent.screens.use_interaction_session import InteractionSession
+from infra_agent.vault.api_key_store import MemoryApiKeyStore
 
 
 def make_deps(**overrides: object) -> SlashEffectApplierDeps:
@@ -132,7 +132,7 @@ async def test_set_model(
     assert getattr(deps.engine.provider, "name", None) == "openai"
     set_provider.assert_called_once_with("openai")
     set_model.assert_called_once_with("gpt-4o")
-    from docker_agent.config import load_user_config
+    from infra_agent.config import load_user_config
 
     saved = load_user_config(config_path)
     assert saved.provider == "openai"
@@ -176,7 +176,7 @@ async def test_load_session_with_store() -> None:
         import importlib
 
         slash_effects_mod = importlib.import_module(
-            "docker_agent.screens.apply_slash_effects"
+            "infra_agent.screens.apply_slash_effects"
         )
         mp.setattr(slash_effects_mod, "restore_session_from_record", restore)
         await apply_slash_effects([{"type": "load_session"}], deps)

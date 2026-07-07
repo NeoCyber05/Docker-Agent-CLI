@@ -1,4 +1,4 @@
-﻿"""Parity tests for translator â€” mirrors src/tools/shared/translator.ts behavior."""
+"""Parity tests for translator â€” mirrors src/tools/shared/translator.ts behavior."""
 
 from __future__ import annotations
 
@@ -112,7 +112,7 @@ async def test_prepare_stack_draft_reuses_previous_host_port(tmp_path: Any) -> N
     store.write(
         "demo",
         StackDefinition(
-            x_docker_agent=DockerAgentMeta(
+            x_infra_agent=DockerAgentMeta(
                 name="demo",
                 created_at="2026-01-01T00:00:00.000Z",
                 last_applied=None,

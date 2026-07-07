@@ -1,4 +1,4 @@
-﻿"""Collect known secret env keys for log scrubbing.
+"""Collect known secret env keys for log scrubbing.
 
 Parity: ``src/tools/shared/secretKeys.ts``.
 """
@@ -33,7 +33,7 @@ def collect_secret_keys(stack_name: str, ctx: SecretKeysContext) -> set[str]:
     if definition is None:
         return keys
 
-    for source in definition.x_docker_agent.env_file_sources.values():
+    for source in definition.x_infra_agent.env_file_sources.values():
         for key in source.added_keys or []:
             keys.add(key)
 

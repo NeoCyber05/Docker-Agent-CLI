@@ -1,11 +1,11 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 from pathlib import Path
 
 import pytest
 
-from docker_agent.mcp.config import (
+from infra_agent.mcp.config import (
     DEFAULT_DOCKER_SERVER,
     is_mcp_enabled,
     load_mcp_config,
@@ -44,6 +44,8 @@ def test_load_mcp_config_creates_default_docker_entry(tmp_path: Path) -> None:
                 "command": "docker-mcp-server",
                 "args": [],
                 "transport": "stdio",
+                "label": "Docker",
+                "description": "Deploy and manage Docker Compose stacks",
             }
         }
     }
@@ -109,3 +111,65 @@ def test_mcp_flag_rejects_legacy_false_values(monkeypatch) -> None:
         is_mcp_enabled()
 
 
+
+
+def test_list_available_plugins_exposes_label_and_description(tmp_path: Path) -> None:
+    from infra_agent.mcp.config import list_available_plugins
+
+    config = load_mcp_config(tmp_path / "mcp_servers.json")
+
+    plugins = list_available_plugins(config)
+
+    assert [p.name for p in plugins] == ["docker"]
+    assert plugins[0].label == "Docker"
+    assert "Docker Compose" in plugins[0].description
+
+
+def test_servers_for_langchain_strips_presentation_fields(tmp_path: Path) -> None:
+    from infra_agent.mcp.config import mcp_servers_for_langchain
+
+    config = load_mcp_config(tmp_path / "mcp_servers.json")
+
+    servers = mcp_servers_for_langchain(config)
+
+    assert servers["docker"] == {
+        "command": "docker-mcp-server",
+        "args": [],
+        "transport": "stdio",
+    }
+
+
+def test_servers_for_langchain_filters_by_selection() -> None:
+    from infra_agent.mcp.config import McpConfig, McpServerConfig, mcp_servers_for_langchain
+
+    config = McpConfig(
+        servers={
+            "docker": McpServerConfig(command="docker-mcp-server"),
+            "k8s": McpServerConfig(command="k8s-mcp-server"),
+        }
+    )
+
+    assert set(mcp_servers_for_langchain(config)) == {"docker", "k8s"}
+    assert set(mcp_servers_for_langchain(config, selected=["k8s"])) == {"k8s"}
+    assert mcp_servers_for_langchain(config, selected=[]) == {}
+
+
+def test_plugin_selection_round_trip(tmp_path: Path) -> None:
+    from infra_agent.mcp.config import load_plugin_selection, save_plugin_selection
+
+    path = tmp_path / "plugin-selection.json"
+
+    assert load_plugin_selection(path) is None
+
+    save_plugin_selection(["docker", "k8s"], path)
+
+    assert load_plugin_selection(path) == ["docker", "k8s"]
+
+
+def test_plugin_selection_ignores_corrupt_file(tmp_path: Path) -> None:
+    from infra_agent.mcp.config import load_plugin_selection
+
+    path = tmp_path / "plugin-selection.json"
+    path.write_text("not json", encoding="utf-8")
+
+    assert load_plugin_selection(path) is None

@@ -1,4 +1,4 @@
-﻿# MCP Plugin Guide
+# MCP Plugin Guide
 
 Docker Agent treats the agent runtime as the core control plane and domain
 integrations as MCP plugins. The Docker integration is the first plugin, exposed
@@ -11,7 +11,7 @@ instead of adding provider-specific nodes to the core graph.
 The core package is split by responsibility:
 
 ```text
-src/docker_agent/
+src/infra_agent/
   core/                    # framework-neutral agent/domain primitives
   engine/
     adapters/              # LangChain/tool adapters
@@ -91,7 +91,6 @@ Each plugin should expose:
 - `*.summarize_context` and optionally `*.list_resources` for domain context.
 - `*.commit_action` for approved mutations.
 - `*.rollback_action` for graph-driven rollback transactions.
-- `*.confirm_action` only as a backward-compatible wrapper around `commit_action`.
 
 Capabilities should identify model-hidden lifecycle tools:
 

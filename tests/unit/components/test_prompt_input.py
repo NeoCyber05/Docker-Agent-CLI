@@ -1,8 +1,8 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from textual.app import App, ComposeResult
 
-from docker_agent.components.prompt_input import PromptInput, PromptSubmitted
+from infra_agent.components.prompt_input import PromptInput, PromptSubmitted
 
 
 class PromptApp(App):

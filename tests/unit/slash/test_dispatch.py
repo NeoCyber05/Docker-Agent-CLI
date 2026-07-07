@@ -1,9 +1,8 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
-from docker_agent.slash.dispatch import (
+from infra_agent.slash.dispatch import (
     SlashDispatchContext,
     destroy_stack_prompt,
-    dispatch_secrets_list,
     dispatch_stacks,
     dispatch_yaml,
     is_destroy_all_prompt,
@@ -21,14 +20,6 @@ def test_dispatch_stacks_is_mcp_routed_guidance(tmp_project) -> None:
 def test_dispatch_yaml_is_mcp_routed_guidance(tmp_project) -> None:
     result = dispatch_yaml("webapp", SlashDispatchContext(cwd=str(tmp_project)))
     assert result == {"ok": True, "text": "Use the agent prompt `Show YAML for stack webapp`."}
-
-
-def test_dispatch_secrets_list_is_mcp_routed_guidance(tmp_project) -> None:
-    result = dispatch_secrets_list("webapp", SlashDispatchContext(cwd=str(tmp_project)))
-    assert result == {
-        "ok": True,
-        "text": "Use the agent prompt `List secret keys for stack webapp`.",
-    }
 
 
 def test_destroy_stack_prompt_and_parse_direct_destroy_stack_round_trip() -> None:

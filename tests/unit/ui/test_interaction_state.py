@@ -1,8 +1,8 @@
-﻿"""Parity tests for interaction_state â€” mirrors src/ui/__tests__/interactionState.test.ts."""
+"""Parity tests for interaction_state â€” mirrors src/ui/__tests__/interactionState.test.ts."""
 
 from __future__ import annotations
 
-from docker_agent.ui.interaction_state import InteractionState, interaction_reducer
+from infra_agent.ui.interaction_state import InteractionState, interaction_reducer
 
 
 def make_state(**overrides: object) -> InteractionState:

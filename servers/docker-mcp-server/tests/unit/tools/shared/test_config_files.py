@@ -1,4 +1,4 @@
-﻿"""Parity tests for config_files â€” mirrors src/tools/shared/__tests__/configFiles.test.ts."""
+"""Parity tests for config_files â€” mirrors src/tools/shared/__tests__/configFiles.test.ts."""
 
 from pathlib import Path
 
@@ -64,7 +64,7 @@ def test_resolve_safe_rejects_absolute_path(cwd: Path) -> None:
     assert resolve_safe(cwd, "/etc/passwd")["ok"] is False
 
 
-def test_resolve_safe_rejects_reserved_docker_agent_subtree(cwd: Path) -> None:
+def test_resolve_safe_rejects_reserved_infra_agent_subtree(cwd: Path) -> None:
     assert resolve_safe(cwd, "./.docker-agent/x.env")["ok"] is False
 
 

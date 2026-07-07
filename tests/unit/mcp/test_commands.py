@@ -1,6 +1,6 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
-from docker_agent.mcp.commands import CommandSpec, match_command
+from infra_agent.mcp.commands import CommandSpec, match_command
 
 
 def test_match_command_uses_plugin_metadata_for_typed_destroy() -> None:

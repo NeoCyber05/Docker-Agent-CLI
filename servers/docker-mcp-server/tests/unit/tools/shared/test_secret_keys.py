@@ -1,4 +1,4 @@
-﻿"""Parity tests for secret_keys â€” mirrors src/tools/shared/__tests__/secretKeys.test.ts."""
+"""Parity tests for secret_keys â€” mirrors src/tools/shared/__tests__/secretKeys.test.ts."""
 
 from pathlib import Path
 
@@ -24,7 +24,7 @@ def test_collect_secret_keys_merges_sources(tmp_path: Path) -> None:
     store.write(
         "web",
         StackDefinition(
-            x_docker_agent=DockerAgentMeta(
+            x_infra_agent=DockerAgentMeta(
                 name="web",
                 created_at="x",
                 last_applied=None,

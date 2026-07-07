@@ -1,6 +1,6 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
-from docker_agent.ui.text_formatting import render_inline_markdown, render_markdown
+from infra_agent.ui.text_formatting import render_inline_markdown, render_markdown
 
 
 def test_render_inline_markdown_strips_bold_markers() -> None:

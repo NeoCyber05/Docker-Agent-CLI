@@ -1,10 +1,10 @@
-﻿"""Tests for native LangChain chat model construction."""
+"""Tests for native LangChain chat model construction."""
 
 from __future__ import annotations
 
 import pytest
 
-from docker_agent.engine.langgraph.model_factory import create_chat_model
+from infra_agent.engine.langgraph.model_factory import create_chat_model
 
 
 def test_create_chat_model_maps_openrouter_to_openai_compatible_endpoint() -> None:

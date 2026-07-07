@@ -1,13 +1,13 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from textual.app import App, ComposeResult
 from textual.widgets import Static
 
-from docker_agent.components.provider_connect_dialog import (
+from infra_agent.components.provider_connect_dialog import (
     ProviderConnectClosed,
     ProviderConnectDialog,
 )
-from docker_agent.services.provider_status import ProviderStatus
+from infra_agent.services.provider_status import ProviderStatus
 
 
 class Host(App):

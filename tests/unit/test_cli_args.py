@@ -1,4 +1,4 @@
-﻿"""Parity tests for CLI argument parsing."""
+"""Parity tests for CLI argument parsing."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from typer.testing import CliRunner
 
-from docker_agent.cli import _RESUME_LATEST, _normalize_resume_argv, cli
+from infra_agent.cli import _RESUME_LATEST, _normalize_resume_argv, cli
 
 runner = CliRunner()
 
@@ -18,8 +18,8 @@ def invoke_and_capture(argv: list[str]) -> dict[str, object]:
         captured["args"] = args
 
     with (
-        patch("docker_agent.cli.run_chat_session", fake_run),
-        patch("docker_agent.cli._normalize_resume_argv", side_effect=lambda a: a),
+        patch("infra_agent.cli.run_chat_session", fake_run),
+        patch("infra_agent.cli._normalize_resume_argv", side_effect=lambda a: a),
     ):
         result = runner.invoke(cli, argv)
     return {"result": result, "captured": captured}

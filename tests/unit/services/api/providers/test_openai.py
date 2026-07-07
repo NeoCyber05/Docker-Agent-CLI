@@ -1,4 +1,4 @@
-﻿"""Parity tests for OpenAI provider."""
+"""Parity tests for OpenAI provider."""
 
 from __future__ import annotations
 
@@ -7,10 +7,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic import BaseModel
 
-from docker_agent.services.api.providers.openai import OpenAIProvider
-from docker_agent.services.api.types import CallModelParams, ToolSchema
-from docker_agent.types.message import UserMessage
-from docker_agent.vault.api_key_store import MemoryApiKeyStore
+from infra_agent.services.api.providers.openai import OpenAIProvider
+from infra_agent.services.api.types import CallModelParams, ToolSchema
+from infra_agent.types.message import UserMessage
+from infra_agent.vault.api_key_store import MemoryApiKeyStore
 from tests.unit.services.api.conftest import drain_events
 
 

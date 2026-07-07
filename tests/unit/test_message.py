@@ -1,9 +1,9 @@
-﻿"""Parity tests for docker_agent.types.message â€” mirrors src/types/message.ts:1-22."""
+"""Parity tests for infra_agent.types.message â€” mirrors src/types/message.ts:1-22."""
 
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from docker_agent.types.message import (
+from infra_agent.types.message import (
     AssistantBlock,
     AssistantMessage,
     Message,

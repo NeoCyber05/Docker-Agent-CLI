@@ -1,8 +1,8 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from textual.app import App, ComposeResult
 
-from docker_agent.components.thinking_indicator import ThinkingIndicator
+from infra_agent.components.thinking_indicator import ThinkingIndicator
 
 
 class ThinkingApp(App):

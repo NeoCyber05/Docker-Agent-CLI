@@ -1,4 +1,4 @@
-﻿"""Tests for InteractionSession."""
+"""Tests for InteractionSession."""
 
 from __future__ import annotations
 
@@ -8,14 +8,14 @@ from typing import Any
 
 import pytest
 
-from docker_agent.screens.use_interaction_session import InteractionSession
-from docker_agent.types.events import (
+from infra_agent.screens.use_interaction_session import InteractionSession
+from infra_agent.types.events import (
     AssistantText,
     PermissionRequest,
     ToolCall,
     ToolResult,
 )
-from docker_agent.types.permissions import Approve
+from infra_agent.types.permissions import Approve
 
 
 class MockQueryEngine:

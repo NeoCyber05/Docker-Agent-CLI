@@ -1,10 +1,10 @@
-﻿"""Parity tests for tool_presentation â€” mirrors src/ui/__tests__/toolPresentation.test.ts."""
+"""Parity tests for tool_presentation â€” mirrors src/ui/__tests__/toolPresentation.test.ts."""
 
 from __future__ import annotations
 
 import pytest
 
-from docker_agent.ui.tool_presentation import present_tool, sanitize_tool_text
+from infra_agent.ui.tool_presentation import present_tool, sanitize_tool_text
 
 
 @pytest.mark.parametrize(

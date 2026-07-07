@@ -1,8 +1,8 @@
-﻿import pytest
+import pytest
 
-from docker_agent.engine.adapters.provider_adapter import drive_provider
-from docker_agent.services.api.types import TextDeltaEvent, ToolUseStartEvent, UsageEvent
-from docker_agent.types.message import UserMessage
+from infra_agent.engine.adapters.provider_adapter import drive_provider
+from infra_agent.services.api.types import TextDeltaEvent, ToolUseStartEvent, UsageEvent
+from infra_agent.types.message import UserMessage
 
 
 @pytest.mark.asyncio

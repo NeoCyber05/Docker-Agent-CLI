@@ -1,4 +1,4 @@
-﻿"""Compose definition builder and YAML helpers.
+"""Compose definition builder and YAML helpers.
 
 Parity: ``src/tools/shared/composeBuilder.ts``.
 """
@@ -43,7 +43,7 @@ def build_stack_definition(
         if spec.scale is not None and spec.scale > 1:
             scale_overrides[name] = spec.scale
 
-    prev_meta = previous.x_docker_agent if previous is not None else None
+    prev_meta = previous.x_infra_agent if previous is not None else None
     meta = DockerAgentMeta.model_validate(
         {
             "name": input.stack_name,

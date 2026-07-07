@@ -1,4 +1,4 @@
-﻿"""Parity tests for drift_detector â€” mirrors src/state/driftDetector.ts."""
+"""Parity tests for drift_detector â€” mirrors src/state/driftDetector.ts."""
 
 from pathlib import Path
 
@@ -15,7 +15,7 @@ def _make_store(tmp_path: Path, stack_name: str, spec: ServiceSpec) -> StateStor
     store.write(
         stack_name,
         StackDefinition(
-            x_docker_agent=DockerAgentMeta(
+            x_infra_agent=DockerAgentMeta(
                 name=stack_name,
                 created_at="t",
                 last_applied=None,

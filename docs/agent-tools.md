@@ -8,7 +8,7 @@ LLM agent có thể gọi các tool sau trong phiên REPL. Tool được phân l
 
 Docker tool execution now goes through `docker-mcp-server` by default. The core agent loads namespaced MCP tools such as `docker.deploy_stack`, `docker.get_logs`, and `docker.destroy_stack`, while deterministic commands such as `destroy all stacks` are matched by the generic command router from plugin-provided metadata.
 
-`docker.deploy_stack` is a two-phase operation: it returns a PendingAction for plan review, and `docker.confirm_action` runs the real apply-with-rollback transaction only after approval and revalidation.
+`docker.deploy_stack` is a two-phase operation: it returns a PendingAction for plan review, and the internal `docker.commit_action` (hidden from the model) runs the real apply-with-rollback transaction only after approval and revalidation.
 
 ---
 ## Bảng tổng quan

@@ -1,4 +1,4 @@
-﻿"""Parity tests for apply_stack."""
+"""Parity tests for apply_stack."""
 
 from __future__ import annotations
 
@@ -123,7 +123,27 @@ async def test_apply_stack_writes_yaml_and_runs_compose_up(tmp_project: Path) ->
     assert runner.bound_for("webapp").up_calls == [{"detach": True, "scale": {"web": 2}}]
     stored = ctx.state_store.read("webapp")
     assert stored is not None
-    assert stored.x_docker_agent.last_applied is not None
+    assert stored.x_infra_agent.last_applied is not None
+
+
+@pytest.mark.asyncio
+async def test_apply_stack_does_not_emit_or_create_stack_locks(tmp_project: Path) -> None:
+    runner = MockComposeRunner(str(tmp_project))
+    ctx = make_ctx(tmp_project, docker_engine=MockDockerEngine(), compose_runner=runner)
+    yaml_path = stack_state_yaml_path("webapp", str(tmp_project))
+    runner.for_stack("webapp", yaml_path).set_running_services(["web"])
+    runner.for_stack_calls.clear()
+
+    progress, result = await drain_with_progress(
+        apply_stack.call(
+            ApplyStackInput(stack_name="webapp", compose_yaml=WEBAPP_YAML),
+            ctx,
+        )
+    )
+
+    assert result.ok is True
+    assert all("lock" not in item.msg.lower() for item in progress)
+    assert not (tmp_project / ".docker-agent" / "locks").exists()
 
 
 @pytest.mark.asyncio

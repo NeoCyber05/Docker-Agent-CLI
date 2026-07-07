@@ -1,8 +1,8 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from textual.app import App, ComposeResult
 
-from docker_agent.components.footer import StatusFooter, build_footer_content
+from infra_agent.components.footer import StatusFooter, build_footer_content
 
 
 class FooterApp(App):

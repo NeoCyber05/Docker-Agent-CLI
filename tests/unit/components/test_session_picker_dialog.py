@@ -1,9 +1,9 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from textual.app import App, ComposeResult
 from textual.widgets import Static
 
-from docker_agent.components.session_picker_dialog import (
+from infra_agent.components.session_picker_dialog import (
     SessionChoice,
     SessionPickerClosed,
     SessionPickerDialog,

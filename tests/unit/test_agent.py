@@ -1,6 +1,6 @@
 """Agent backend factory smoke tests."""
 
-from docker_agent.agent import create_backend
+from infra_agent.agent import create_backend
 
 
 def test_default_backend_is_langgraph(monkeypatch) -> None:

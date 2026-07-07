@@ -1,10 +1,10 @@
-﻿"""Parity tests for policy_engine â€” mirrors src/policy/PolicyEngine.ts."""
+"""Parity tests for policy_engine â€” mirrors src/policy/PolicyEngine.ts."""
 
 from pathlib import Path
 
 import pytest
 
-from docker_agent.config import UserConfig
+from infra_agent.config import UserConfig
 from docker_mcp_server.policy.policy_engine import (
     PolicyEngine,
     parse_duration_to_seconds,

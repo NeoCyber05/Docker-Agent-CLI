@@ -1,8 +1,8 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from pydantic import TypeAdapter
 
-from docker_agent.types.events import ActionReview, LoopEvent
+from infra_agent.types.events import ActionReview, LoopEvent
 
 _LoopEventAdapter: TypeAdapter[LoopEvent] = TypeAdapter(LoopEvent)
 

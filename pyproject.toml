@@ -28,7 +28,8 @@ dependencies = [
 docker = ["docker-mcp-server"]
 
 [project.scripts]
-docker-agent = "docker_agent.cli:main"
+infra-agent = "infra_agent.cli:main"
+docker-agent = "infra_agent.cli:main"
 
 [dependency-groups]
 dev = [
@@ -53,13 +54,13 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["docker_agent*"]
+include = ["infra_agent*"]
 
 [tool.setuptools.package-dir]
-"docker_agent" = "src/docker_agent"
+"infra_agent" = "src/infra_agent"
 
 [tool.setuptools.package-data]
-"docker_agent" = ["prompts/*.md"]
+"infra_agent" = ["prompts/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "servers/docker-mcp-server/tests"]
@@ -85,5 +86,5 @@ select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
 # C4 = comprehensions
 
 [tool.ruff.lint.isort]
-known-first-party = ["docker_agent", "docker_mcp_server"]
+known-first-party = ["infra_agent", "docker_mcp_server"]
 

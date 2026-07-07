@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import pytest
 
-from docker_agent.slash.router import (
+from infra_agent.slash.router import (
     SLASH_COMMAND_DEFS,
     SlashRouterContext,
     resolve_slash_key,
     route_slash_command,
 )
-from docker_agent.state.session_store import SessionStore
-from docker_agent.vault.api_key_store import MemoryApiKeyStore
+from infra_agent.state.session_store import SessionStore
+from infra_agent.vault.api_key_store import MemoryApiKeyStore
 
 
 def make_ctx(tmp_project) -> SlashRouterContext:
@@ -28,8 +28,6 @@ def test_resolve_slash_key_single_token_commands() -> None:
 
 
 def test_resolve_slash_key_multi_token_longest_match() -> None:
-    assert resolve_slash_key(["/secrets", "list"]) == "/secrets list"
-    assert resolve_slash_key(["/secrets", "rotate", "s", "svc"]) == "/secrets rotate"
     assert resolve_slash_key(["/destroy", "all"]) == "/destroy all"
     assert resolve_slash_key(["/destroy", "ALL"]) == "/destroy all"
 
@@ -51,7 +49,7 @@ async def test_unknown_command_emits_error(tmp_project) -> None:
 
 
 def test_registry_metadata_covers_every_slash_command_def() -> None:
-    assert len(SLASH_COMMAND_DEFS) >= 14
+    assert len(SLASH_COMMAND_DEFS) >= 12
     for definition in SLASH_COMMAND_DEFS:
         assert definition.usage.startswith("/")
         assert definition.description
@@ -89,24 +87,6 @@ async def test_yaml_emits_plugin_prompt_guidance(tmp_project) -> None:
     result = await route_slash_command("/yaml webapp", make_ctx(tmp_project))
     assistant = next(effect for effect in result.effects if effect["type"] == "emit_assistant_text")
     assert "Show YAML for stack webapp" in assistant["delta"]
-
-
-@pytest.mark.asyncio
-async def test_secrets_list_requires_stack_arg(tmp_project) -> None:
-    result = await route_slash_command("/secrets list", make_ctx(tmp_project))
-    assert any(
-        effect["type"] == "emit_error" and "Usage:" in effect["message"]
-        for effect in result.effects
-    )
-
-
-@pytest.mark.asyncio
-async def test_secrets_bare_shows_usage(tmp_project) -> None:
-    result = await route_slash_command("/secrets", make_ctx(tmp_project))
-    assert {
-        "type": "emit_error",
-        "message": "Usage: /secrets list <stack> | /secrets rotate <stack> <service>",
-    } in result.effects
 
 
 @pytest.mark.asyncio
@@ -179,27 +159,6 @@ async def test_destroy_without_arg_shows_usage_error(tmp_project) -> None:
     result = await route_slash_command("/destroy", make_ctx(tmp_project))
     assert any(
         effect["type"] == "emit_error" and effect["message"] == "Usage: /destroy <stack>"
-        for effect in result.effects
-    )
-
-
-@pytest.mark.asyncio
-async def test_secrets_rotate_rewrites_to_agent_prompt(tmp_project) -> None:
-    result = await route_slash_command("/secrets rotate mystack web", make_ctx(tmp_project))
-    assert result.effects == [
-        {"type": "emit_user_text", "text": "/secrets rotate mystack web"},
-        {
-            "type": "submit_prompt",
-            "prompt": "Rotate secrets for service web in stack mystack",
-        },
-    ]
-
-
-@pytest.mark.asyncio
-async def test_secrets_rotate_with_missing_args_shows_usage_error(tmp_project) -> None:
-    result = await route_slash_command("/secrets rotate mystack", make_ctx(tmp_project))
-    assert any(
-        effect["type"] == "emit_error" and "Usage:" in effect["message"]
         for effect in result.effects
     )
 

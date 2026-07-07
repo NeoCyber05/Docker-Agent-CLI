@@ -1,11 +1,11 @@
-﻿"""Parity tests for config â€” mirrors src/config.ts:1-73."""
+"""Parity tests for config â€” mirrors src/config.ts:1-73."""
 
 import json
 from pathlib import Path
 
 import pytest
 
-from docker_agent.config import (
+from infra_agent.config import (
     UserConfig,
     is_valid_provider,
     load_user_config,

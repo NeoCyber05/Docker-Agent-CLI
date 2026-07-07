@@ -1,8 +1,8 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from rich.text import Text
 
-from docker_agent.components.slash_highlighter import (
+from infra_agent.components.slash_highlighter import (
     SlashCommandHighlighter,
     slash_command_range,
 )
@@ -14,7 +14,6 @@ def test_slash_command_range_model() -> None:
 
 
 def test_slash_command_range_multi_word_command() -> None:
-    assert slash_command_range("/secrets list mystack") == (0, 13)
     assert slash_command_range("/destroy all") == (0, 12)
 
 

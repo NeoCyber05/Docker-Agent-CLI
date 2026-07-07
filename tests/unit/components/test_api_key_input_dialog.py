@@ -1,9 +1,9 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from textual.app import App, ComposeResult
 from textual.widgets import Static
 
-from docker_agent.components.api_key_input_dialog import ApiKeyInputClosed, ApiKeyInputDialog
+from infra_agent.components.api_key_input_dialog import ApiKeyInputClosed, ApiKeyInputDialog
 
 
 class Host(App):

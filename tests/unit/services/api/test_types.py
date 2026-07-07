@@ -1,6 +1,6 @@
-﻿"""Parity tests for provider API types."""
+"""Parity tests for provider API types."""
 
-from docker_agent.services.api.types import (
+from infra_agent.services.api.types import (
     ErrorEvent,
     MessageStopEvent,
     ProviderEvent,

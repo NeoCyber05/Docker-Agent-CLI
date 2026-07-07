@@ -1,8 +1,8 @@
-﻿"""Parity tests for apiKeyStore."""
+"""Parity tests for apiKeyStore."""
 
 import pytest
 
-from docker_agent.vault.api_key_store import (
+from infra_agent.vault.api_key_store import (
     MemoryApiKeyStore,
     describe_api_key_status,
     resolve_stored_api_key,

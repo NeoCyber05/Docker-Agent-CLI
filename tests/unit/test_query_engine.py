@@ -8,13 +8,14 @@ from typing import Any
 
 import pytest
 
-from docker_agent.agent import BackendQueryParams
-from docker_agent.query_engine import QueryEngine, restore_session_from_record
-from docker_agent.state.session_store import SessionStore
-from docker_agent.types.events import AssistantText, ToolResult
-from docker_agent.types.message import AssistantBlock, AssistantMessage
-from docker_agent.types.permissions import Approve
-from docker_agent.vault.api_key_store import MemoryApiKeyStore
+from infra_agent.agent import BackendQueryParams
+from infra_agent.query_engine import QueryEngine, restore_session_from_record
+from infra_agent.state.session_store import SessionStore
+from infra_agent.types.events import AssistantText, ToolResult
+from infra_agent.types.message import AssistantBlock, AssistantMessage
+from infra_agent.types.message import UserMessage
+from infra_agent.types.permissions import Approve
+from infra_agent.vault.api_key_store import MemoryApiKeyStore
 
 
 class FakeProvider:
@@ -64,7 +65,7 @@ def fake_provider() -> FakeProvider:
 
 
 def install_backend(monkeypatch: pytest.MonkeyPatch, backend: Any) -> Any:
-    monkeypatch.setattr("docker_agent.query_engine.create_backend", lambda: backend)
+    monkeypatch.setattr("infra_agent.query_engine.create_backend", lambda: backend)
     return backend
 
 
@@ -299,6 +300,19 @@ async def test_turn_accumulates_and_persists_assistant_messages(tmp_project, mon
     )
 
 
+def test_persist_session_saves_snapshot_without_new_turn(tmp_project) -> None:
+    state_root = tmp_project / "state"
+    session_store = SessionStore(str(state_root))
+    engine = make_engine(tmp_project, session_store=session_store)
+    engine._messages = [UserMessage(content="resume me")]  # type: ignore[attr-defined]
+    engine.persist_session()
+
+    saved = session_store.read(engine.session_id)
+    assert saved is not None
+    assert saved["first_prompt"] == "resume me"
+    assert saved["messages"][0]["role"] == "user"
+
+
 @pytest.mark.asyncio
 async def test_reset_clears_messages_and_allow_set(tmp_project, monkeypatch) -> None:
     install_backend(monkeypatch, YieldBackend(["hello"]))
@@ -311,7 +325,7 @@ async def test_reset_clears_messages_and_allow_set(tmp_project, monkeypatch) -> 
 
 @pytest.mark.asyncio
 async def test_turn_start_log_redacts_secrets_in_message(tmp_project, monkeypatch) -> None:
-    from docker_agent.state.logger import StructuredLogger
+    from infra_agent.state.logger import StructuredLogger
 
     log_dir = tmp_project / ".docker-agent" / "logs"
     logger = StructuredLogger(str(log_dir), "sess-log")

@@ -1,9 +1,9 @@
-﻿"""Parity tests for docker_agent.types.permissions â€” mirrors src/types/permissions.ts:1-11."""
+"""Parity tests for infra_agent.types.permissions â€” mirrors src/types/permissions.ts:1-11."""
 
 import pytest
 from pydantic import ValidationError
 
-from docker_agent.types.permissions import (
+from infra_agent.types.permissions import (
     AlwaysAllowInSession,
     Approve,
     Deny,
@@ -33,6 +33,12 @@ def test_deny_round_trip() -> None:
     r = Deny()
     assert r.kind == "deny"
     assert parse({"kind": "deny"}).kind == "deny"
+
+
+def test_deny_can_carry_feedback() -> None:
+    parsed = parse({"kind": "deny", "feedback": "doi port sang 8081"})
+    assert isinstance(parsed, Deny)
+    assert parsed.feedback == "doi port sang 8081"
 
 
 def test_always_allow_in_session_round_trip() -> None:

@@ -37,7 +37,7 @@ def _write_stack(project: Path, name: str) -> None:
     store.write(
         name,
         StackDefinition(
-            x_docker_agent=DockerAgentMeta(
+            x_infra_agent=DockerAgentMeta(
                 name=name,
                 created_at="x",
                 last_applied=None,
@@ -85,16 +85,16 @@ def test_pending_confirmation_stub_matches_contract(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_confirm_action_approves_stub_pending_action(tmp_path: Path) -> None:
+async def test_commit_action_approves_stub_pending_action(tmp_path: Path) -> None:
     payload = pending_confirmation_stub(
         cwd=str(tmp_path),
         session_id="session-a",
         tool="docker.deploy_stack",
     )
 
-    from docker_mcp_server.server import confirm_action_payload
+    from docker_mcp_server.server import commit_action_payload
 
-    result = await confirm_action_payload(
+    result = await commit_action_payload(
         pending_action_id=payload["pending_action"]["id"],
         session_id="session-a",
         cwd=str(tmp_path),
@@ -153,22 +153,18 @@ async def test_deploy_stack_returns_pending_action_with_apply_payload(
 
 
 @pytest.mark.asyncio
-async def test_confirm_action_approve_runs_apply_transaction_for_compatibility(
+async def test_deploy_stack_missing_project_policy_returns_initialize_permission(
     tmp_path: Path,
 ) -> None:
-    from types import SimpleNamespace
-
-    (tmp_path / "project-policies.yaml").write_text("project: {}\n", encoding="utf-8")
     plan = PlanStackResultOk(
         compose_yaml="services:\n  web:\n    image: nginx:1.27\n",
         hash="hash-a",
     )
-    apply = AsyncMock(
-        return_value=SimpleNamespace(ok=True, result_message="Stack applied.", rollback=None)
-    )
-    revalidate = AsyncMock(return_value=_plan_stack_tuple(plan))
 
-    with patch("docker_mcp_server.server._run_plan_stack", revalidate):
+    with patch(
+        "docker_mcp_server.server._run_plan_stack",
+        AsyncMock(return_value=_plan_stack_tuple(plan)),
+    ):
         payload = await deploy_stack_payload(
             cwd=str(tmp_path),
             session_id="session-a",
@@ -183,26 +179,102 @@ async def test_confirm_action_approve_runs_apply_transaction_for_compatibility(
             ],
         )
 
-    with (
-        patch("docker_mcp_server.server._run_plan_stack", revalidate),
-        patch("docker_mcp_server.server.run_apply_transaction", apply),
-    ):
-        from docker_mcp_server.server import confirm_action_payload
+    assert payload["status"] == "pending_confirmation"
+    pending = payload["pending_action"]
+    assert pending["tool"] == "initialize_project_policy"
+    assert pending["kind"] == "permission"
+    assert pending["display"]["path"] == str(tmp_path / "project-policies.yaml")
+    assert "project:\n  deny: []\n  require: []\n" in pending["display"]["content"]
 
-        result = await confirm_action_payload(
+
+@pytest.mark.asyncio
+async def test_commit_action_initialize_project_policy_creates_file_and_replans(
+    tmp_path: Path,
+) -> None:
+    """Regression: approving the policy-init must return the real deploy plan.
+
+    Previously the cached draft was dropped once the policy file was created, so
+    the caller had to remember to call docker.deploy_stack a second time. If it
+    didn't, the user was left waiting on a plan_review that was never created —
+    the agent would eventually claim "plan sent for review" with nothing to
+    review, and the turn only ended after the LLM finished rambling.
+    """
+    from docker_mcp_server.server import commit_action_payload
+
+    plan = PlanStackResultOk(
+        compose_yaml="services:\n  web:\n    image: nginx:1.27\n",
+        hash="hash-a",
+    )
+
+    with patch(
+        "docker_mcp_server.server._run_plan_stack",
+        AsyncMock(return_value=_plan_stack_tuple(plan)),
+    ):
+        payload = await deploy_stack_payload(
+            cwd=str(tmp_path),
+            session_id="session-a",
+            stackName="web",
+            intent="deploy nginx",
+            services=[
+                {
+                    "name": "web",
+                    "kind": "custom",
+                    "image": "nginx:1.27",
+                }
+            ],
+        )
+        assert payload["pending_action"]["tool"] == "initialize_project_policy"
+
+        result = await commit_action_payload(
             pending_action_id=payload["pending_action"]["id"],
             session_id="session-a",
             cwd=str(tmp_path),
             decision="approve",
         )
 
+    policy_path = tmp_path / "project-policies.yaml"
+    assert policy_path.exists()
+    assert "project:" in policy_path.read_text(encoding="utf-8")
+
+    assert result["status"] == "pending_confirmation"
+    pending = result["pending_action"]
+    assert pending["tool"] == "docker.deploy_stack"
+    assert pending["kind"] == "plan_review"
+    assert pending["hash"] == "hash-a"
+    assert pending["display"]["artifacts"][-2]["content"] == plan.compose_yaml
+
+
+@pytest.mark.asyncio
+async def test_commit_action_initialize_project_policy_without_draft_just_creates_file(
+    tmp_path: Path,
+) -> None:
+    """Direct policy-init pending actions (no cached draft) keep the old contract."""
+    from docker_mcp_server.server import _pending_initialize_project_policy, commit_action_payload
+
+    payload = _pending_initialize_project_policy(cwd=str(tmp_path), session_id="session-a")
+
+    result = await commit_action_payload(
+        pending_action_id=payload["pending_action"]["id"],
+        session_id="session-a",
+        cwd=str(tmp_path),
+        decision="approve",
+    )
+    policy_path = tmp_path / "project-policies.yaml"
+    assert policy_path.exists()
     assert result["status"] == "ok"
-    assert result["result"] == "Stack applied."
-    assert revalidate.await_count >= 2
-    assert apply.await_count == 1
-    params = apply.await_args.args[0]
-    assert params.stack_name == "web"
-    assert params.desired_yaml == plan.compose_yaml
+    assert "created" in result["result"]
+
+
+def test_capabilities_include_docker_domain_instructions() -> None:
+    from docker_mcp_server.server import capabilities_payload
+
+    instructions = capabilities_payload()["instructions"]
+
+    assert isinstance(instructions, str)
+    assert "Every Docker deployment or stack change MUST go through `docker.deploy_stack`" in (
+        instructions
+    )
+    assert "catalogId" in instructions
 
 
 def test_capabilities_include_full_docker_tool_surface() -> None:
@@ -327,6 +399,71 @@ async def test_commit_action_failure_returns_rollback_action(
 
 
 @pytest.mark.asyncio
+async def test_commit_action_missing_pending_returns_clean_error(tmp_path: Path) -> None:
+    """A stale/unknown approval must not raise a raw KeyError to the caller."""
+    from docker_mcp_server.server import commit_action_payload
+
+    result = await commit_action_payload(
+        pending_action_id="does-not-exist",
+        session_id="session-a",
+        cwd=str(tmp_path),
+        decision="approve",
+    )
+
+    assert result["status"] == "error"
+    assert "no matching pending action" in result["result"].lower()
+
+
+@pytest.mark.asyncio
+async def test_commit_action_expired_pending_returns_clean_error(tmp_path: Path) -> None:
+    """A plan that expired while the user deliberated must degrade gracefully.
+
+    Regression: the old code let ``consume`` raise ``TimeoutError`` which surfaced
+    as a cryptic ``Error executing tool docker.commit_action: <id>`` message, so the
+    agent looped on re-planning instead of telling the user the plan expired.
+    """
+    from docker_mcp_server.server import commit_action_payload, pending_confirmation_stub
+
+    payload = pending_confirmation_stub(
+        cwd=str(tmp_path),
+        session_id="session-a",
+        tool="docker.deploy_stack",
+        ttl_seconds=-1,
+    )
+
+    result = await commit_action_payload(
+        pending_action_id=payload["pending_action"]["id"],
+        session_id="session-a",
+        cwd=str(tmp_path),
+        decision="approve",
+    )
+
+    assert result["status"] == "error"
+    assert "expired" in result["result"].lower()
+
+
+@pytest.mark.asyncio
+async def test_commit_action_session_mismatch_returns_clean_error(tmp_path: Path) -> None:
+    from docker_mcp_server.server import commit_action_payload, pending_confirmation_stub
+
+    payload = pending_confirmation_stub(
+        cwd=str(tmp_path),
+        session_id="session-a",
+        tool="docker.deploy_stack",
+    )
+
+    result = await commit_action_payload(
+        pending_action_id=payload["pending_action"]["id"],
+        session_id="session-b",
+        cwd=str(tmp_path),
+        decision="approve",
+    )
+
+    assert result["status"] == "error"
+    assert "different session" in result["result"].lower()
+
+
+@pytest.mark.asyncio
 async def test_rollback_action_executes_stored_transaction(tmp_path: Path) -> None:
     from types import SimpleNamespace
 
@@ -355,49 +492,6 @@ async def test_rollback_action_executes_stored_transaction(tmp_path: Path) -> No
         "events": [],
     }
     assert rollback_transaction_runner.await_count == 1
-
-
-@pytest.mark.asyncio
-async def test_confirm_action_remains_backward_compatible(
-    tmp_path: Path,
-) -> None:
-    from types import SimpleNamespace
-
-    from docker_mcp_server.server import confirm_action_payload
-
-    (tmp_path / "project-policies.yaml").write_text("project: {}\n", encoding="utf-8")
-    plan = PlanStackResultOk(
-        compose_yaml="services:\n  web:\n    image: nginx:1.27\n",
-        hash="hash-a",
-    )
-    revalidate = AsyncMock(return_value=_plan_stack_tuple(plan))
-    apply_transaction = AsyncMock(
-        return_value=SimpleNamespace(ok=True, result_message="Stack applied.", rollback=None)
-    )
-
-    with patch("docker_mcp_server.server._run_plan_stack", revalidate):
-        payload = await deploy_stack_payload(
-            cwd=str(tmp_path),
-            session_id="session-a",
-            stackName="web",
-            intent="deploy nginx",
-            services=[{"name": "web", "kind": "custom", "image": "nginx:1.27"}],
-        )
-
-    with (
-        patch("docker_mcp_server.server._run_plan_stack", revalidate),
-        patch("docker_mcp_server.server.run_apply_transaction", apply_transaction),
-    ):
-        result = await confirm_action_payload(
-            pending_action_id=payload["pending_action"]["id"],
-            session_id="session-a",
-            cwd=str(tmp_path),
-            decision="approve",
-        )
-
-    assert result["status"] == "ok"
-    assert result["result"] == "Stack applied."
-    assert apply_transaction.await_count == 1
 
 
 @pytest.mark.asyncio

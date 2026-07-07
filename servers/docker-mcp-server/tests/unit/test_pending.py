@@ -1,10 +1,14 @@
 ﻿from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
 from docker_mcp_server.pending import PendingAction, PendingActionStore
+from docker_mcp_server.tools.shared.config_files import StagedConfigFile
+from docker_mcp_server.tools.shared.secret_staging import StagedSecretFile
 
 
 def _action(**overrides: object) -> PendingAction:
@@ -80,6 +84,53 @@ def test_pending_action_store_expires_and_removes_action() -> None:
         )
 
     assert store.get(action.id) is None
+
+
+def test_pending_action_store_persists_dataclass_secret_files(tmp_path: Path) -> None:
+    """Regression: private_payload carrying StagedSecretFile must persist as JSON.
+
+    Previously ``_persist`` called ``json.dumps`` on the raw dataclass and crashed with
+    ``Object of type StagedSecretFile is not JSON serializable``, breaking every deploy
+    that auto-generated secrets (e.g. a random MySQL password).
+    """
+    path = tmp_path / "pending-actions.json"
+    store = PendingActionStore(path)
+    action = store.add(
+        _action(
+            private_payload={
+                "stack_name": "wordpress-stack",
+                "compose_yaml": "services:\n  mysql: {}\n",
+                "config_files": [
+                    StagedConfigFile(
+                        path="config/app.conf", content="debug=false\n", bytes=12
+                    )
+                ],
+                "secret_files": [
+                    StagedSecretFile(
+                        path=str(tmp_path / ".env"),
+                        values={"MYSQL_ROOT_PASSWORD": "s3cret"},
+                    )
+                ],
+            }
+        )
+    )
+
+    persisted = json.loads(path.read_text(encoding="utf-8"))
+    assert len(persisted) == 1
+    config_files = persisted[0]["private_payload"]["config_files"]
+    assert config_files[0]["content"] == "debug=false\n"
+    secret_files = persisted[0]["private_payload"]["secret_files"]
+    assert secret_files[0]["values"]["MYSQL_ROOT_PASSWORD"] == "s3cret"
+
+    reloaded = PendingActionStore(path)
+    confirmed = reloaded.consume(
+        action.id,
+        session_id="session-a",
+        cwd="D:/work/project",
+        now=datetime.now(UTC),
+    )
+    assert confirmed.private_payload["config_files"][0].path == "config/app.conf"
+    assert confirmed.private_payload["secret_files"][0].path.endswith(".env")
 
 
 

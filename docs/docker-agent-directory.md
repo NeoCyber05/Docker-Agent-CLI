@@ -1,6 +1,6 @@
 # Thư mục state theo project
 
-Docker Agent CLI duy trì **trạng thái cục bộ theo từng project** dưới thư mục làm việc hiện tại (`cwd`) khi bạn chạy lệnh. Có **hai vị trí chính**:
+Infra Agent CLI duy trì **trạng thái cục bộ theo từng project** dưới thư mục làm việc hiện tại (`cwd`) khi bạn chạy lệnh. Có **hai vị trí chính**:
 
 | Vị trí | Vai trò |
 |--------|---------|
@@ -24,7 +24,35 @@ Cấu hình LLM provider toàn cục nằm ở `~/.docker-agent/` (xem [Phân bi
     └── history.json         # Audit log dạng JSONL
 ```
 
-Thư mục được tạo tự động khi `state_store` hoặc `session_store` khởi tạo — thường là lần đầu bạn chạy `docker-agent` trong project.
+Thư mục được tạo tự động khi `state_store` hoặc `session_store` khởi tạo — thường là lần đầu bạn chạy `infra-agent` trong project.
+
+---
+
+## Phân tách state theo infrastructure (đa plugin)
+
+Kiến trúc là **core domain-agnostic + plugin MCP**. State cũng chia theo nguyên tắc đó:
+
+- **Core state** (`infra_agent`): sessions, logs — **xuyên suốt mọi domain**. Một phiên có thể chạm Docker, Kubernetes, cloud... nên state này dùng chung, đặt ở gốc `.docker-agent/`.
+- **Plugin state** (mỗi MCP server): mỗi infrastructure **sở hữu namespace riêng**. Plugin Docker dùng `docker-stacks/` cho desired state.
+
+Bảng phân chủ sở hữu hiện tại:
+
+| Vị trí | Chủ sở hữu | Ghi chú |
+|--------|-----------|---------|
+| `.docker-agent/sessions/`, `.docker-agent/logs/` | Core (`infra_agent`) | Dùng chung, không gắn domain |
+| `docker-stacks/` | Docker plugin | Desired-state Compose YAML |
+| `.docker-agent/pending-actions.json`, `secrets/`, `history.json`, `archive/`, `locks/` | Docker plugin | State runtime của Docker |
+
+**Quy ước khi thêm plugin thứ hai (k8s, aws, ...):**
+
+State runtime do plugin sở hữu (pending actions, secrets, history, locks, archive) **phải nằm trong namespace riêng của plugin** để không đụng file của Docker. Hai hướng được chấp nhận:
+
+- Namespace con trong `.docker-agent/`: ví dụ `.docker-agent/k8s/pending-actions.json`, `.docker-agent/k8s/secrets/`.
+- Thư mục desired-state riêng ở gốc project: ví dụ `k8s-manifests/` song song với `docker-stacks/`.
+
+Core (sessions/logs ở gốc `.docker-agent/`) **giữ nguyên** — chia sẻ cho mọi plugin.
+
+> **Hiện trạng & lý do hoãn migration:** State runtime của Docker hiện đặt ngay ở **gốc** `.docker-agent/` (chưa phải `.docker-agent/docker/`) vì Docker đang là plugin duy nhất, nên chưa có xung đột. Việc chuyển sang namespace `.docker-agent/docker/` (kèm migration cho project cũ) **được hoãn tới khi thực sự có plugin thứ hai** — tránh đổi layout và di chuyển dữ liệu khi chưa cần. Khi đó: plugin mới tuân theo quy ước trên, còn Docker sẽ được migrate tương ứng trong cùng đợt.
 
 ---
 

@@ -1,10 +1,10 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from textual.app import App, ComposeResult
 from textual.widgets import Static
 
-from docker_agent.commands.registry import Command
-from docker_agent.components.command_palette import CommandPalette
+from infra_agent.commands.registry import Command
+from infra_agent.components.command_palette import CommandPalette
 
 
 class Host(App):

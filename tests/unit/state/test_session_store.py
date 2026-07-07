@@ -1,14 +1,14 @@
-﻿"""Parity tests for session_store â€” mirrors src/state/SessionStore.ts."""
+"""Parity tests for session_store â€” mirrors src/state/SessionStore.ts."""
 
 from pathlib import Path
 
-from docker_agent.state.session_store import (
+from infra_agent.state.session_store import (
     SessionStore,
     format_sessions_list,
     redact_messages,
     session_cwd_mismatch_warning,
 )
-from docker_agent.types.message import (
+from infra_agent.types.message import (
     AssistantBlock,
     AssistantMessage,
     Message,

@@ -1,11 +1,11 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from io import StringIO
 
 from rich.console import Console
 from textual.app import App, ComposeResult
 
-from docker_agent.components.welcome_banner import WelcomeBanner, build_welcome_content
+from infra_agent.components.welcome_banner import WelcomeBanner, build_welcome_content
 
 
 def _render_widget(widget: WelcomeBanner, *, width: int = 100) -> str:
@@ -24,14 +24,14 @@ async def test_welcome_banner_shows_version() -> None:
     async with app.run_test(size=(100, 30)) as pilot:
         banner = pilot.app.query_one(WelcomeBanner)
         rendered = _render_widget(banner)
-        assert "Docker Agent CLI" in rendered
+        assert "infra-agent CLI" in rendered
         assert "tester" in rendered
 
 
 async def test_welcome_banner_compact_mode() -> None:
     content = build_welcome_content("1.2.3", username="alice", compact=True)
     text = str(content)
-    assert "docker-agent" in text
+    assert "infra-agent" in text
     assert "v1.2.3" in text
     assert "Tips" not in text
 

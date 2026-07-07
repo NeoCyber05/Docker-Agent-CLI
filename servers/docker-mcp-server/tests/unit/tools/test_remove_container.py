@@ -1,4 +1,4 @@
-﻿"""Tests for remove_container tool."""
+"""Tests for remove_container tool."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ def _seed_stack(store: StateStore, name: str) -> None:
     store.write(
         name,
         StackDefinition(
-            x_docker_agent=DockerAgentMeta(
+            x_infra_agent=DockerAgentMeta(
                 name=name,
                 created_at="x",
                 last_applied="x",

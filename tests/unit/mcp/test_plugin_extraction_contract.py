@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import ast
 import json
@@ -33,19 +33,19 @@ def test_docker_mcp_server_imports_no_core_package_modules() -> None:
         if "__pycache__" in path.parts:
             continue
         for module_name in _import_modules(path):
-            if _matches(module_name, ("docker_agent",)):
+            if _matches(module_name, ("infra_agent",)):
                 offenders.append(f"{path.relative_to(ROOT)} imports {module_name}")
 
     assert offenders == []
 
 
 def test_core_has_no_docker_plugin_or_legacy_imports() -> None:
-    core_src = ROOT / "src" / "docker_agent"
+    core_src = ROOT / "src" / "infra_agent"
     forbidden_prefixes = (
         "docker_mcp_server",
-        "docker_agent.tools",
+        "infra_agent.tools",
         "docker_mcp_server.services.docker",
-        "docker_agent.policy",
+        "infra_agent.policy",
         "docker_mcp_server.types.stack",
     )
     offenders: list[str] = []
@@ -65,13 +65,13 @@ import importlib
 import json
 import sys
 
-importlib.import_module("docker_agent.engine.langgraph.backend")
+importlib.import_module("infra_agent.engine.langgraph.backend")
 
 loaded = sorted(
     name
     for name in sys.modules
     if (
-        name == "docker_agent.tools"
+        name == "infra_agent.tools"
         or name.startswith("docker_mcp_server.tools.")
         or name == "docker_mcp_server.services.docker"
         or name.startswith("docker_mcp_server.services.docker.")
@@ -93,10 +93,10 @@ print(json.dumps(loaded))
 
 def test_legacy_docker_shims_are_removed_from_core_package() -> None:
     removed_paths = [
-        ROOT / "src" / "docker_agent" / "tools",
-        ROOT / "src" / "docker_agent" / "services" / "docker",
-        ROOT / "src" / "docker_agent" / "compat" / "docker_apply.py",
-        ROOT / "src" / "docker_agent" / "query.py",
+        ROOT / "src" / "infra_agent" / "tools",
+        ROOT / "src" / "infra_agent" / "services" / "docker",
+        ROOT / "src" / "infra_agent" / "compat" / "docker_apply.py",
+        ROOT / "src" / "infra_agent" / "query.py",
     ]
     assert [str(path.relative_to(ROOT)) for path in removed_paths if path.exists()] == []
 

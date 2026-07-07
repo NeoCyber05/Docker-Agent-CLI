@@ -1,9 +1,9 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from textual.app import App, ComposeResult
 
-from docker_agent.components.tool_details_panel import ToolDetailsPanel, render_tool_details
-from docker_agent.ui.activity import ToolActivity
+from infra_agent.components.tool_details_panel import ToolDetailsPanel, render_tool_details
+from infra_agent.ui.activity import ToolActivity
 
 
 class DetailsApp(App):

@@ -1,4 +1,4 @@
-﻿"""Stack domain models â€” desired-state YAML schema, drift snapshots, diffs.
+"""Stack domain models â€” desired-state YAML schema, drift snapshots, diffs.
 
 Parity: ``src/types/stack.ts:1-97``.
 
@@ -113,7 +113,7 @@ class StackDefinition(BaseModel):
 
     model_config = _MODEL_CONFIG
 
-    x_docker_agent: DockerAgentMeta = Field(alias="x-docker-agent")
+    x_infra_agent: DockerAgentMeta = Field(alias="x-docker-agent")
     services: dict[str, ServiceSpec]
     networks: dict[str, Any] | None = None
     volumes: dict[str, Any] | None = None

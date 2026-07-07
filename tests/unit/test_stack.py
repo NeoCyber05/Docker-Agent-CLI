@@ -1,4 +1,4 @@
-﻿"""Parity tests for docker_mcp_server.types.stack â€” mirrors src/types/stack.ts:1-97."""
+"""Parity tests for docker_mcp_server.types.stack â€” mirrors src/types/stack.ts:1-97."""
 
 import pytest
 from pydantic import ValidationError
@@ -97,7 +97,7 @@ def test_env_file_source_default_added_keys_none() -> None:
     assert src.added_keys is None
 
 
-def test_docker_agent_meta_round_trip() -> None:
+def test_infra_agent_meta_round_trip() -> None:
     meta = DockerAgentMeta(
         name="web",
         created_at="2026-06-27T00:00:00Z",
@@ -126,7 +126,7 @@ def test_stack_definition_minimal_with_meta_and_services() -> None:
         "services": {"web": {"image": "nginx:1.27"}},
     }
     stack = StackDefinition.model_validate(payload)
-    assert stack.x_docker_agent.name == "web"
+    assert stack.x_infra_agent.name == "web"
     assert stack.services["web"].image == "nginx:1.27"
 
 

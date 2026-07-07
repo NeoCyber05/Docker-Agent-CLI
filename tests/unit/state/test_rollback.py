@@ -1,4 +1,4 @@
-﻿"""Parity tests for rollback â€” mirrors src/state/rollback.ts."""
+"""Parity tests for rollback â€” mirrors src/state/rollback.ts."""
 
 from pathlib import Path
 
@@ -15,7 +15,7 @@ from docker_mcp_server.types.stack import DockerAgentMeta, ServiceSpec, StackDef
 
 def _make_stack(name: str) -> StackDefinition:
     return StackDefinition(
-        x_docker_agent=DockerAgentMeta(
+        x_infra_agent=DockerAgentMeta(
             name=name,
             created_at="t",
             last_applied=None,

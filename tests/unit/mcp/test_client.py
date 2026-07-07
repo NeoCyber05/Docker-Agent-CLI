@@ -1,4 +1,4 @@
-﻿"""Tests for MCP tool loading helpers."""
+"""Tests for MCP tool loading helpers."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from docker_agent.mcp import client as mcp_client
+from infra_agent.mcp import client as mcp_client
 
 
 @pytest.mark.asyncio
@@ -82,3 +82,40 @@ def test_warmup_mcp_stdio_transport_wraps_startup_errors(
     ):
         mcp_client.warmup_mcp_stdio_transport()
 
+
+
+@pytest.mark.asyncio
+async def test_active_plugin_selection_filters_connected_servers() -> None:
+    mcp_client.reset_mcp_tools_cache()
+    captured: dict[str, object] = {}
+
+    def _capture(servers: dict[str, object]) -> object:
+        captured["servers"] = servers
+        instance = AsyncMock()
+        instance.get_tools = AsyncMock(return_value=[])
+        return instance
+
+    mcp_client.set_active_plugin_selection(["k8s"])
+    with (
+        patch.object(
+            mcp_client,
+            "mcp_servers_for_langchain",
+            return_value={"k8s": {"command": "k8s-mcp-server"}},
+        ) as servers_for,
+        patch("langchain_mcp_adapters.client.MultiServerMCPClient", side_effect=_capture),
+    ):
+        await mcp_client.load_mcp_langchain_tools(force_reload=True)
+
+    servers_for.assert_called_once_with(selected=["k8s"])
+    assert captured["servers"] == {"k8s": {"command": "k8s-mcp-server"}}
+    mcp_client.reset_mcp_tools_cache()
+
+
+def test_set_active_plugin_selection_invalidates_cache() -> None:
+    mcp_client.reset_mcp_tools_cache()
+    mcp_client._mcp_tools_cache = [object()]
+
+    mcp_client.set_active_plugin_selection(["docker"])
+
+    assert mcp_client._mcp_tools_cache is None
+    mcp_client.reset_mcp_tools_cache()

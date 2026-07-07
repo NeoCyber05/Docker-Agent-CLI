@@ -9,11 +9,11 @@ from langchain_core.language_models.fake_chat_models import FakeMessagesListChat
 from langchain_core.messages import AIMessage
 from pydantic import BaseModel
 
-from docker_agent.agent import BackendQueryParams
-from docker_agent.config import UserConfig
-from docker_agent.core.loop_context import ActionReviewPayload
-from docker_agent.engine.langgraph.backend import LangGraphBackend
-from docker_agent.types.message import UserMessage
+from infra_agent.agent import BackendQueryParams
+from infra_agent.config import UserConfig
+from infra_agent.core.loop_context import ActionReviewPayload
+from infra_agent.engine.langgraph.backend import LangGraphBackend
+from infra_agent.types.message import UserMessage
 
 
 class ToolCallingFakeModel(FakeMessagesListChatModel):
@@ -58,15 +58,15 @@ async def _run_mcp_backend(
     with (
         env,
         patch(
-            "docker_agent.engine.langgraph.runtime.load_user_config",
+            "infra_agent.engine.langgraph.runtime.load_user_config",
             return_value=UserConfig(),
         ),
         patch(
-            "docker_agent.engine.langgraph.runtime.create_chat_model",
+            "infra_agent.engine.langgraph.runtime.create_chat_model",
             return_value=model,
         ),
         patch(
-            "docker_agent.engine.langgraph.runtime.load_mcp_langchain_tools",
+            "infra_agent.engine.langgraph.runtime.load_mcp_langchain_tools",
             AsyncMock(return_value=tools),
         ),
         nullcontext(),

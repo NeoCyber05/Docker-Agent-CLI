@@ -44,9 +44,9 @@ class _StopArgs(BaseModel):
 async def test_mcp_command_router_handles_metadata_command_without_model(
     make_loop_ctx, tmp_project, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from docker_agent.agent import BackendQueryParams
-    from docker_agent.engine.langgraph.backend import LangGraphBackend
-    from docker_agent.types.message import UserMessage
+    from infra_agent.agent import BackendQueryParams
+    from infra_agent.engine.langgraph.backend import LangGraphBackend
+    from infra_agent.types.message import UserMessage
 
     ctx = make_loop_ctx()
     (tmp_project / "project-policies.yaml").write_text("project: {}\n", encoding="utf-8")
@@ -75,11 +75,11 @@ async def test_mcp_command_router_handles_metadata_command_without_model(
 
     with (
         patch(
-            "docker_agent.engine.langgraph.runtime.load_mcp_langchain_tools",
+            "infra_agent.engine.langgraph.runtime.load_mcp_langchain_tools",
             AsyncMock(return_value=[capabilities, stop]),
         ),
         patch(
-            "docker_agent.engine.langgraph.runtime.create_chat_model",
+            "infra_agent.engine.langgraph.runtime.create_chat_model",
             side_effect=AssertionError("agent node should not run"),
         ),
     ):

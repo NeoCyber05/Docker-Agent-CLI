@@ -1,11 +1,11 @@
-﻿"""Parity tests for welcome banner pre-render and inline TUI launch."""
+"""Parity tests for welcome banner pre-render and inline TUI launch."""
 
 from __future__ import annotations
 
 from io import StringIO
 from unittest.mock import MagicMock, patch
 
-from docker_agent.cli import (
+from infra_agent.cli import (
     ParsedArgs,
     _run_chat_session,
     render_welcome_banner_for_terminal,
@@ -14,7 +14,7 @@ from docker_agent.cli import (
 
 def test_render_welcome_banner_for_terminal_returns_text() -> None:
     output = render_welcome_banner_for_terminal("gemini", columns=100, rows=30)
-    assert "docker-agent" in output.lower() or "Welcome" in output
+    assert "infra-agent" in output.lower() or "Welcome" in output
     assert "\u001b[?1049h" not in output
     assert "\u001b[2J" not in output
 
@@ -28,16 +28,17 @@ def test_render_welcome_banner_shows_whale_on_wide_terminal() -> None:
 def test_render_welcome_banner_uses_compact_only_on_small_terminals() -> None:
     output = render_welcome_banner_for_terminal("gemini", columns=80, rows=12)
     assert "##" not in output
-    assert "docker-agent" in output.lower()
+    assert "infra-agent" in output.lower()
 
 
 def test_render_chat_session_inline_without_alternate_screen() -> None:
     stdout = StringIO()
     with (
-        patch("docker_agent.cli.sys.stdout", new=stdout),
-        patch("docker_agent.cli._create_deps") as mock_create,
-        patch("docker_agent.cli._resolve_resume") as mock_resolve,
-        patch("docker_agent.cli.QueryEngine") as mock_engine_cls,
+        patch("infra_agent.cli.sys.stdout", new=stdout),
+        patch("infra_agent.cli._select_and_activate_plugins"),
+        patch("infra_agent.cli._create_deps") as mock_create,
+        patch("infra_agent.cli._resolve_resume") as mock_resolve,
+        patch("infra_agent.cli.QueryEngine") as mock_engine_cls,
     ):
         mock_engine = MagicMock()
         mock_engine.session_id = "sess-test"
@@ -71,9 +72,10 @@ def test_render_chat_session_shows_banner_in_repl() -> None:
         return MagicMock()
 
     with (
-        patch("docker_agent.cli._create_deps") as mock_create,
-        patch("docker_agent.cli._resolve_resume") as mock_resolve,
-        patch("docker_agent.cli.QueryEngine") as mock_engine_cls,
+        patch("infra_agent.cli._select_and_activate_plugins"),
+        patch("infra_agent.cli._create_deps") as mock_create,
+        patch("infra_agent.cli._resolve_resume") as mock_resolve,
+        patch("infra_agent.cli.QueryEngine") as mock_engine_cls,
     ):
         mock_engine = MagicMock()
         mock_engine.session_id = "sess-test"

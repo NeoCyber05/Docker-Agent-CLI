@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from docker_agent.components.plan_preview import render_action_review_preview
-from docker_agent.ui.activity import ActionReviewArtifactRef
+from infra_agent.components.plan_preview import render_action_review_preview
+from infra_agent.ui.activity import ActionReviewArtifactRef
 
 
 def _sample_artifacts() -> list[ActionReviewArtifactRef]:

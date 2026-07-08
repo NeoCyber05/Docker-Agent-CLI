@@ -1,6 +1,4 @@
 """Slash command autocomplete suggestions.
-
-Parity: ``src/slashCommands.ts``.
 """
 
 from __future__ import annotations

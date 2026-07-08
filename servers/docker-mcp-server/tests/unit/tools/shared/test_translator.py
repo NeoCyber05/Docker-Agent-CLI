@@ -148,6 +148,34 @@ async def test_prepare_stack_draft_reuses_previous_host_port(tmp_path: Any) -> N
 
 
 @pytest.mark.asyncio
+async def test_prepare_stack_draft_defaults_small_resource_limits(tmp_path: Any) -> None:
+    store = StateStore(str(tmp_path / ".docker-agent"))
+    ctx = _make_ctx(tmp_path, store)
+    draft = StackDraft.model_validate(
+        {
+            "stackName": "demo",
+            "intent": "web",
+            "services": [
+                {
+                    "name": "web",
+                    "kind": "custom",
+                    "image": "nginx:1.27-alpine",
+                }
+            ],
+        }
+    )
+    result = await prepare_stack_draft(draft, ctx)
+    assert result.ok is True
+    assert result.prepared is not None
+    deploy = result.prepared.services["web"].deploy
+    assert deploy is not None
+    assert deploy.resources is not None
+    assert deploy.resources.limits is not None
+    assert deploy.resources.limits.cpus == "0.5"
+    assert deploy.resources.limits.memory == "512m"
+
+
+@pytest.mark.asyncio
 async def test_prepare_stack_draft_resource_limits(tmp_path: Any) -> None:
     store = StateStore(str(tmp_path / ".docker-agent"))
     ctx = _make_ctx(tmp_path, store)

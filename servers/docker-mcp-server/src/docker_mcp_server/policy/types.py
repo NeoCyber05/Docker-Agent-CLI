@@ -1,7 +1,4 @@
 ﻿"""Policy configuration types.
-
-Parity: ``src/policy/types.ts:1-48``.
-
 Rules that can be either a bare string or a config object are normalized at
 parse time into a tagged model with ``rule: Literal[...]`` and optional
 ``config``. This avoids pydantic v2's strict-union ambiguity while preserving

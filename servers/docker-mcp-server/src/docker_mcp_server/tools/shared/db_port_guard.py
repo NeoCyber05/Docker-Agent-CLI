@@ -1,6 +1,4 @@
 ﻿"""Database default port exposure guard.
-
-Parity: ``src/tools/shared/dbPortGuard.ts``.
 """
 
 from __future__ import annotations

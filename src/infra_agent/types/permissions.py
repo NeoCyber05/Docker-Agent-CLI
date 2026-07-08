@@ -1,7 +1,4 @@
 """Permission user-response discriminated union.
-
-Parity: ``src/types/permissions.ts:1-11``.
-
 Five variants keyed by ``kind``. The Python field names are snake_case but
 aliased to the TS camelCase names via pydantic ``Field(alias=...)`` so we can
 ingest provider/UI payloads that look identical to the TS ones.

@@ -1,15 +1,37 @@
 ﻿"""Subprocess runner for ``docker compose`` commands.
-
-Parity: ``src/services/docker/composeRunner.ts:1-178``.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json as json_module
+import os
+import sys
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any, Protocol
+
+
+def docker_child_env() -> dict[str, str]:
+    """Environment for spawned ``docker`` processes.
+
+    On Windows the Docker CLI resolves its ``compose`` plugin (and other
+    Docker Desktop plugins) relative to ``%ProgramFiles%``. Some MCP clients
+    spawn this server with a whitelisted environment that drops
+    ``PROGRAMFILES``/``PROGRAMW6432`` (see the MCP SDK's
+    ``get_default_environment``). Without them, ``docker compose ...`` fails to
+    locate the plugin and mis-parses the command as
+    ``unknown shorthand flag: 'p' in -p``. Restore them so ``docker compose``
+    works regardless of how the server was launched.
+    """
+    env = dict(os.environ)
+    if sys.platform == "win32":
+        system_drive = env.get("SYSTEMDRIVE") or env.get("SystemDrive") or "C:"
+        default_program_files = f"{system_drive}\\Program Files"
+        for key in ("PROGRAMFILES", "PROGRAMW6432"):
+            if not env.get(key):
+                env[key] = default_program_files
+    return env
 
 
 class Spawner(Protocol):
@@ -32,6 +54,7 @@ async def _default_spawner_impl(
         cmd,
         *args,
         cwd=cwd,
+        env=docker_child_env(),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )

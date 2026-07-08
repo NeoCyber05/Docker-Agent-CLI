@@ -1,6 +1,4 @@
 ﻿"""get_logs tool.
-
-Parity: ``src/tools/getLogs.ts``.
 """
 
 from __future__ import annotations

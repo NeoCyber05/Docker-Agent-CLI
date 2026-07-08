@@ -1,6 +1,4 @@
 ﻿"""get_stack_status tool.
-
-Parity: ``src/tools/getStackStatus.ts``.
 """
 
 from __future__ import annotations

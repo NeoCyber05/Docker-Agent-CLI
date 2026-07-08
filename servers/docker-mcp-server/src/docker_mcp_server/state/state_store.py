@@ -1,6 +1,5 @@
-"""YAML stack state store with archive and history.
-
-Parity: ``src/state/StateStore.ts:1-319``.
+"""
+YAML stack state store with archive and history.
 """
 
 import json

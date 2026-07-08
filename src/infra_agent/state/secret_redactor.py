@@ -1,6 +1,4 @@
 ﻿"""Secret-key detection, HMAC hashing, and log scrubbing.
-
-Parity: ``src/state/secretRedactor.ts:1-41``.
 """
 
 import hashlib

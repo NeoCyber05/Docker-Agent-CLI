@@ -1,6 +1,4 @@
 ﻿"""inspect_drift tool.
-
-Parity: ``src/tools/inspectDrift.ts``.
 """
 
 from __future__ import annotations

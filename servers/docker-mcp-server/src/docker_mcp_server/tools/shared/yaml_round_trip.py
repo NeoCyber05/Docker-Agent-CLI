@@ -1,6 +1,4 @@
 ﻿"""YAML round-trip validation for stack definitions.
-
-Parity: ``src/tools/shared/yamlRoundTrip.ts``.
 """
 
 from __future__ import annotations

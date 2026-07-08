@@ -1,6 +1,4 @@
 ﻿"""Tool-level image validation wrapper.
-
-Parity: ``src/tools/shared/imageValidation.ts``.
 """
 
 from __future__ import annotations

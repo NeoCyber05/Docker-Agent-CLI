@@ -118,8 +118,19 @@ def mcp_servers_for_langchain(
     """
     effective = config or load_mcp_config()
     selected_set = set(selected) if selected is not None else None
+
+    def _server_payload(server: McpServerConfig) -> dict[str, object]:
+        payload = server.model_dump(exclude_none=True, exclude=_PRESENTATION_FIELDS)
+        if server.transport == "stdio":
+            # Inherit the launching process's full environment. The MCP SDK
+            # otherwise spawns stdio servers with a whitelisted subset that
+            # drops vars like PROGRAMFILES/PROGRAMW6432 on Windows, which breaks
+            # `docker compose` plugin resolution inside the server.
+            payload["env"] = dict(os.environ)
+        return payload
+
     return {
-        name: server.model_dump(exclude_none=True, exclude=_PRESENTATION_FIELDS)
+        name: _server_payload(server)
         for name, server in effective.servers.items()
         if selected_set is None or name in selected_set
     }

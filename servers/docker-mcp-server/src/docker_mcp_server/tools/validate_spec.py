@@ -22,6 +22,7 @@ from docker_mcp_server.tools.shared.config_files import (
     detect_missing_config_files,
     stage_config_files,
 )
+from docker_mcp_server.tools.shared.db_app_wiring import check_db_app_credential_consistency
 from docker_mcp_server.tools.shared.db_port_guard import DbPortExposureIssue, check_db_port_exposure
 from docker_mcp_server.tools.shared.image_validation import validate_images_for_tool
 from docker_mcp_server.tools.shared.network_guard import NetworkIssue, check_network_references
@@ -49,6 +50,7 @@ PREFLIGHT_CHECKS = [
     "dependency",
     "resource",
     "db_port",
+    "db_wiring",
     "volume",
     "network",
 ]
@@ -72,6 +74,7 @@ SpecIssueCode = Literal[
     "invalid_dependency",
     "resource_limit",
     "db_port_exposed",
+    "db_app_wiring",
     "unsafe_volume",
     "undeclared_volume",
     "undeclared_network",
@@ -276,6 +279,13 @@ def _resource_issues_to_spec(issues: list[ResourceLimitIssue]) -> list[SpecIssue
     ]
 
 
+def _db_app_wiring_issues_to_spec(issues: list) -> list[SpecIssue]:
+    return [
+        SpecIssue(code="db_app_wiring", path=issue.path, message=issue.message)
+        for issue in issues
+    ]
+
+
 def _db_port_issues_to_spec(issues: list[DbPortExposureIssue]) -> list[SpecIssue]:
     return [
         SpecIssue(
@@ -429,6 +439,18 @@ async def run_preflight(
                 issues=db_issues,
             )
         report.issues.extend(db_issues)
+
+    db_wiring_issues = check_db_app_credential_consistency(prepared.services)
+    _record_check(report, "db_wiring")
+    if db_wiring_issues:
+        wiring_issues = _db_app_wiring_issues_to_spec(db_wiring_issues)
+        if stop_at_first:
+            return _finalize_failure(
+                report,
+                reason="db_app_wiring",
+                issues=wiring_issues,
+            )
+        report.issues.extend(wiring_issues)
 
     volume_issues = check_volume_safety(ctx.cwd, prepared.services)
     _record_check(report, "volume")

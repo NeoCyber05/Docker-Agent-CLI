@@ -1,9 +1,5 @@
-﻿"""Drift detection: compare desired stack YAML with live Docker containers.
-
-Parity: ``src/state/driftDetector.ts:1-255``.
-
-Uses the Phase-2 ``EngineClient`` Protocol only; Phase 3 supplies the real
-implementation.
+﻿"""
+Drift detection: compare desired stack YAML with live Docker containers.
 """
 
 import asyncio

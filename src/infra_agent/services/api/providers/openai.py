@@ -1,6 +1,4 @@
 """OpenAI provider adapter.
-
-Parity: ``src/services/api/providers/openai.ts``.
 """
 
 from __future__ import annotations

@@ -1,6 +1,4 @@
 """Async queue with close/abort semantics.
-
-Parity: ``src/utils/AsyncQueue.ts``.
 """
 
 from __future__ import annotations

@@ -1,7 +1,4 @@
 """LLM transcript message union.
-
-Parity: ``src/types/message.ts:1-22``.
-
 Two axes of discrimination:
 1. ``Message.role`` ∈ {"user","assistant","tool"} — three distinct model shapes.
 2. ``AssistantBlock.type`` ∈ {"text","tool_use"} — nested union inside

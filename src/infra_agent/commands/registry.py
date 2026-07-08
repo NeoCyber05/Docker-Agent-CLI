@@ -1,6 +1,4 @@
 """Command palette registry.
-
-Parity: ``src/commands/registry.ts``.
 """
 
 from __future__ import annotations

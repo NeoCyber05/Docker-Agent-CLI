@@ -11,6 +11,7 @@ import pytest
 from rich.console import Console
 
 from infra_agent.components.activity_timeline import ActivityTimeline
+from infra_agent.components.prompt_input import PromptSubmitted
 from infra_agent.components.model_picker_dialog import ModelPickerDialog
 from infra_agent.components.welcome_banner import WelcomeBanner
 from infra_agent.query_engine import QueryEngine
@@ -111,6 +112,77 @@ async def test_exit_slash_command_exits(tmp_project) -> None:
 
 
 @pytest.mark.asyncio
+async def test_exit_during_plan_feedback_exits_instead_of_replan(tmp_project) -> None:
+    artifacts = [
+        ActionReviewArtifact(
+            kind="manifest",
+            label="Compose YAML",
+            language="yaml",
+            content="services:\n  web:\n    image: nginx",
+        )
+    ]
+    app = REPL(engine=make_engine(tmp_project), version="0.1.0-test", show_banner=False)
+    app.session.pending_event = ActionReview(
+        id="review-exit",
+        pendingActionId="pending-exit",
+        tool="docker.deploy_stack",
+        title="Deploy Docker stack demo",
+        summary="Create web service",
+        artifacts=artifacts,
+    )
+    app.session.interaction.phase = "awaiting_input"
+    app._local_pending = "plan_feedback"
+    app._plan_feedback_request_id = "review-exit"
+
+    exited = False
+
+    def mark_exit() -> None:
+        nonlocal exited
+        exited = True
+
+    with patch.object(app, "exit", side_effect=mark_exit):
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause(delay=0.3)
+            await pilot.click("#prompt-input")
+            await pilot.press("/", "e", "x", "i", "t")
+            await pilot.press("enter")
+            await pilot.pause(delay=0.3)
+
+    assert exited is True
+
+
+@pytest.mark.asyncio
+async def test_exit_during_action_review_exits(tmp_project) -> None:
+    app = REPL(engine=make_engine(tmp_project), version="0.1.0-test", show_banner=False)
+    app.session.pending_event = ActionReview(
+        id="review-exit-2",
+        pendingActionId="pending-exit-2",
+        tool="docker.deploy_stack",
+        title="Deploy Docker stack demo",
+        summary="Create web service",
+        artifacts=[],
+    )
+    app.session.interaction.phase = "awaiting_input"
+    app._local_pending = "plan"
+
+    exited = False
+
+    def mark_exit() -> None:
+        nonlocal exited
+        exited = True
+
+    with patch.object(app, "exit", side_effect=mark_exit):
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause(delay=0.3)
+            await pilot.click("#prompt-input")
+            await pilot.press("/", "e", "x", "i", "t")
+            await pilot.press("enter")
+            await pilot.pause(delay=0.3)
+
+    assert exited is True
+
+
+@pytest.mark.asyncio
 async def test_model_slash_command_mounts_inline_picker(tmp_project) -> None:
     app = REPL(engine=make_engine(tmp_project), version="0.1.0-test", show_banner=False)
     rows = [
@@ -206,7 +278,7 @@ async def test_action_review_shows_in_timeline_and_accepts_approval(tmp_project)
     async with app.run_test(size=(100, 30)) as pilot:
         await pilot.pause(delay=0.5)
         prompt_input = pilot.app.query_one("#prompt-input")
-        assert prompt_input.disabled is True
+        assert prompt_input.disabled is False
         timeline = str(pilot.app.query_one("#timeline-content").render())
         assert "Action review" in timeline
         await pilot.press("y")
@@ -257,7 +329,7 @@ async def test_action_review_deny_collects_feedback_before_responding(tmp_projec
     async with app.run_test(size=(100, 30)) as pilot:
         await pilot.pause(delay=0.5)
         prompt_input = pilot.app.query_one("#prompt-input")
-        assert prompt_input.disabled is True
+        assert prompt_input.disabled is False
 
         await pilot.press("n")
         await pilot.pause(delay=0.2)

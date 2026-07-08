@@ -1,6 +1,4 @@
 ﻿"""Stack resource and port limit checks.
-
-Parity: ``src/tools/shared/resourceLimits.ts``.
 """
 
 from __future__ import annotations

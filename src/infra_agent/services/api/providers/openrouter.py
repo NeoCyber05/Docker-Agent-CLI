@@ -1,6 +1,4 @@
 """OpenRouter provider adapter.
-
-Parity: ``src/services/api/providers/openrouter.ts``.
 """
 
 from __future__ import annotations

@@ -1,6 +1,4 @@
 """Tool presentation helpers for the activity feed.
-
-Parity: ``src/ui/toolPresentation.ts``.
 """
 
 from __future__ import annotations
@@ -165,7 +163,7 @@ def _output_failed(output: Any) -> bool:
         or (
             isinstance(output.get("exitCode"), int) and output.get("exitCode") != 0
         )
-        or output.get("status") in {"error", "failed"}
+        or output.get("status") in {"error", "failed", "blocked"}
     )
 
 
@@ -289,10 +287,27 @@ def present_tool(name: str, input_data: Any = None, output: Any = None) -> ToolP
         intent = input_dict.get("intent", "")
         title = f"Plan stack: {stack_name}"
         summary = f"Generate Compose plan for {stack_name}{f' ({intent})' if intent else ''}"
-    elif name == "apply_stack":
+    elif name in {"apply_stack", "deploy_stack", "docker.deploy_stack"}:
         stack_name = input_dict.get("stackName", "unknown")
-        title = f"Apply stack: {stack_name}"
+        title_verb = "Apply" if name == "apply_stack" else "Deploy"
+        title = f"{title_verb} stack: {stack_name}"
         summary = f"Deploy stack {stack_name}"
+
+        if isinstance(output, dict) and output.get("status") == "blocked":
+            violations = output.get("violations")
+            if isinstance(violations, list) and violations:
+                detail_lines = ["⛔ Deployment blocked by policy violation(s):"]
+                for v in violations:
+                    if isinstance(v, dict):
+                        rule = v.get("rule", "unknown")
+                        service = v.get("service", "*")
+                        message = v.get("message", "")
+                        detail_lines.append(f"  • [{service}] {rule}: {message}")
+                return _finalize_presentation(title, summary, detail_lines)
+            result_msg = output.get("result", "")
+            if isinstance(result_msg, str) and result_msg:
+                detail_lines = [sanitize_tool_text(line) for line in result_msg.split("\n")]
+                return _finalize_presentation(title, summary, detail_lines)
     elif name == "destroy_stack":
         stack_name = input_dict.get("stackName", "unknown")
         remove_volumes = input_dict.get("removeVolumes") is True

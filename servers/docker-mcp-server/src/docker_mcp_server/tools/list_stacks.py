@@ -1,6 +1,4 @@
 ﻿"""list_stacks tool.
-
-Parity: ``src/tools/listStacks.ts``.
 """
 
 from __future__ import annotations

@@ -1,6 +1,4 @@
 ﻿"""Policy engine: load, validate, and evaluate Compose deployments.
-
-Parity: ``src/policy/PolicyEngine.ts``.
 """
 
 from __future__ import annotations

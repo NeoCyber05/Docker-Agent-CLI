@@ -22,17 +22,7 @@ Instead of writing complex `docker-compose.yaml` files, configuring networks, vo
 
 ![Demo](docs/demo.jpg)
 
-## Prerequisites
 
-Before running the Infra Agent CLI, ensure you have:
-
-1. Python 3.11+ and [uv](https://docs.astral.sh/uv/) or another Python environment manager.
-2. Docker Engine and Docker Compose installed and running on your local machine.
-3. Access to an LLM provider:
-   - API key for Gemini, OpenAI, or OpenRouter via env var or `/connect` in the REPL, or
-   - A running local Ollama instance.
-
----
 
 ## Installation
 
@@ -50,7 +40,7 @@ Open a new terminal, then:
 infra-agent
 ```
 
-> The legacy command name `docker-agent` still works as an alias.
+
 
 To upgrade after pulling changes:
 
@@ -64,45 +54,11 @@ To remove the global command:
 uv tool uninstall docker-agent
 ```
 
----
 
-## Architecture
 
-The package is split into a small agent core and provider-specific MCP plugins:
-
-```text
-src/infra_agent/                         # core CLI, UI, session state, LangGraph runtime
-  mcp/                                    # MCP config, capability registry, command routing
-  engine/langgraph/                       # plugin-neutral graph runtime
-  core/                                   # generic action review and loop context
-
-servers/docker-mcp-server/
-  src/docker_mcp_server/                  # Docker plugin: tools, policy, state, Compose, rollback
-```
-
-The core loads every `*.capabilities` MCP tool from configured servers. Tool names must be namespaced, for example `docker.deploy_stack` or future names such as `k8s.deploy`. Model-visible tools can inspect or propose pending actions. Lifecycle tools such as `*.commit_action`, `*.rollback_action`, context tools, and internal tools are hidden from the model and called only by the graph.
-
-Mutations use a two-phase contract:
-
-1. A plugin tool returns a pending action and generic `ActionReviewPayload`.
-2. The user approves the action review.
-3. The graph calls the plugin's commit tool.
-4. If commit returns a rollback action, the graph calls the plugin rollback tool.
-
-Compose YAML, stack diffs, Docker policy decisions, Docker state files, image validation, and rollback mechanics are Docker plugin artifacts. The core/UI render generic review artifacts and do not special-case Compose.
 
 ---
 
-## Configuration
-
-User preferences are stored in `~/.docker-agent/config.json` (override with `DOCKER_AGENT_CONFIG`):
-
-
-### State directory structure
-
-Project-local state splits across two directories under your working directory. Core session and log storage remains in `.docker-agent/`; Docker plugin state, desired-state Compose YAML, secrets, locks, and rollback metadata are owned by `docker-mcp-server`. See [docs/docker-agent-directory.md](docs/docker-agent-directory.md) for the full layout, lifecycle, and security notes.
-
-State is partitioned along the core/plugin boundary: **core state** (sessions, logs) is infrastructure-agnostic and shared across domains, while each infrastructure **plugin owns its own namespaced state** (Docker uses `docker-stacks/` for desired state). When a second plugin (Kubernetes, cloud) is added, its plugin-owned runtime state gets its own namespace so it never collides with Docker's — see the [per-infrastructure partitioning convention](docs/docker-agent-directory.md#phân-tách-state-theo-infrastructure-đa-plugin). Docker's runtime state currently sits at the `.docker-agent/` root and will be moved under a `docker` namespace only when that second plugin actually lands.
 
 ### MCP plugin runtime
 

@@ -1,6 +1,4 @@
 ﻿"""destroy_all_stacks tool.
-
-Parity: ``src/tools/destroyAllStacks.ts``.
 """
 
 from __future__ import annotations

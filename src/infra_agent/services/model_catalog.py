@@ -1,6 +1,4 @@
 """Model catalog helpers.
-
-Parity: ``src/services/modelCatalog.ts``.
 """
 
 from __future__ import annotations

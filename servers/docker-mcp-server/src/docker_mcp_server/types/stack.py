@@ -1,7 +1,4 @@
 """Stack domain models â€” desired-state YAML schema, drift snapshots, diffs.
-
-Parity: ``src/types/stack.ts:1-97``.
-
 Snake_case python field names with camelCase aliases for TS-shaped payloads.
 
 ``ServiceSpec.depends_on`` is a discriminated shape:

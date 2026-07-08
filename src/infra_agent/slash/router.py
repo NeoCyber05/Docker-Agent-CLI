@@ -1,6 +1,4 @@
 """Slash command router.
-
-Parity: ``src/slashRouter.ts``.
 """
 
 from __future__ import annotations

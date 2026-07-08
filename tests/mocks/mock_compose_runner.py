@@ -1,6 +1,4 @@
 ﻿"""Mock compose runner for tool tests.
-
-Parity: ``tests/mocks/mockComposeRunner.ts``.
 """
 
 from __future__ import annotations

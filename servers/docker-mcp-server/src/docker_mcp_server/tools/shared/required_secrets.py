@@ -1,6 +1,4 @@
 ﻿"""Required secret rules by database image.
-
-Parity: ``src/tools/shared/requiredSecrets.ts``.
 """
 
 from __future__ import annotations

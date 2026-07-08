@@ -1,6 +1,4 @@
 """Provider API types.
-
-Parity: ``src/services/api/types.ts``.
 """
 
 from __future__ import annotations

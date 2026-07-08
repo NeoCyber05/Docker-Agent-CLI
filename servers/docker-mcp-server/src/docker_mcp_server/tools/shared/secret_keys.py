@@ -1,6 +1,4 @@
 """Collect known secret env keys for log scrubbing.
-
-Parity: ``src/tools/shared/secretKeys.ts``.
 """
 
 from __future__ import annotations

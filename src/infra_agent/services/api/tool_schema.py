@@ -1,6 +1,4 @@
 """Convert pydantic models to OpenAI / Gemini function declarations.
-
-Parity: ``src/services/api/toolSchema.ts``.
 """
 
 from __future__ import annotations

@@ -157,6 +157,14 @@ def _policy_block_message(violations: list[Any]) -> str:
     return f"Policy violation(s) detected. Deployment is blocked:\n{msgs}"
 
 
+def _policy_violations_payload(violations: list[Any]) -> list[dict[str, str]]:
+    """Return structured violation data for the UI and agent."""
+    return [
+        {"service": v.service, "rule": v.rule, "message": v.message}
+        for v in violations
+    ]
+
+
 def _project_policy_path(cwd: str) -> Path:
     return Path(cwd) / _PROJECT_POLICY_FILENAME
 
@@ -340,6 +348,7 @@ async def _plan_deploy(
         return ctx, {
             "status": "blocked",
             "result": _policy_block_message(violations),
+            "violations": _policy_violations_payload(violations),
             "progress": progress,
         }, progress
     return ctx, plan_result, progress
@@ -649,15 +658,22 @@ async def _approve_deploy(action: PendingAction) -> dict[str, Any]:
         )
     )
     if apply_result.rollback is not None:
-        _ROLLBACKS[apply_result.rollback.id] = apply_result.rollback
+        # Run the rollback inline, in the same MCP call that still holds the live
+        # RollbackTransaction. Deferring it to a separate docker.rollback_action
+        # round-trip is unsafe: the MCP client opens a fresh stdio subprocess per
+        # tool call, so the in-memory transaction stashed here would be gone by the
+        # time rollback ran (KeyError), leaving a failed stack running while the
+        # model wrongly reported success. See rollback_action_payload for the
+        # defensive fallback that keeps that tool safe if it is ever called.
+        rollback_outcome = await run_rollback_transaction(
+            apply_result.rollback,
+            ctx=ctx,
+            emit=events.append,
+        )
         return {
             "status": "error",
-            "result": apply_result.result_message,
+            "result": rollback_outcome.result_message,
             "ok": False,
-            "rollback_action": {
-                "id": apply_result.rollback.id,
-                "tool": "docker.rollback_action",
-            },
             "events": [_jsonable(event) for event in events],
         }
     return {
@@ -724,7 +740,23 @@ async def rollback_action_payload(
     session_id: str,
     cwd: str,
 ) -> dict[str, Any]:
-    transaction = _ROLLBACKS.pop(rollback_action_id)
+    transaction = _ROLLBACKS.pop(rollback_action_id, None)
+    if transaction is None:
+        # Rollback now runs inline during deploy commit, so a separate call here
+        # is normally unnecessary. If one still arrives (stale plan, or the
+        # transaction was created in a different MCP subprocess), fail loudly
+        # instead of raising a raw KeyError the model would gloss over.
+        return {
+            "status": "error",
+            "result": (
+                "No matching rollback action was found. Any failed deploy is rolled "
+                "back automatically during the deploy step, so no separate rollback "
+                "is needed. Re-check the stack status with docker.get_stack_status "
+                "and docker.get_logs, and re-run the deployment if it is still down."
+            ),
+            "ok": False,
+            "events": [],
+        }
     ctx = _tool_context(cwd=cwd, session_id=session_id)
     events: list[Any] = []
     result = await run_rollback_transaction(transaction, ctx=ctx, emit=events.append)
@@ -885,7 +917,7 @@ def build_server() -> Any:
         session_id: str,
         args: list[str],
     ) -> dict[str, Any]:
-        """Run a read-only docker command through the existing whitelist."""
+        """Run a whitelisted docker command. Read-only calls bypass permission checks, while mutating calls require user confirmation."""
 
         return await _run_core_tool_payload(
             exec_docker,

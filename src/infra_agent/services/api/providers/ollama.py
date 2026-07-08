@@ -1,6 +1,4 @@
 """Ollama provider adapter.
-
-Parity: ``src/services/api/providers/ollama.ts``.
 """
 
 from __future__ import annotations

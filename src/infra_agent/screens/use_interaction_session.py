@@ -1,6 +1,4 @@
 """Async interaction session driver.
-
-Parity: ``src/screens/useInteractionSession.ts``.
 """
 
 from __future__ import annotations

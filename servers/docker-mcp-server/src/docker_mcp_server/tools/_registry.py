@@ -1,6 +1,5 @@
-﻿"""Tool registry implementation (sibling to the ``tools/`` package).
-
-Parity: ``src/tools.ts``.
+﻿"""
+Tool registry implementation (sibling to the ``tools/`` package).
 """
 
 from __future__ import annotations

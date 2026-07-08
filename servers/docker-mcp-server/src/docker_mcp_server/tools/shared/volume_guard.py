@@ -1,6 +1,4 @@
 ﻿"""Bind-mount safety checks.
-
-Parity: ``src/tools/shared/volumeGuard.ts``.
 """
 
 from __future__ import annotations

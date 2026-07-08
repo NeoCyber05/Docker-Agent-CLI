@@ -91,6 +91,8 @@ def _blocked_from_preflight(report: PreflightReport) -> PlanStackResultBlocked:
         blocked.resource_issues = report.resource_issues
     elif reason == "db_port_exposed":
         blocked.db_port_issues = report.db_port_issues
+    elif reason == "db_app_wiring":
+        blocked.issues = list(report.issues)
     elif reason in {"unsafe_volume", "undeclared_volume"}:
         blocked.volume_issues = report.volume_issues
     elif reason == "undeclared_network":

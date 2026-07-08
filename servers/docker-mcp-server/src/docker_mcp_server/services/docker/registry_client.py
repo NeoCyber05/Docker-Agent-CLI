@@ -1,6 +1,5 @@
-﻿"""Async Docker registry client for image manifest checks.
-
-Parity: ``src/services/docker/registryClient.ts``.
+﻿"""
+Async Docker registry client for image manifest checks.
 """
 
 from __future__ import annotations

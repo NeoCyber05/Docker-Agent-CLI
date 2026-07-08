@@ -1,6 +1,4 @@
 """Activity feed state for the TUI.
-
-Parity: ``src/ui/activity.ts``.
 """
 
 from __future__ import annotations
@@ -141,7 +139,7 @@ def _output_failed(output: Any) -> bool:
         or (
             isinstance(output.get("exitCode"), int) and output.get("exitCode") != 0
         )
-        or output.get("status") in {"error", "failed"}
+        or output.get("status") in {"error", "failed", "blocked"}
     )
 
 

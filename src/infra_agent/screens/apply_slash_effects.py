@@ -1,6 +1,4 @@
 """Apply slash command effects to the REPL session.
-
-Parity: ``src/screens/applySlashEffects.ts``.
 """
 
 from __future__ import annotations

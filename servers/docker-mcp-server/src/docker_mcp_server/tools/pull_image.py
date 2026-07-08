@@ -1,6 +1,4 @@
 ﻿"""pull_image tool.
-
-Parity: ``src/tools/pullImage.ts``.
 """
 
 from __future__ import annotations

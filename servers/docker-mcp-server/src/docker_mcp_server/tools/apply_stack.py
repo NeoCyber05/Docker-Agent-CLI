@@ -1,6 +1,4 @@
 """apply_stack tool.
-
-Parity: ``src/tools/applyStack.ts``.
 """
 
 from __future__ import annotations

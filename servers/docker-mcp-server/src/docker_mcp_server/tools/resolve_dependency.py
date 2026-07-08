@@ -1,6 +1,4 @@
 ﻿"""resolve_dependency tool.
-
-Parity: ``src/tools/resolveDependency.ts``.
 """
 
 from __future__ import annotations

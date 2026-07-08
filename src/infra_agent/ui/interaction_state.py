@@ -1,6 +1,4 @@
 """Interaction phase state machine.
-
-Parity: ``src/ui/interactionState.ts``.
 """
 
 from __future__ import annotations

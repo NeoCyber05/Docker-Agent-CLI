@@ -132,11 +132,15 @@ def test_servers_for_langchain_strips_presentation_fields(tmp_path: Path) -> Non
 
     servers = mcp_servers_for_langchain(config)
 
-    assert servers["docker"] == {
-        "command": "docker-mcp-server",
-        "args": [],
-        "transport": "stdio",
-    }
+    docker = servers["docker"]
+    assert docker["command"] == "docker-mcp-server"
+    assert docker["args"] == []
+    assert docker["transport"] == "stdio"
+    # Presentation fields are stripped; the launching env is forwarded so the
+    # spawned stdio server keeps vars (e.g. PROGRAMFILES) the MCP SDK would drop.
+    assert "label" not in docker
+    assert "description" not in docker
+    assert isinstance(docker["env"], dict)
 
 
 def test_servers_for_langchain_filters_by_selection() -> None:

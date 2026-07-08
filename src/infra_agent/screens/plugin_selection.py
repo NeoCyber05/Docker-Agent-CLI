@@ -38,13 +38,18 @@ class PluginSelectionApp(App[list[str]]):
 
     CSS = """
     Screen {
-        align: center middle;
+        /* Inline mode: keep the app compact by sizing to content instead of the
+        full terminal. `align: center middle` (or any vertical centering) forces
+        the screen to reserve the whole terminal height, which is what made this
+        picker take over the screen. Auto height + horizontal centering keeps it
+        inline and only as tall as the panel. */
+        height: auto;
+        align-horizontal: center;
     }
 
     #panel {
         width: 72;
         height: auto;
-        max-height: 90%;
         border: round $accent;
         padding: 1 2;
     }

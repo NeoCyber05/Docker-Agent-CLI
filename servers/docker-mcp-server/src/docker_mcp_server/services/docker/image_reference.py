@@ -1,6 +1,5 @@
-﻿"""Docker image reference parsing and normalization.
-
-Parity: ``src/services/docker/imageReference.ts:1-76``.
+﻿"""
+Docker image reference parsing and normalization.
 """
 
 from dataclasses import dataclass

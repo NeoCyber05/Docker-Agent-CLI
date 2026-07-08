@@ -348,9 +348,19 @@ async def test_commit_action_approve_runs_apply_transaction(
 
 
 @pytest.mark.asyncio
-async def test_commit_action_failure_returns_rollback_action(
+async def test_commit_action_failure_runs_rollback_inline(
     tmp_path: Path,
 ) -> None:
+    """A failed apply must roll back inside the same commit call.
+
+    Regression: the old flow stashed the RollbackTransaction in an in-memory dict
+    and returned a ``rollback_action`` for a second docker.rollback_action call.
+    Because the MCP client opens a fresh stdio subprocess per tool call, that
+    in-memory transaction was gone by the second call (KeyError), so the rollback
+    never ran and the failed stack was left running while the model reported
+    success. Rollback now runs inline, in the process that still holds the
+    transaction.
+    """
     from types import SimpleNamespace
 
     from docker_mcp_server.server import commit_action_payload
@@ -369,6 +379,12 @@ async def test_commit_action_failure_returns_rollback_action(
             rollback=rollback,
         )
     )
+    rollback_transaction = AsyncMock(
+        return_value=SimpleNamespace(
+            ok=False,
+            result_message="apply failed (unhealthy: web); rollback succeeded (removed).",
+        )
+    )
 
     with patch("docker_mcp_server.server._run_plan_stack", revalidate):
         payload = await deploy_stack_payload(
@@ -382,6 +398,10 @@ async def test_commit_action_failure_returns_rollback_action(
     with (
         patch("docker_mcp_server.server._run_plan_stack", revalidate),
         patch("docker_mcp_server.server.run_apply_transaction", apply_transaction),
+        patch(
+            "docker_mcp_server.server.run_rollback_transaction",
+            rollback_transaction,
+        ),
     ):
         result = await commit_action_payload(
             pending_action_id=payload["pending_action"]["id"],
@@ -392,10 +412,10 @@ async def test_commit_action_failure_returns_rollback_action(
 
     assert result["status"] == "error"
     assert result["ok"] is False
-    assert result["rollback_action"] == {
-        "id": "rollback-1",
-        "tool": "docker.rollback_action",
-    }
+    assert "rollback_action" not in result
+    assert "rollback succeeded" in result["result"]
+    assert rollback_transaction.await_count == 1
+    assert rollback_transaction.await_args.args[0] is rollback
 
 
 @pytest.mark.asyncio
@@ -492,6 +512,30 @@ async def test_rollback_action_executes_stored_transaction(tmp_path: Path) -> No
         "events": [],
     }
     assert rollback_transaction_runner.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_rollback_action_missing_transaction_returns_clean_error(
+    tmp_path: Path,
+) -> None:
+    """An unknown rollback id must not raise a raw KeyError.
+
+    Rollback runs inline during deploy commit now, so this tool is a fallback. If
+    it is called with an id that is not in memory (e.g. created in a different MCP
+    subprocess), it must degrade to a clear error the model can act on rather than
+    the cryptic ``Error executing tool docker.rollback_action: <id>`` KeyError.
+    """
+    from docker_mcp_server.server import rollback_action_payload
+
+    result = await rollback_action_payload(
+        rollback_action_id="does-not-exist",
+        session_id="session-a",
+        cwd=str(tmp_path),
+    )
+
+    assert result["status"] == "error"
+    assert result["ok"] is False
+    assert "no matching rollback action" in result["result"].lower()
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,4 @@
 ﻿"""EngineClient implementation over docker-py.
-
-Parity: ``src/services/docker/engineClient.ts:132-223``.
 """
 
 from __future__ import annotations

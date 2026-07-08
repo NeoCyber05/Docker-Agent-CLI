@@ -1,6 +1,4 @@
 ﻿"""Stack draft validation schemas.
-
-Parity: ``src/tools/shared/specSchemas.ts``.
 """
 
 from __future__ import annotations

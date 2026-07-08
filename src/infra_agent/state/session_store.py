@@ -1,6 +1,4 @@
 """JSON session persistence with secret redaction.
-
-Parity: ``src/state/SessionStore.ts:1-345``.
 """
 
 import contextlib

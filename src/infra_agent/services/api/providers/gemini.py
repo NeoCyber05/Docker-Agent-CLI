@@ -1,6 +1,4 @@
 """Gemini provider adapter.
-
-Parity: ``src/services/api/providers/gemini.ts``.
 """
 
 from __future__ import annotations

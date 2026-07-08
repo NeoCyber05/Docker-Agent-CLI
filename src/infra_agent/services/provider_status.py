@@ -1,6 +1,4 @@
 """Provider connectivity probes.
-
-Parity: ``src/services/providerStatus.ts``.
 """
 
 from __future__ import annotations
@@ -135,4 +133,4 @@ __all__ = [
     "ProviderStatus",
     "get_provider_statuses",
     "is_api_key_provider_connected",
-]
+]

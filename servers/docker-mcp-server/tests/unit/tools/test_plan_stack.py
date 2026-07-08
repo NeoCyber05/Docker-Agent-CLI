@@ -748,6 +748,144 @@ async def test_wordpress_mysql_wires_db_password_to_app(tmp_project: Path) -> No
 
 
 @pytest.mark.asyncio
+async def test_wordpress_mysql_wp_user_without_mysql_user_provisions_credentials(
+    tmp_project: Path,
+) -> None:
+    """Regression for run_demo session: WP user set without matching MYSQL_USER."""
+    ctx = _ctx(tmp_project)
+    result = await _plan(
+        {
+            "stackName": "wordpress",
+            "intent": "wordpress + mysql",
+            "services": [
+                {
+                    "name": "mysql",
+                    "kind": "catalog",
+                    "catalogId": "mysql:8.0",
+                    "persistence": {"size": "10Gi"},
+                },
+                {
+                    "name": "wordpress",
+                    "kind": "custom",
+                    "image": "wordpress:latest",
+                    "exposure": "public",
+                    "persistence": {"path": "/var/www/html/wp-content", "size": "5Gi"},
+                    "environment": {
+                        "WORDPRESS_DB_HOST": "mysql",
+                        "WORDPRESS_DB_USER": "wordpress",
+                        "WORDPRESS_DB_NAME": "wordpress",
+                        "WORDPRESS_DB_PASSWORD": "",
+                    },
+                },
+            ],
+        },
+        ctx,
+    )
+
+    assert result.blocked is False
+    parsed = yaml.safe_load(result.compose_yaml)
+    assert parsed["services"]["mysql"]["environment"]["MYSQL_USER"] == "wordpress"
+    assert "WORDPRESS_DB_PASSWORD" not in (
+        parsed["services"]["wordpress"].get("environment") or {}
+    )
+    assert "./.docker-agent/secrets/wordpress-wordpress.env" in (
+        parsed["services"]["wordpress"].get("env_file") or []
+    )
+
+    db_staged = _staged_secret_values(result, "wordpress", "mysql")
+    wp_staged = _staged_secret_values(result, "wordpress", "wordpress")
+    assert db_staged["MYSQL_PASSWORD"]
+    assert wp_staged["WORDPRESS_DB_PASSWORD"] == db_staged["MYSQL_PASSWORD"]
+
+
+@pytest.mark.asyncio
+async def test_blocks_wordpress_mysql_user_mismatch(tmp_project: Path) -> None:
+    ctx = _ctx(tmp_project)
+    result = await _plan(
+        {
+            "stackName": "wordpress",
+            "intent": "wordpress + mysql",
+            "services": [
+                {
+                    "name": "mysql",
+                    "kind": "catalog",
+                    "catalogId": "mysql:8.0",
+                    "environment": {"MYSQL_USER": "other_user"},
+                },
+                {
+                    "name": "wordpress",
+                    "kind": "custom",
+                    "image": "wordpress:latest",
+                    "environment": {
+                        "WORDPRESS_DB_HOST": "mysql",
+                        "WORDPRESS_DB_USER": "wordpress",
+                    },
+                },
+            ],
+        },
+        ctx,
+    )
+
+    assert result.blocked is True
+    assert result.reason == "db_app_wiring"
+    assert any(issue.code == "db_app_wiring" for issue in (result.issues or []))
+
+
+@pytest.mark.asyncio
+async def test_wordpress_mysql_wp_user_without_depends_on(tmp_project: Path) -> None:
+    ctx = _ctx(tmp_project)
+    result = await _plan(
+        {
+            "stackName": "test-demo",
+            "intent": "wordpress + mysql",
+            "services": [
+                {
+                    "name": "db",
+                    "kind": "catalog",
+                    "catalogId": "mysql:8.0",
+                    "environment": {
+                        "MYSQL_USER": "wp_user",
+                        "MYSQL_PASSWORD": "",
+                    },
+                },
+                {
+                    "name": "wordpress",
+                    "kind": "custom",
+                    "image": "wordpress:latest",
+                    "exposure": "public",
+                    "hostPort": 8080,
+                    "containerPort": 80,
+                    "environment": {
+                        "WORDPRESS_DB_HOST": "db",
+                        "WORDPRESS_DB_USER": "wp_user",
+                    },
+                },
+            ],
+        },
+        ctx,
+    )
+
+    assert result.blocked is False
+    parsed = yaml.safe_load(result.compose_yaml)
+    assert parsed["services"]["wordpress"]["depends_on"] == {
+        "db": {"condition": "service_healthy"}
+    }
+    assert "MYSQL_PASSWORD" not in (parsed["services"]["db"].get("environment") or {})
+    assert "WORDPRESS_DB_PASSWORD" not in (
+        parsed["services"]["wordpress"].get("environment") or {}
+    )
+
+    db_staged = _staged_secret_values(result, "test-demo", "db")
+    wp_staged = _staged_secret_values(result, "test-demo", "wordpress")
+    assert db_staged["MYSQL_PASSWORD"]
+    assert wp_staged["WORDPRESS_DB_PASSWORD"] == db_staged["MYSQL_PASSWORD"]
+    assert any(
+        item.service == "db" and "MYSQL_PASSWORD" in item.keys
+        for item in result.auto_generated_secrets
+    )
+
+
+@pytest.mark.asyncio
 async def test_ok_plan_does_not_write_secrets_to_disk_until_apply(
     tmp_project: Path,
 ) -> None:

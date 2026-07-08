@@ -1,6 +1,4 @@
 """Structured NDJSON logger with secret redaction.
-
-Parity: ``src/state/logger.ts:1-76``.
 """
 
 import json

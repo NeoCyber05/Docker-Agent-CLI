@@ -1,6 +1,4 @@
 ﻿"""Git status guard for env files.
-
-Parity: ``src/services/docker/gitGuard.ts``.
 """
 
 from __future__ import annotations

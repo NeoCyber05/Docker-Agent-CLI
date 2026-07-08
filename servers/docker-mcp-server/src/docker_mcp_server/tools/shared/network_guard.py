@@ -1,6 +1,4 @@
 ﻿"""Undeclared network reference guard.
-
-Parity: ``src/tools/shared/networkGuard.ts``.
 """
 
 from __future__ import annotations

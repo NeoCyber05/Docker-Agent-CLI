@@ -1,6 +1,5 @@
-﻿"""Image validation: local docker-py first, registry fallback, in-memory cache.
-
-Parity: ``src/services/docker/imageValidator.ts``.
+﻿"""
+Image validation: local docker-py first, registry fallback, in-memory cache.
 """
 
 from __future__ import annotations

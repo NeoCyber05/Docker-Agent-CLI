@@ -1,6 +1,5 @@
-﻿"""Env-file parsing, reading, writing, and merging.
-
-Parity: ``src/state/envFile.ts:1-90``.
+﻿"""
+Env-file parsing, reading, writing, and merging.
 """
 
 import os

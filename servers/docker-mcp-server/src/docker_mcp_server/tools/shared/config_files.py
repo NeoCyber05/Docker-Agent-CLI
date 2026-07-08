@@ -1,6 +1,4 @@
 ﻿"""Config file bind-mount staging and rollback helpers.
-
-Parity: ``src/tools/shared/configFiles.ts``.
 """
 
 from __future__ import annotations

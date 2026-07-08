@@ -1,6 +1,4 @@
 ﻿"""Default database healthchecks and depends_on upgrades.
-
-Parity: ``src/tools/shared/dbHealthcheck.ts``.
 """
 
 from __future__ import annotations

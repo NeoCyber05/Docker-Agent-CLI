@@ -182,6 +182,13 @@ class REPL(App[None]):
         self.active_provider_name = getattr(engine.provider, "name", "unknown")
         self.active_model = engine.model
 
+    def _is_exit_command(self, text: str) -> bool:
+        return text.strip().lower() in {"exit", "/exit"}
+
+    def _do_exit(self) -> None:
+        self.session.cancel_current()
+        self.exit()
+
     def _display_model_label(self) -> str:
         return (
             resolve_display_model(self.active_provider_name, self.active_model) or "unknown"
@@ -414,7 +421,6 @@ class REPL(App[None]):
 
         if isinstance(pending, ActionReview):
             self._local_pending = "plan"
-            self._lock_prompt_input()
             return
 
         self._local_pending = "dialog"
@@ -881,10 +887,8 @@ class REPL(App[None]):
 
     async def _handle_submit(self, input_text: str) -> None:
         target = input_text.strip()
-        lowered = target.lower()
-        if lowered in {"exit", "/exit"}:
-            self.session.cancel_current()
-            self.exit()
+        if self._is_exit_command(target):
+            self._do_exit()
             return
         if target.startswith("/"):
             result = await route_slash_command(
@@ -934,7 +938,21 @@ class REPL(App[None]):
         await self._handle_submit(text)
 
     def on_prompt_submitted(self, message: PromptSubmitted) -> None:
+        if self._is_exit_command(message.text):
+            self._do_exit()
+            return
         if self._submit_plan_feedback(message.text):
+            return
+        if self._local_pending == "plan":
+            self.session.dispatch_activity(
+                {
+                    "type": "assistant_text",
+                    "delta": (
+                        "Đang chờ duyệt plan — nhấn y (đồng ý), n (từ chối), "
+                        "hoặc /exit để thoát."
+                    ),
+                }
+            )
             return
         if self._input_blocked():
             return
@@ -945,6 +963,20 @@ class REPL(App[None]):
 
     def _input_blocked(self) -> bool:
         if self._local_pending == "plan_feedback" and isinstance(
+            self.session.pending_event, ActionReview
+        ):
+            return (
+                self._model_picker_waiter is not None
+                or self._provider_connect_waiter is not None
+                or self._api_key_input_waiter is not None
+                or self._ollama_setup_waiter is not None
+                or self._session_picker_waiter is not None
+                or self.show_palette
+                or self.show_queue
+                or (self.show_details and self._latest_tool() is not None)
+                or self._active_log_pane is not None
+            )
+        if self._local_pending == "plan" and isinstance(
             self.session.pending_event, ActionReview
         ):
             return (
@@ -1033,6 +1065,8 @@ class REPL(App[None]):
             return
         if command.action is not None:
             command.action()
+        elif command.insert_text and self._is_exit_command(command.insert_text):
+            self._do_exit()
         elif command.insert_text:
             self.query_one("#prompt", PromptInput).prefill = command.insert_text
 

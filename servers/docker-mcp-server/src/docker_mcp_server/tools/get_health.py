@@ -1,6 +1,4 @@
 ﻿"""get_health tool.
-
-Parity: ``src/tools/getHealth.ts``.
 """
 
 from __future__ import annotations

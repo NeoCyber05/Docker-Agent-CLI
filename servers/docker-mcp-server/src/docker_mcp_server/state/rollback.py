@@ -1,6 +1,5 @@
-﻿"""Rollback decision logic.
-
-Parity: ``src/state/rollback.ts:1-103``.
+﻿"""
+Rollback decision logic.
 """
 
 from typing import Any, Literal

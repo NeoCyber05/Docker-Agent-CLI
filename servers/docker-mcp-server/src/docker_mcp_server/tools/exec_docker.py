@@ -1,6 +1,4 @@
-﻿"""exec_docker tool.
-
-Parity: ``src/tools/execDocker.ts``.
+"""exec_docker tool.
 """
 
 from __future__ import annotations
@@ -10,11 +8,35 @@ from collections.abc import AsyncIterator
 
 from pydantic import BaseModel, Field, field_validator
 
+from docker_mcp_server.services.docker.compose_runner import docker_child_env
 from docker_mcp_server.tools.base import ToolContext, ToolDone, ToolProgress
 
 _SIMPLE_READ_ONLY = frozenset({"ps", "inspect", "logs", "images"})
-_READ_ONLY_GROUPS = frozenset({"network", "volume"})
-_REJECTED = frozenset({"rm", "kill", "prune", "exec", "stop", "restart", "system"})
+
+# Subcommands allowed for group commands (network / volume) broken out by risk.
+# Read-only: no permission prompt needed.
+# Mutating: requires user confirmation (needs_permission returns True).
+_GROUP_READ_ONLY = frozenset({"ls", "inspect"})
+_GROUP_MUTATING = frozenset({"create", "rm", "remove", "connect", "disconnect", "prune"})
+_GROUP_COMMANDS = frozenset({"network", "volume"})
+
+# Top-level commands that are always rejected (even if a subcommand would be ok).
+_REJECTED = frozenset({"rm", "kill", "exec", "stop", "restart", "system"})
+
+
+def _is_group_subcommand_allowed(args: list[str]) -> bool:
+    """Return True if args is a permitted group command (network or volume)."""
+    if len(args) < 2:
+        return False
+    head, sub = args[0], args[1]
+    if head not in _GROUP_COMMANDS:
+        return False
+    return sub in _GROUP_READ_ONLY or sub in _GROUP_MUTATING
+
+
+def _is_group_subcommand_mutating(args: list[str]) -> bool:
+    """Return True if the group command modifies Docker state."""
+    return len(args) >= 2 and args[0] in _GROUP_COMMANDS and args[1] in _GROUP_MUTATING
 
 
 def _is_allowed_docker_args(args: list[str]) -> bool:
@@ -25,7 +47,22 @@ def _is_allowed_docker_args(args: list[str]) -> bool:
         return False
     if head in _SIMPLE_READ_ONLY:
         return True
-    return head in _READ_ONLY_GROUPS and len(args) > 1 and args[1] == "ls"
+    return _is_group_subcommand_allowed(args)
+
+
+def _needs_permission_for_args(args: list[str]) -> bool:
+    """Return True when the command mutates Docker state and needs a user prompt."""
+    if not args:
+        return True
+    # Simple read-only top-level commands don't need permission.
+    if args[0] in _SIMPLE_READ_ONLY:
+        return False
+    # Group read-only subcommands (network ls, network inspect, volume ls, volume inspect)
+    # don't need permission.
+    if _is_group_subcommand_allowed(args) and not _is_group_subcommand_mutating(args):
+        return False
+    # Everything else that passes validation is mutating.
+    return True
 
 
 class ExecDockerInput(BaseModel):
@@ -35,7 +72,7 @@ class ExecDockerInput(BaseModel):
     @classmethod
     def _validate_whitelist(cls, value: list[str]) -> list[str]:
         if not _is_allowed_docker_args(value):
-            raise ValueError("subcommand not in read-only whitelist")
+            raise ValueError("subcommand not in whitelist")
         return value
 
 
@@ -50,13 +87,19 @@ class ExecDockerResult(BaseModel):
 class _ExecDockerTool:
     name = "exec_docker"
     description = (
-        "Run a read-only docker subcommand (ps, inspect, logs, images, network ls, volume ls)."
+        "Run a docker subcommand from the allowed whitelist.\n"
+        "Read-only (no permission required): ps, inspect, logs, images, "
+        "network ls, network inspect, volume ls, volume inspect.\n"
+        "Mutating (requires user permission): "
+        "network create, network rm, network connect, network disconnect, network prune, "
+        "volume create, volume rm, volume prune."
     )
     input_schema = ExecDockerInput
     category = "escape-hatch"
 
-    def needs_permission(self, _input: ExecDockerInput) -> bool:
-        return True
+    def needs_permission(self, input: ExecDockerInput) -> bool:  # type: ignore[override]
+        args = input.args if isinstance(input, ExecDockerInput) else []
+        return _needs_permission_for_args(args)
 
     async def call(
         self, input: ExecDockerInput, ctx: ToolContext
@@ -67,6 +110,7 @@ class _ExecDockerTool:
             "docker",
             *input.args,
             cwd=ctx.cwd,
+            env=docker_child_env(),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -84,4 +128,10 @@ class _ExecDockerTool:
 
 exec_docker = _ExecDockerTool()
 
-__all__ = ["ExecDockerInput", "ExecDockerResult", "exec_docker"]
+__all__ = [
+    "ExecDockerInput",
+    "ExecDockerResult",
+    "exec_docker",
+    "_is_allowed_docker_args",
+    "_needs_permission_for_args",
+]

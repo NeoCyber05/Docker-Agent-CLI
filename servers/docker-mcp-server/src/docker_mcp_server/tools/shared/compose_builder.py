@@ -1,6 +1,4 @@
 """Compose definition builder and YAML helpers.
-
-Parity: ``src/tools/shared/composeBuilder.ts``.
 """
 
 from __future__ import annotations

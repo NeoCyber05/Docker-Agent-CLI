@@ -1,6 +1,4 @@
 """API key storage abstraction.
-
-Parity: ``src/secrets/apiKeyStore.ts``.
 """
 
 from __future__ import annotations

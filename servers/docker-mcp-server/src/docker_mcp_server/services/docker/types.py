@@ -1,10 +1,5 @@
-﻿"""Docker service types and the EngineClient Protocol.
-
-Parity: ``src/services/docker/engineClient.ts:5-130``.
-
-Models are a pydantic v2 translation of the zod schemas in the TS source.
-They use ``extra="ignore"`` so docker-py / daemon payloads with extra fields
-still parse; only the fields the agent actually reads are typed.
+﻿"""
+Docker service types and the EngineClient Protocol.
 """
 
 from __future__ import annotations

@@ -1,6 +1,4 @@
 ﻿"""Stack draft translator Ã¢â‚¬â€ intent to prepared compose spec.
-
-Parity: ``src/tools/shared/translator.ts``.
 """
 
 from __future__ import annotations
@@ -12,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from docker_mcp_server.tools.base import ToolContext
+from docker_mcp_server.tools.shared.db_app_wiring import infer_implicit_db_dependencies
 from docker_mcp_server.tools.shared.db_healthcheck import inject_db_healthchecks
 from docker_mcp_server.tools.shared.spec_schemas import (
     NetworkIntent,
@@ -325,17 +324,17 @@ async def prepare_stack_draft(input: StackDraft, ctx: ToolContext) -> PrepareRes
             for mount in intent.volume_mounts:
                 _append_volume(spec, _volume_mount_to_compose_string(mount))
 
-        if intent.resources:
-            limits = RESOURCE_LIMITS_MAP.get(intent.resources)
-            if limits:
-                spec.deploy = DeploySpec(
-                    resources=DeployResources(
-                        limits=DeployResourcesLimits(
-                            cpus=limits["cpus"],
-                            memory=limits["memory"],
-                        )
+        resource_tier = intent.resources or "small"
+        limits = RESOURCE_LIMITS_MAP.get(resource_tier)
+        if limits:
+            spec.deploy = DeploySpec(
+                resources=DeployResources(
+                    limits=DeployResourcesLimits(
+                        cpus=limits["cpus"],
+                        memory=limits["memory"],
                     )
                 )
+            )
 
         if intent.exposure == "public":
             container_port = 80
@@ -382,6 +381,7 @@ async def prepare_stack_draft(input: StackDraft, ctx: ToolContext) -> PrepareRes
 
         services[service_name] = spec
 
+    infer_implicit_db_dependencies(services)
     inject_db_healthchecks(services)
 
     prepared = PreparedStack(

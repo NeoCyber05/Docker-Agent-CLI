@@ -1,6 +1,4 @@
 ﻿"""Tool abstraction.
-
-Parity: ``src/Tool.ts``.
 """
 
 from __future__ import annotations

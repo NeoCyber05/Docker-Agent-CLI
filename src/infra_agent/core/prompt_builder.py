@@ -1,6 +1,4 @@
 """System prompt builder.
-
-Parity: ``src/context.ts``.
 """
 
 from __future__ import annotations

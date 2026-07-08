@@ -1,6 +1,4 @@
 """User/project configuration and path helpers.
-
-Parity: ``src/config.ts:1-73``.
 """
 
 import contextlib

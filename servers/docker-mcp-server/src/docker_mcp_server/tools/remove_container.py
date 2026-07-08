@@ -8,6 +8,7 @@ from collections.abc import AsyncIterator
 
 from pydantic import BaseModel, Field, field_validator
 
+from docker_mcp_server.services.docker.compose_runner import docker_child_env
 from docker_mcp_server.tools.base import ToolContext, ToolDone, ToolProgress
 
 MAX_CONTAINERS_PER_CALL = 8
@@ -66,6 +67,7 @@ async def _run_docker(
         "docker",
         *args,
         cwd=cwd,
+        env=docker_child_env(),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
